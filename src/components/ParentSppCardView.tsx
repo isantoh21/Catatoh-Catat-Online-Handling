@@ -62,6 +62,21 @@ export default function ParentSppCardView() {
   const [showSqlGuide, setShowSqlGuide] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
+  // Normalisasi otomatis format nomor HP orang tua ke format 62xxxxxxxxxxx
+  // Mengubah awalan 08 / 0 / 8 menjadi 62, serta membersihkan tanda strip (-), spasi, dsb.
+  const normalizeTo62Format = (input: string): string => {
+    if (!input) return '';
+    let digits = input.replace(/\D/g, '');
+    if (!digits) return '';
+
+    if (digits.startsWith('0')) {
+      digits = '62' + digits.slice(1);
+    } else if (digits.startsWith('8')) {
+      digits = '62' + digits;
+    }
+    return digits;
+  };
+
   // Normalisasi variasi nomor HP untuk pencarian fleksibel
   const getPhoneVariants = (input: string): string[] => {
     const clean = input.replace(/\D/g, '');
@@ -128,15 +143,61 @@ export default function ParentSppCardView() {
     const savedPhone = localStorage.getItem('catatoh_parent_phone');
 
     if (hpFromUrl) {
-      setPhoneNumber(hpFromUrl);
-      executeSearch(hpFromUrl);
+      const normalized = normalizeTo62Format(hpFromUrl);
+      setPhoneNumber(normalized);
+      executeSearch(normalized);
     } else if (savedPhone) {
-      setPhoneNumber(savedPhone);
+      const normalized = normalizeTo62Format(savedPhone);
+      setPhoneNumber(normalized);
     }
   }, []);
 
+  // Handler interaktif saat mengetik nomor HP
+  const handlePhoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (!raw.trim()) {
+      setPhoneNumber('');
+      return;
+    }
+
+    // Bersihkan karakter non-angka (menghapus tanda -, spasi, titik, dll)
+    let clean = raw.replace(/\D/g, '');
+
+    // Jika diawali 08 (atau 0 dengan panjang >= 2), langsung transformasikan '0' menjadi '62'
+    if (clean.startsWith('08')) {
+      clean = '628' + clean.slice(2);
+    } else if (clean.startsWith('0') && clean.length >= 2) {
+      clean = '62' + clean.slice(1);
+    } else if (clean.startsWith('8') && clean.length >= 2) {
+      clean = '62' + clean;
+    }
+
+    setPhoneNumber(clean);
+  };
+
+  // Handler saat orang tua paste format seperti 08xx-xxxx-xxxx atau 62 xxx-xxxx-xxxx
+  const handlePhonePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData('text');
+    if (pastedText) {
+      const normalized = normalizeTo62Format(pastedText);
+      setPhoneNumber(normalized);
+    }
+  };
+
+  // Handler onBlur untuk memastikan nomor berformat bersih 62xxxxxxxxxxx
+  const handlePhoneBlur = () => {
+    if (phoneNumber) {
+      const normalized = normalizeTo62Format(phoneNumber);
+      if (normalized !== phoneNumber) {
+        setPhoneNumber(normalized);
+      }
+    }
+  };
+
   const executeSearch = async (phoneToSearch: string) => {
-    const cleanDigits = phoneToSearch.replace(/\D/g, '');
+    const normalizedPhone = normalizeTo62Format(phoneToSearch);
+    const cleanDigits = normalizedPhone || phoneToSearch.replace(/\D/g, '');
     if (cleanDigits.length < 8) {
       setErrorMessage('Silakan masukkan nomor HP / WhatsApp yang valid (minimal 8-10 digit).');
       return;
@@ -148,7 +209,7 @@ export default function ParentSppCardView() {
     setShowSqlGuide(false);
 
     if (rememberPhone) {
-      localStorage.setItem('catatoh_parent_phone', phoneToSearch);
+      localStorage.setItem('catatoh_parent_phone', normalizedPhone);
     }
 
     const variants = getPhoneVariants(cleanDigits);
@@ -336,7 +397,13 @@ export default function ParentSppCardView() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    executeSearch(phoneNumber);
+    const normalized = normalizeTo62Format(phoneNumber);
+    if (normalized) {
+      setPhoneNumber(normalized);
+      executeSearch(normalized);
+    } else {
+      executeSearch(phoneNumber);
+    }
   };
 
   const activeStudent = students[selectedStudentIndex] || null;
@@ -456,8 +523,10 @@ export default function ParentSppCardView() {
                   type="tel"
                   id="parentPhoneInput"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Contoh: 081234567890 atau 62812..."
+                  onChange={handlePhoneInputChange}
+                  onPaste={handlePhonePaste}
+                  onBlur={handlePhoneBlur}
+                  placeholder="Contoh: 6281234567890 (otomatis dikonversi)"
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm sm:text-base font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all placeholder:text-slate-400"
                 />
               </div>
