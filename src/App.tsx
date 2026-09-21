@@ -463,7 +463,8 @@ export default function App() {
     );
   }
 
-  if (location.pathname === '/superadmin-secret') {
+  const normalizedPath = location.pathname.toLowerCase().replace(/\/+$/, '');
+  if (normalizedPath === '/superadmin-secret' || normalizedPath === '/superadmin') {
     return <SuperAdminView />;
   }
 
