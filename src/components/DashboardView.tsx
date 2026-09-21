@@ -2,9 +2,11 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
-import { Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, Building2, Copy } from 'lucide-react';
+import { Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, Building2, Copy, MessageSquare } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
+import PaymentModerationModal from './PaymentModerationModal';
+import { getPaymentVerifications } from '../lib/whatsappGateway';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -16,6 +18,10 @@ export default function DashboardView() {
   const [students, setStudents] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Moderasi Pembayaran WhatsApp State
+  const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
+  const [pendingVerificationsCount, setPendingVerificationsCount] = useState(0);
   
   // Filter state
   const currentDate = new Date();
@@ -123,8 +129,26 @@ export default function DashboardView() {
       }
     };
     loadUserData();
+    refreshPendingCount();
+
+    const interval = setInterval(() => {
+      refreshPendingCount();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
+  const refreshPendingCount = async () => {
+    try {
+      const sessionData = await supabase.auth.getSession();
+      const uid = sessionData.data.session?.user?.id;
+      const list = await getPaymentVerifications(uid);
+      const pending = list.filter(item => item.status === 'pending').length;
+      setPendingVerificationsCount(pending);
+    } catch (e) {
+      // Abaikan jika offline / gagal
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -560,6 +584,25 @@ export default function DashboardView() {
               <Share2 className="w-4 h-4 text-amber-800" />
             </button>
           </div>
+
+          <button 
+            onClick={() => setIsModerationModalOpen(true)}
+            id="btnModerasiBuktiWa"
+            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer relative"
+            title="Moderasi dan verifikasi bukti transfer yang dikirim orang tua via WhatsApp"
+          >
+            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 shrink-0" />
+            <span>Moderasi Bukti WA</span>
+            {pendingVerificationsCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-400 text-indigo-950 animate-pulse">
+                {pendingVerificationsCount}
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-white/20 text-indigo-100">
+                0
+              </span>
+            )}
+          </button>
 
           <button 
             onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
@@ -1216,6 +1259,20 @@ Terima kasih atas perhatian dan kerja samanya.`}
           </div>
         </div>
       )}
+
+      {/* Modal Moderasi Bukti Pembayaran WhatsApp */}
+      <PaymentModerationModal
+        isOpen={isModerationModalOpen}
+        onClose={() => {
+          setIsModerationModalOpen(false);
+          refreshPendingCount();
+        }}
+        students={students}
+        onPaymentApproved={() => {
+          fetchData();
+          refreshPendingCount();
+        }}
+      />
 
     </div>
   );
