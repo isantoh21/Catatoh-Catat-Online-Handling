@@ -1,0 +1,8 @@
+{
+  "name": "CATATOH - Catat Online Handling",
+  "description": "CATATOH (Catat Online Handling) - Aplikasi pencatatan multifungsi sekolah untuk presensi, keuangan SPP, tabungan, dan administrasi pendidikan.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

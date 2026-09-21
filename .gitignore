@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+dist_electron/
+dist-exe/
+coverage/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+!.env.example
