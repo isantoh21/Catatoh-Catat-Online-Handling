@@ -21,6 +21,7 @@ import OtherIncomeView from './components/OtherIncomeView';
 import TeachersView from './components/TeachersView';
 import AttendancePortal from './components/AttendancePortal';
 import StudentAttendancePortal from './components/students/StudentAttendancePortal';
+import ParentSppCardView from './components/ParentSppCardView';
 
 export default function App() {
   const navigate = useNavigate();
@@ -459,6 +460,18 @@ export default function App() {
         <Route path="/absen" element={<AttendancePortal />} />
         <Route path="/absen-guru/:userId" element={<AttendancePortal />} />
         <Route path="/absen-guru" element={<AttendancePortal />} />
+      </Routes>
+    );
+  }
+
+  // Standalone Parent SPP Card Portal
+  const isParentSppRoute = location.pathname.startsWith('/kartu-spp-ortu');
+  if (isParentSppRoute) {
+    return (
+      <Routes>
+        <Route path="/kartu-spp-ortu/:userId" element={<ParentSppCardView />} />
+        <Route path="/kartu-spp-ortu" element={<ParentSppCardView />} />
+        <Route path="*" element={<ParentSppCardView />} />
       </Routes>
     );
   }

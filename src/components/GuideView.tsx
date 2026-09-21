@@ -40,12 +40,12 @@ const GUIDE_SECTIONS = [
   {
     id: 'pembayaran',
     icon: <DollarSign className="w-5 h-5 text-indigo-500" />,
-    title: '5. Dashboard & Pencatatan SPP',
+    title: '5. Dashboard, Pencatatan SPP & Portal Kartu SPP Orang Tua',
     content: `Menu **Dashboard / Pembayaran** adalah pusat pencatatan SPP harian Anda:
 1. Pilih **Bulan dan Tahun** tagihan pada filter di atas tabel. Tabel akan otomatis menampilkan siapa saja yang "Belum" atau "Sudah Lunas" pada bulan tersebut.
 2. **Mencatat Lunas**: Klik tombol "Tandai Lunas" pada baris siswa yang membayar. Sistem akan mencatat tanggal dan jam pembayaran secara otomatis.
 3. **Membatalkan Lunas**: Jika terjadi kesalahan, Anda bisa membatalkan status lunas (menghapus pembayaran) sehingga statusnya kembali menjadi "Belum" dibayar.
-4. Nominal pembayaran akan mengikuti nominal SPP yang sudah Anda tetapkan pada profil masing-masing siswa.`
+4. **Link Cek Kartu SPP Orang Tua**: Di atas tabel terdapat tombol *"Copy Link Cek Kartu SPP Orang Tua"* (\`catatoh.vercel.app/kartu-spp-ortu\`). Anda dapat membagikan link ini ke orang tua/wali murid agar mereka dapat mengecek secara mandiri progres pembayaran SPP anak mereka pada tahun berjalan (menampilkan bulan lunas lengkap dengan tanggal dan waktu bayar, dengan nominal yang disembunyikan demi privasi).`
   },
   {
     id: 'wa',

@@ -2,7 +2,7 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
-import { Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, CheckCircle2, Settings, Printer } from 'lucide-react';
+import { Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, Building2, Copy } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
 
@@ -40,17 +40,75 @@ export default function DashboardView() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
-  const DEFAULT_WA_TEMPLATE = "Halo Ayah/Bunda [NAMA_SISWA],\n\nMohon maaf mengingatkan, untuk pembayaran SPP bulan [BULAN] [TAHUN] sebesar [NOMINAL] belum tercatat.\n\nTerima kasih.";
+  const DEFAULT_WA_TEMPLATE = "Halo Ayah/Bunda [NAMA_SISWA],\n\nMohon maaf mengingatkan, untuk pembayaran SPP bulan [BULAN] [TAHUN] sebesar [NOMINAL] belum tercatat.\n\nCek kartu progres SPP ananda di link resmi:\n[LINK_SPP]\n\nTerima kasih.";
   const [waTemplate, setWaTemplate] = useState(DEFAULT_WA_TEMPLATE);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [tempWaTemplate, setTempWaTemplate] = useState('');
+  const [copiedParentLink, setCopiedParentLink] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [copiedShareBroadcast, setCopiedShareBroadcast] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
 
-  // Use a separate useEffect just for loading template once
+  const getSchoolParentUrl = () => {
+    if (currentUserId) {
+      return `catatoh.vercel.app/kartu-spp-ortu/${currentUserId}`;
+    }
+    return 'catatoh.vercel.app/kartu-spp-ortu';
+  };
+
+  const handleCopyParentLink = async () => {
+    const parentUrl = getSchoolParentUrl();
+    const fullUrl = `https://${parentUrl}`;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(fullUrl);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = fullUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      setCopiedParentLink(true);
+      setTimeout(() => setCopiedParentLink(false), 2500);
+    } catch (err) {
+      console.error('Gagal menyalin link:', err);
+    }
+  };
+
+  // Use a separate useEffect just for loading user identity and WA template
   useEffect(() => {
-    const loadTemplate = async () => {
+    const loadUserData = async () => {
       const sessionData = await supabase.auth.getSession();
       const currentUser = sessionData.data.session?.user;
       if (currentUser) {
+        setCurrentUserId(currentUser.id);
+
+        const savedSchool = localStorage.getItem('schoolName_' + currentUser.id);
+        if (savedSchool) {
+          setCurrentSchoolName(savedSchool);
+        }
+
+        try {
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('school_name')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+          if (settings?.school_name) {
+            setCurrentSchoolName(settings.school_name);
+            localStorage.setItem('schoolName_' + currentUser.id, settings.school_name);
+          }
+        } catch (e) {
+          // Abaikan
+        }
+
         // Cek metadata dari database (Supabase Auth) untuk lintas perangkat
         if (currentUser.user_metadata && currentUser.user_metadata.wa_template) {
           setWaTemplate(currentUser.user_metadata.wa_template);
@@ -64,7 +122,7 @@ export default function DashboardView() {
         }
       }
     };
-    loadTemplate();
+    loadUserData();
   }, []);
 
 
@@ -449,11 +507,13 @@ export default function DashboardView() {
   );
 
   const handleKirimWA = (student: any) => {
+    const parentSppLink = `https://${getSchoolParentUrl()}`;
     let message = waTemplate
       .replace(/\[NAMA_SISWA\]/g, student.nama_lengkap)
       .replace(/\[BULAN\]/g, reminderBulan || selectedBulan)
       .replace(/\[TAHUN\]/g, selectedTahun)
-      .replace(/\[NOMINAL\]/g, "Rp" + (student.nominal_spp ? student.nominal_spp.toLocaleString('id-ID') : '0'));
+      .replace(/\[NOMINAL\]/g, "Rp" + (student.nominal_spp ? student.nominal_spp.toLocaleString('id-ID') : '0'))
+      .replace(/\[LINK_SPP\]/g, parentSppLink);
     const url = `https://wa.me/${student.nomor_whatsapp}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -463,22 +523,57 @@ export default function DashboardView() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Pembayaran SPP</h1>
-          <p className="text-sm text-slate-500">Monitor dan catat pembayaran bulanan siswa</p>
+          <p className="text-sm text-slate-500">
+            {currentSchoolName ? `Monitor dan kelola pembayaran siswa • ${currentSchoolName}` : 'Monitor dan catat pembayaran bulanan siswa'}
+          </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          {/* Tombol Copy Link Cek Kartu SPP Orang Tua + Share Detail */}
+          <div className="inline-flex items-stretch rounded-xl shadow-sm">
+            <button 
+              onClick={handleCopyParentLink}
+              id="btnCopyKartuSppOrtu"
+              className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-l-xl flex items-center gap-2 transition-all border border-r-0 cursor-pointer ${
+                copiedParentLink 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-2 ring-emerald-400/20' 
+                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border-amber-300'
+              }`}
+              title={`Salin link ${getSchoolParentUrl()} khusus ${currentSchoolName || 'sekolah Anda'}`}
+            >
+              {copiedParentLink ? (
+                <>
+                  <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
+                  <span>Link Sekolah Disalin!</span>
+                </>
+              ) : (
+                <>
+                  <Link2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0" />
+                  <span>Copy Link Cek Kartu SPP Orang Tua</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="px-2.5 py-2 bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-r-xl transition-colors cursor-pointer"
+              title="Lihat Detail Link & Format Pengumuman WA"
+            >
+              <Share2 className="w-4 h-4 text-amber-800" />
+            </button>
+          </div>
+
           <button 
             onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
-            className="px-4 py-2 text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 cursor-pointer"
           >
-            <Settings className="w-5 h-5" />
-            Template WA
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span>Template WA</span>
           </button>
           <button 
             onClick={() => { setReminderBulan(selectedBulan === 'Semua Bulan' ? 'Januari' : selectedBulan); setIsReminderModalOpen(true); }}
-            className="px-4 py-2 text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700"
+            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
           >
-            <MessageCircle className="w-5 h-5" />
-            Kirim Reminder
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span>Kirim Reminder</span>
           </button>
         </div>
       </div>
@@ -1002,6 +1097,120 @@ export default function DashboardView() {
                 className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
               >
                 Simpan Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share / Detail Link Kartu SPP Modal */}
+      {isShareModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-900 to-indigo-800 text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-400 text-indigo-950 flex items-center justify-center font-black shadow-sm">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight">
+                    Link Khusus Kartu SPP Sekolah
+                  </h3>
+                  <p className="text-[11px] text-indigo-200">
+                    {currentSchoolName || 'Sekolah Terdaftar'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsShareModalOpen(false)} 
+                className="p-1.5 text-indigo-200 hover:text-white hover:bg-indigo-800/80 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-sm text-slate-600 max-h-[75vh] overflow-y-auto">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-xs text-emerald-900">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Keamanan & Isolasi Data Sekolah</p>
+                  <p className="text-emerald-800 text-[11px] mt-0.5 leading-relaxed">
+                    Setiap sekolah memiliki link mandiri dengan kode unik sekolah Anda. Orang tua yang membuka link ini <strong>hanya dapat melihat siswa dari {currentSchoolName || 'sekolah Anda'}</strong>, sehingga data tidak akan tertukar atau bercampur dengan sekolah lain.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tautan Khusus Orang Tua:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`https://${getSchoolParentUrl()}`}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 select-all"
+                  />
+                  <button
+                    onClick={handleCopyParentLink}
+                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition-colors shadow-sm cursor-pointer"
+                  >
+                    {copiedParentLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedParentLink ? 'Tersalin' : 'Salin'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Teks Siaran / Broadcast WhatsApp Siap Kirim ke Grup Orang Tua:
+                </label>
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-sans leading-relaxed whitespace-pre-wrap">
+{`Kepada Yth. Bapak/Ibu Orang Tua / Wali Siswa ${currentSchoolName || ''},
+
+Untuk mengecek status lunas pembayaran SPP ananda tahun berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:
+
+👉 https://${getSchoolParentUrl()}
+
+Cara Cek:
+1. Klik tautan di atas
+2. Masukkan nomor WhatsApp yang terdaftar di sekolah
+3. Tekan "Cek Kartu SPP"
+
+Terima kasih atas perhatian dan kerja samanya.`}
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={async () => {
+                      const text = `Kepada Yth. Bapak/Ibu Orang Tua / Wali Siswa ${currentSchoolName || ''},\n\nUntuk mengecek status lunas pembayaran SPP ananda tahun berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:\n\n👉 https://${getSchoolParentUrl()}\n\nCara Cek:\n1. Klik tautan di atas\n2. Masukkan nomor WhatsApp yang terdaftar di sekolah\n3. Tekan "Cek Kartu SPP"\n\nTerima kasih atas perhatian dan kerja samanya.`;
+                      await navigator.clipboard.writeText(text);
+                      setCopiedShareBroadcast(true);
+                      setTimeout(() => setCopiedShareBroadcast(false), 2500);
+                    }}
+                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedShareBroadcast ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedShareBroadcast ? 'Format WA Tersalin!' : 'Salin Pesan Broadcast WA'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <a
+                href={`/kartu-spp-ortu${currentUserId ? `/${currentUserId}` : ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5"
+              >
+                <span>Buka & Uji Coba Laman</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <button
+                onClick={() => setIsShareModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+              >
+                Tutup
               </button>
             </div>
           </div>

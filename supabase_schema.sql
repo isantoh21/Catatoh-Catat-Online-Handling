@@ -177,4 +177,57 @@ CREATE POLICY "Public membaca log absen" ON attendance_logs FOR SELECT TO anon U
 CREATE POLICY "Public hapus log absen lama" ON attendance_logs FOR DELETE TO anon USING (created_at < NOW() - INTERVAL '7 days');
 CREATE POLICY "Public membuat pengajuan izin" ON leave_requests FOR INSERT TO anon WITH CHECK (true);
 
+-- 22. Aturan Keamanan RLS & Fungsi untuk Portal Kartu SPP Orang Tua
+DROP POLICY IF EXISTS "Public membaca siswa untuk kartu spp ortu" ON students;
+DROP POLICY IF EXISTS "Public membaca pembayaran untuk kartu spp ortu" ON payments;
+DROP POLICY IF EXISTS "Public membaca profil sekolah untuk kartu spp ortu" ON user_settings;
+
+CREATE POLICY "Public membaca siswa untuk kartu spp ortu" ON students FOR SELECT TO anon USING (true);
+CREATE POLICY "Public membaca pembayaran untuk kartu spp ortu" ON payments FOR SELECT TO anon USING (true);
+CREATE POLICY "Public membaca profil sekolah untuk kartu spp ortu" ON user_settings FOR SELECT TO anon USING (true);
+
+DROP FUNCTION IF EXISTS get_parent_spp_card(text, int);
+DROP FUNCTION IF EXISTS get_parent_spp_card(text, int, uuid);
+
+CREATE OR REPLACE FUNCTION get_parent_spp_card(p_phone text, p_year int, p_user_id uuid DEFAULT NULL)
+RETURNS TABLE (
+  student_id uuid,
+  nama_lengkap text,
+  kelompok text,
+  nomor_whatsapp text,
+  user_id uuid,
+  bulan text,
+  tahun int,
+  tanggal_bayar date,
+  waktu_bayar time
+) 
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    s.id as student_id,
+    s.nama_lengkap,
+    s.kelompok,
+    s.nomor_whatsapp,
+    s.user_id,
+    p.bulan,
+    p.tahun,
+    p.tanggal_bayar,
+    p.waktu_bayar
+  FROM students s
+  LEFT JOIN payments p ON p.student_id = s.id AND p.tahun = p_year
+  WHERE 
+    (p_user_id IS NULL OR s.user_id = p_user_id)
+    AND (
+      s.nomor_whatsapp = p_phone
+      OR s.nomor_whatsapp = '62' || LTRIM(p_phone, '0')
+      OR s.nomor_whatsapp = '0' || SUBSTRING(p_phone FROM 3)
+      OR REPLACE(REPLACE(s.nomor_whatsapp, '+', ''), ' ', '') = REPLACE(REPLACE(p_phone, '+', ''), ' ', '')
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION get_parent_spp_card(text, int, uuid) TO anon, authenticated;
+
 
