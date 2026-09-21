@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { 
   Radio, Check, Copy, RefreshCw, CheckCircle2, AlertCircle, 
   ExternalLink, Sparkles, Activity, ShieldCheck, Zap, ShieldAlert, Clock, Trash2
@@ -173,7 +174,9 @@ export default function WebhookStatusBar({
   const hasReceivedData = verificationsCount > 0;
 
   let connectionStatus: 'checking' | 'disconnected' | 'waiting' | 'connected' = 'checking';
-  if (endpointStatus === 'error') {
+  if (endpointStatus === 'checking') {
+    connectionStatus = 'checking';
+  } else if (endpointStatus === 'error') {
     connectionStatus = 'disconnected';
   } else if (!isKeyConfigured) {
     connectionStatus = 'disconnected'; // Belum Terhubung
