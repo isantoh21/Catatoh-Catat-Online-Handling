@@ -22,6 +22,7 @@ import TeachersView from './components/TeachersView';
 import AttendancePortal from './components/AttendancePortal';
 import StudentAttendancePortal from './components/students/StudentAttendancePortal';
 import ParentSppCardView from './components/ParentSppCardView';
+import WebhookStatusBar from './components/WebhookStatusBar';
 
 export default function App() {
   const navigate = useNavigate();
@@ -138,16 +139,26 @@ export default function App() {
       setShowEmailConfirmedModal(true);
     }
 
-    // Check active session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Check active session with safety timer so the app never hangs indefinitely
+    const initTimer = setTimeout(() => {
+      setIsInitializing(false);
+    }, 1500);
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      clearTimeout(initTimer);
+      const session = data?.session;
       setIsLoggedIn(!!session);
       setUserEmail(session?.user?.email || '');
       setCurrentUser(session?.user || null);
       setIsInitializing(false);
       if (session?.user) {
-        const loadedSchool = await fetchUserSettings(session.user.id);
+        const loadedSchool = await fetchUserSettings(session.user.id).catch(() => '');
         checkProfileRequirements(session.user, loadedSchool);
       }
+    }).catch((err) => {
+      console.warn('Session initialization fallback:', err);
+      clearTimeout(initTimer);
+      setIsInitializing(false);
     });
 
     // Listen for auth changes
@@ -732,14 +743,22 @@ export default function App() {
             </div>
           </div>
           
-          <div className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : dbStatus === 'checking' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
-            {dbStatus === 'connected' ? <Wifi className="w-3.5 h-3.5" /> : dbStatus === 'checking' ? <Database className="w-3.5 h-3.5 animate-pulse" /> : <WifiOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">
-              {dbStatus === 'connected' ? 'Database Terhubung' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline (Cek Koneksi)'}
-            </span>
-            <span className="sm:hidden">
-              {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Wait...' : 'Offline'}
-            </span>
+          <div className="flex items-center gap-2">
+            <WebhookStatusBar 
+              mode="topbar" 
+              currentUserId={currentUser?.id} 
+              onOpenSettings={() => navigate('/pengaturan')} 
+            />
+
+            <div className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : dbStatus === 'checking' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
+              {dbStatus === 'connected' ? <Wifi className="w-3.5 h-3.5" /> : dbStatus === 'checking' ? <Database className="w-3.5 h-3.5 animate-pulse" /> : <WifiOff className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">
+                {dbStatus === 'connected' ? 'Database Terhubung' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline (Cek Koneksi)'}
+              </span>
+              <span className="sm:hidden">
+                {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Wait...' : 'Offline'}
+              </span>
+            </div>
           </div>
         </div>
 

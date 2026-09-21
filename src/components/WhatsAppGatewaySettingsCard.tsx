@@ -11,6 +11,7 @@ import {
   DEFAULT_GATEWAY_CONFIG 
 } from '../lib/whatsappGateway';
 import { WhatsAppGatewayConfig } from '../types/whatsapp';
+import WebhookStatusBar from './WebhookStatusBar';
 
 export default function WhatsAppGatewaySettingsCard() {
   const [config, setConfig] = useState<WhatsAppGatewayConfig>(DEFAULT_GATEWAY_CONFIG);
@@ -19,8 +20,9 @@ export default function WhatsAppGatewaySettingsCard() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Webhook URL
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  // Webhook URL States
+  const [copiedUniversal, setCopiedUniversal] = useState(false);
+  const [copiedUserUrl, setCopiedUserUrl] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlGuide, setShowSqlGuide] = useState(false);
 
@@ -47,19 +49,34 @@ export default function WhatsAppGatewaySettingsCard() {
     setIsLoading(false);
   };
 
-  const getWebhookUrl = () => {
-    const origin = window.location.origin;
+  const getUniversalWebhookUrl = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/api/webhook/whatsapp`;
+  };
+
+  const getUserWebhookUrl = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
     if (currentUserId) {
       return `${origin}/api/webhook/whatsapp?user_id=${currentUserId}`;
     }
     return `${origin}/api/webhook/whatsapp`;
   };
 
-  const handleCopyWebhook = async () => {
+  const handleCopyUniversal = async () => {
     try {
-      await navigator.clipboard.writeText(getWebhookUrl());
-      setCopiedWebhook(true);
-      setTimeout(() => setCopiedWebhook(false), 2500);
+      await navigator.clipboard.writeText(getUniversalWebhookUrl());
+      setCopiedUniversal(true);
+      setTimeout(() => setCopiedUniversal(false), 2500);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCopyUserUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(getUserWebhookUrl());
+      setCopiedUserUrl(true);
+      setTimeout(() => setCopiedUserUrl(false), 2500);
     } catch (e) {
       console.error(e);
     }
@@ -96,8 +113,10 @@ CREATE POLICY "Admin kelola bukti pembayaran"
 ON payment_verifications FOR ALL 
 USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Webhook publik simpan bukti pembayaran" ON payment_verifications;
 CREATE POLICY "Webhook publik simpan bukti pembayaran" 
 ON payment_verifications FOR INSERT 
+TO public
 WITH CHECK (true);`;
 
     try {
@@ -194,6 +213,9 @@ WITH CHECK (true);`;
           </div>
         </div>
 
+        {/* Webhook Status Bar Banner */}
+        <WebhookStatusBar mode="banner" currentUserId={currentUserId} />
+
         {/* Form Inputs for App Key and Auth Key */}
         <form onSubmit={handleSave} className="space-y-5">
           {saveSuccess && (
@@ -267,30 +289,64 @@ WITH CHECK (true);`;
             </p>
           </div>
 
-          {/* Inbound Webhook URL Display (Box) */}
-          <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                <span>URL Inbound Webhook Anda (Tempel ke Provider WA)</span>
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyWebhook}
-                className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedWebhook ? 'Tersalin!' : 'Salin URL Webhook'}</span>
-              </button>
+          {/* Inbound Webhook Universal URL Display (Box) */}
+          <div className="space-y-3">
+            {/* Box 1: Universal Webhook (Primary Recommendation) */}
+            <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2 border border-emerald-500/30 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-400 text-slate-950">
+                    Universal
+                  </span>
+                  <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                    <span>Alamat Webhook Universal (Rekomendasi Utama)</span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyUniversal}
+                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  {copiedUniversal ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedUniversal ? 'Tersalin!' : 'Salin Webhook Universal'}</span>
+                </button>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-black/50 border border-slate-800 font-mono text-xs text-emerald-400 break-all select-all font-semibold">
+                {getUniversalWebhookUrl()}
+              </div>
+
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                👉 <b>Cara Pakai:</b> Buka dashboard provider WhatsApp Anda (Starsender, Fonnte, Wablas, UltraMsg, W-API, dll.), cari menu <b>Webhook</b> / <b>Device Settings</b>, lalu tempelkan URL di atas. Setiap ada pesan / foto struk transfer dari orang tua, provider akan otomatis meneruskannya dan sistem langsung mencocokkan siswa!
+              </p>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-black/40 font-mono text-xs text-emerald-400 break-all select-all">
-              {getWebhookUrl()}
-            </div>
+            {/* Box 2: User-Specific Webhook URL (Alternative / Multi-Admin) */}
+            <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Alamat Webhook Spesifik Akun (Alternatif Multi-User)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyUserUrl}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  {copiedUserUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedUserUrl ? 'Tersalin!' : 'Salin URL Spesifik'}</span>
+                </button>
+              </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              👉 Buka dashboard provider WhatsApp Anda, cari menu <b>Webhook</b> / <b>Device Settings</b>, lalu tempelkan URL di atas. Setiap ada pesan / foto struk transfer yang dikirim orang tua, provider akan otomatis meneruskannya ke Catatoh!
-            </p>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 font-mono text-[11px] text-slate-600 break-all select-all">
+                {getUserWebhookUrl()}
+              </div>
+
+              <p className="text-[10px] text-slate-500">
+                Gunakan URL ini jika Anda mengelola beberapa instansi/sekolah dalam satu server dan ingin mengikat webhook secara eksplisit ke akun admin ini.
+              </p>
+            </div>
           </div>
 
           {/* Auto-Reply Settings */}
@@ -458,8 +514,10 @@ CREATE POLICY "Admin kelola bukti pembayaran"
 ON payment_verifications FOR ALL 
 USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Webhook publik simpan bukti pembayaran" ON payment_verifications;
 CREATE POLICY "Webhook publik simpan bukti pembayaran" 
 ON payment_verifications FOR INSERT 
+TO public
 WITH CHECK (true);`}
                 </pre>
               </div>

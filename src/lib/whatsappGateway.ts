@@ -174,6 +174,32 @@ export async function sendWhatsAppMessage(payload: {
   }
 }
 
+// Pemeriksa ketat: Apakah suatu record adalah bukti transfer pembayaran ASLI dari WhatsApp nyata?
+// Menolak simulasi, dummy unsplash, mock, dan pesan tanpa bukti transfer valid.
+export function isRealTransferReceipt(v: any): boolean {
+  if (!v) return false;
+  const id = String(v.id || '').toLowerCase();
+  const notes = String(v.confidence_notes || '').toLowerCase();
+  const name = String(v.sender_name || '').toLowerCase();
+  const msg = String(v.message_text || '').toLowerCase();
+  const img = String(v.proof_image_url || '').toLowerCase();
+
+  // 1. Tolak semua penanda simulasi atau dummy ID
+  if (id.startsWith('sim') || id.includes('simulasi')) return false;
+  if (notes.includes('simulasi') || notes.includes('uji coba')) return false;
+  if (name.includes('simulasi')) return false;
+  if (msg.includes('simulasi')) return false;
+  if (v.is_simulation === true) return false;
+
+  // 2. Tolak gambar placeholder Unsplash yang sering dipakai pengujian
+  if (img.includes('unsplash.com')) return false;
+
+  // 3. Wajib ada gambar bukti nyata
+  if (!v.proof_image_url || v.proof_image_url.trim() === '') return false;
+
+  return true;
+}
+
 // Dapatkan daftar bukti pembayaran yang masuk untuk dimoderasi
 export async function getPaymentVerifications(userId?: string): Promise<PaymentVerification[]> {
   let activeUserId = userId;
@@ -194,15 +220,17 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
             kelompok
           )
         `)
-        .eq('user_id', activeUserId)
+        .or(`user_id.eq.${activeUserId},user_id.is.null`)
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        return data.map((item: any) => ({
+        const mapped = data.map((item: any) => ({
           ...item,
           student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
           student_kelompok: item.students?.kelompok || '-'
         }));
+        // Filter ketat: HANYA bukti struk transfer nyata yang lolos
+        return mapped.filter(isRealTransferReceipt);
       }
     } catch (err) {
       console.warn('Tabel payment_verifications belum dibuat di Supabase, beralih ke cache lokal/server.');
@@ -216,7 +244,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data;
+        return json.data.filter(isRealTransferReceipt);
       }
     }
   } catch (e) {
@@ -227,7 +255,11 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
   const localList = localStorage.getItem(getVerificationsStorageKey(activeUserId));
   if (localList) {
     try {
-      return JSON.parse(localList);
+      const parsed = JSON.parse(localList);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(isRealTransferReceipt);
+      }
+      return [];
     } catch (e) {
       return [];
     }
@@ -238,5 +270,51 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
 
 // Simpan atau perbarui bukti verifikasi lokal
 export function saveLocalVerifications(items: PaymentVerification[], userId?: string) {
+  // Hanya simpan item yang valid
   localStorage.setItem(getVerificationsStorageKey(userId), JSON.stringify(items));
+}
+
+// Hapus satu bukti verifikasi secara permanen
+export async function deletePaymentVerification(id: string, userId?: string): Promise<boolean> {
+  // 1. Hapus dari Supabase
+  try {
+    await supabase.from('payment_verifications').delete().eq('id', id);
+  } catch {}
+
+  // 2. Hapus dari backend server
+  try {
+    await fetch(`/api/webhook/verifications/${id}`, { method: 'DELETE' });
+  } catch {}
+
+  // 3. Hapus dari LocalStorage
+  try {
+    const storageKey = getVerificationsStorageKey(userId);
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((v: any) => v.id !== id);
+        localStorage.setItem(storageKey, JSON.stringify(filtered));
+      }
+    }
+  } catch {}
+
+  return true;
+}
+
+// Bersihkan cache verifikasi lokal (reset ke kosong murni)
+export function clearLocalVerifications(userId?: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(getVerificationsStorageKey(userId));
+  localStorage.removeItem(getVerificationsStorageKey('global'));
+  localStorage.removeItem('catatoh_wa_verifications');
+  // Bersihkan semua key berawalan catatoh_wa_verifications
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('catatoh_wa_verifications')) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
 }

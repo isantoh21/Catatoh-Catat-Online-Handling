@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, XCircle, Clock, Search, Filter, MessageSquare, 
   ExternalLink, ZoomIn, RefreshCw, AlertCircle, Sparkles, Send,
-  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X
+  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
@@ -11,7 +11,10 @@ import {
   getPaymentVerifications, 
   sendWhatsAppMessage, 
   getWhatsAppGatewayConfig,
-  saveLocalVerifications 
+  saveLocalVerifications,
+  deletePaymentVerification,
+  clearLocalVerifications,
+  isRealTransferReceipt
 } from '../lib/whatsappGateway';
 
 const BULAN_OPTIONS = [
@@ -227,6 +230,48 @@ export default function PaymentModerationModal({
     }
   };
 
+  // Handle Delete Single Item
+  const handleDeleteItem = async (itemId: string) => {
+    if (!confirm('Hapus bukti pembayaran ini secara permanen?')) return;
+    setIsProcessingAction(true);
+    try {
+      await deletePaymentVerification(itemId, currentUserId);
+      const updated = verifications.filter(v => v.id !== itemId);
+      setVerifications(updated);
+      saveLocalVerifications(updated, currentUserId);
+    } catch (e: any) {
+      alert('Gagal menghapus bukti: ' + e.message);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // Handle Clear All Items
+  const handleClearAll = async () => {
+    if (!confirm('Kosongkan semua antrean bukti transfer ini? Tindakan ini akan menghapus semua bukti transfer dari database dan cache.')) return;
+    setIsProcessingAction(true);
+    try {
+      clearLocalVerifications(currentUserId);
+      if (currentUserId) {
+        await supabase
+          .from('payment_verifications')
+          .delete()
+          .or(`user_id.eq.${currentUserId},user_id.is.null`);
+      }
+      await fetch('/api/webhook/verifications/reset', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId })
+      }).catch(() => {});
+
+      setVerifications([]);
+    } catch (e: any) {
+      alert('Gagal mengosongkan antrean: ' + e.message);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
   // Handle Update item data before approval
   const handleUpdateItem = (id: string, field: keyof PaymentVerification, value: any) => {
     setVerifications(prev => prev.map(item => {
@@ -404,6 +449,18 @@ export default function PaymentModerationModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {verifications.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                disabled={isProcessingAction}
+                className="px-2.5 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                title="Kosongkan semua antrean bukti transfer (Hapus database & cache)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Kosongkan Antrean</span>
+              </button>
+            )}
             <button
               onClick={() => setIsSimulateModalOpen(true)}
               className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -627,8 +684,8 @@ export default function PaymentModerationModal({
                           </div>
                         </div>
 
-                        {/* Matched vs Selector */}
-                        <div className="w-full sm:w-auto">
+                        {/* Matched vs Selector & Delete Button */}
+                        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2">
                           {item.status === 'pending' ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[11px] font-semibold text-slate-500">Kaitkan Siswa:</span>
@@ -651,6 +708,16 @@ export default function PaymentModerationModal({
                               {item.student_name}
                             </span>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteItem(item.id)}
+                            disabled={isProcessingAction}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            title="Hapus bukti pembayaran ini"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
 

@@ -313,6 +313,27 @@ app.post("/api/whatsapp/send", async (req, res) => {
 // =========================================================================
 // 2. INBOUND WEBHOOK: Menerima Pesan & Bukti Pembayaran dari Provider WA
 // =========================================================================
+app.get("/api/webhook/whatsapp", (req, res) => {
+  const query = req.query || {};
+  const mode = query["hub.mode"];
+  const challenge = query["hub.challenge"];
+  if (mode === "subscribe" && challenge) {
+    return res.send(challenge);
+  }
+
+  return res.json({
+    status: "ok",
+    service: "Catatoh WhatsApp Universal Inbound Webhook",
+    endpoint: "/api/webhook/whatsapp",
+    environment: "node-express",
+    methods_supported: ["POST", "GET"],
+    universal_mode: true,
+    auto_matching: "enabled",
+    timestamp: new Date().toISOString(),
+    message: "Universal Webhook Catatoh aktif dan siap menerima data pembayaran SPP.",
+  });
+});
+
 app.post("/api/webhook/whatsapp", async (req, res) => {
   try {
     const payload = req.body || {};
@@ -353,12 +374,14 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
     const geminiAnalysis = await analyzeReceiptWithGemini(proofImageUrl, messageText);
 
     if (geminiAnalysis) {
-      if (!geminiAnalysis.isTransferReceipt) {
-        console.log("[INBOUND REJECTED BY GEMINI] Bukan bukti transfer:", geminiAnalysis.confidenceNotes);
+      if (!geminiAnalysis.isTransferReceipt || geminiAnalysis.statusTransaksi === 'GAGAL') {
+        console.log("[INBOUND REJECTED BY GEMINI] Bukan bukti transfer valid / status gagal:", geminiAnalysis.confidenceNotes);
         return res.json({
           status: "ignored",
-          reason: "not_a_transfer_receipt",
-          message: "Gambar diterima tetapi bukan struk/bukti transfer yang valid. Moderasi SPP tidak dipicu.",
+          reason: "not_a_valid_transfer_receipt",
+          message: geminiAnalysis.statusTransaksi === 'GAGAL'
+            ? "Gambar struk transfer berstatus GAGAL. Moderasi SPP tidak dipicu."
+            : "Gambar diterima tetapi bukan struk/bukti transfer yang valid. Moderasi SPP tidak dipicu.",
           detectedNotes: geminiAnalysis.confidenceNotes,
         });
       }
@@ -607,6 +630,37 @@ app.get("/api/webhook/verifications", (req, res) => {
   res.json({
     success: true,
     data: list,
+  });
+});
+
+app.post("/api/webhook/verifications/reset", async (req, res) => {
+  memoryVerifications.length = 0;
+  const { userId } = req.body || req.query || {};
+  try {
+    if (userId) {
+      await serverSupabase.from("payment_verifications").delete().or(`user_id.eq.${userId},user_id.is.null`);
+    } else {
+      await serverSupabase.from("payment_verifications").delete().is("user_id", null);
+    }
+  } catch {}
+  res.json({
+    success: true,
+    message: "Cache verifikasi server telah dikosongkan.",
+  });
+});
+
+app.delete("/api/webhook/verifications/:id", async (req, res) => {
+  const { id } = req.params;
+  const idx = memoryVerifications.findIndex(v => v.id === id);
+  if (idx !== -1) {
+    memoryVerifications.splice(idx, 1);
+  }
+  try {
+    await serverSupabase.from("payment_verifications").delete().eq("id", id);
+  } catch {}
+  res.json({
+    success: true,
+    message: "Bukti transfer berhasil dihapus dari server.",
   });
 });
 

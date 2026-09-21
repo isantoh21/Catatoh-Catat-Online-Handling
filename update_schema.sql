@@ -64,3 +64,47 @@ END;
 $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION get_parent_spp_card(text, int, uuid) TO anon, authenticated;
+
+-- Tabel Verifikasi Bukti Pembayaran WhatsApp Inbound Webhook
+CREATE TABLE IF NOT EXISTS payment_verifications (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+  sender_phone TEXT NOT NULL,
+  sender_name TEXT,
+  message_text TEXT,
+  proof_image_url TEXT NOT NULL,
+  bulan TEXT,
+  tahun INT,
+  nominal NUMERIC DEFAULT 0,
+  tanggal_transfer DATE,
+  waktu_transfer TEXT,
+  bank_pengirim TEXT,
+  bank_tujuan TEXT,
+  nama_rekening_pengirim TEXT,
+  confidence_notes TEXT,
+  status TEXT DEFAULT 'pending',
+  reject_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE payment_verifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admin kelola bukti pembayaran" ON payment_verifications;
+CREATE POLICY "Admin kelola bukti pembayaran" 
+ON payment_verifications FOR ALL 
+TO authenticated
+USING (auth.uid() = user_id OR user_id IS NULL)
+WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+
+DROP POLICY IF EXISTS "Webhook publik simpan bukti pembayaran" ON payment_verifications;
+CREATE POLICY "Webhook publik simpan bukti pembayaran" 
+ON payment_verifications FOR INSERT 
+TO public
+WITH CHECK (true);
+
+-- Index performa pencarian bukti pembayaran
+CREATE INDEX IF NOT EXISTS idx_payment_verifications_user_id ON payment_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_verifications_status ON payment_verifications(status);
+CREATE INDEX IF NOT EXISTS idx_payment_verifications_phone ON payment_verifications(sender_phone);
