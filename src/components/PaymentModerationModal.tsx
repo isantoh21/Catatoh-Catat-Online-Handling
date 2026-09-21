@@ -110,17 +110,20 @@ export default function PaymentModerationModal({
           .update({ status: 'approved', updated_at: new Date().toISOString() })
           .eq('id', item.id);
       } catch (e) {
-        // Fallback server endpoint
+        // Fallback
       }
 
       try {
-        await fetch(`/api/webhook/verifications/${item.id}/status`, {
+        const res = await fetch(`/api/webhook/verifications/${item.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'approved' })
         });
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          await res.json();
+        }
       } catch (e) {
-        // Abaikan
+        // Abaikan jika di static host seperti Vercel
       }
 
       // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua
@@ -182,13 +185,16 @@ export default function PaymentModerationModal({
       }
 
       try {
-        await fetch(`/api/webhook/verifications/${rejectingItem.id}/status`, {
+        const res = await fetch(`/api/webhook/verifications/${rejectingItem.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'rejected', rejectReason: finalReason })
         });
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          await res.json();
+        }
       } catch (e) {
-        // Abaikan
+        // Abaikan jika di static host seperti Vercel
       }
 
       // 2. Kirim pesan penolakan sopan ke nomor orang tua
@@ -251,30 +257,109 @@ export default function PaymentModerationModal({
     }
 
     try {
-      const res = await fetch('/api/webhook/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUserId,
-          studentId: targetStudent.id,
-          studentName: targetStudent.nama_lengkap,
-          senderPhone: targetStudent.nomor_whatsapp || '6281234567890',
-          messageText: simMessage,
-          proofImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
-          bulan: simBulan,
-          nominal: Number(simNominal)
-        })
-      });
+      const today = new Date().toISOString().split('T')[0];
+      const timeNow = new Date().toTimeString().slice(0, 5);
+      const currentYear = new Date().getFullYear();
+      const generatedId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : `sim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-      const data = await res.json();
-      if (data.success && data.data) {
-        setVerifications(prev => [data.data, ...prev]);
-        saveLocalVerifications([data.data, ...verifications], currentUserId);
-        setIsSimulateModalOpen(false);
-        setFilterTab('pending');
+      const newRecord: PaymentVerification = {
+        id: generatedId,
+        user_id: currentUserId || undefined,
+        student_id: targetStudent.id,
+        student_name: targetStudent.nama_lengkap,
+        student_kelompok: targetStudent.kelompok || '-',
+        sender_phone: targetStudent.nomor_whatsapp || '6281234567890',
+        sender_name: targetStudent.nama_wali || 'Wali Murid',
+        message_text: simMessage || 'Assalamualaikum bendahara, ini bukti transfer SPP ananda.',
+        proof_image_url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
+        bulan: simBulan,
+        tahun: currentYear,
+        nominal: Number(simNominal) || targetStudent.nominal_spp || 100000,
+        tanggal_transfer: today,
+        waktu_transfer: timeNow,
+        bank_pengirim: 'BCA Mobile',
+        bank_tujuan: 'BSI Sekolah',
+        nama_rekening_pengirim: targetStudent.nama_wali || targetStudent.nama_lengkap,
+        confidence_notes: 'Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision',
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+
+      // 1. Simpan ke Supabase jika tabel payment_verifications ada
+      if (currentUserId) {
+        try {
+          const { data: supaInserted, error: supaErr } = await supabase
+            .from('payment_verifications')
+            .insert([{
+              user_id: currentUserId,
+              student_id: newRecord.student_id,
+              sender_phone: newRecord.sender_phone,
+              sender_name: newRecord.sender_name,
+              message_text: newRecord.message_text,
+              proof_image_url: newRecord.proof_image_url,
+              bulan: newRecord.bulan,
+              tahun: newRecord.tahun,
+              nominal: newRecord.nominal,
+              tanggal_transfer: newRecord.tanggal_transfer,
+              waktu_transfer: newRecord.waktu_transfer,
+              bank_pengirim: newRecord.bank_pengirim,
+              bank_tujuan: newRecord.bank_tujuan,
+              nama_rekening_pengirim: newRecord.nama_rekening_pengirim,
+              confidence_notes: newRecord.confidence_notes,
+              status: 'pending'
+            }])
+            .select()
+            .single();
+
+          if (!supaErr && supaInserted?.id) {
+            newRecord.id = supaInserted.id;
+          }
+        } catch (supaErr) {
+          console.warn('Simulasi Supabase insert fallback to local:', supaErr);
+        }
       }
+
+      // 2. Coba sync ke server backend jika tersedia (bukan Vercel static)
+      try {
+        const res = await fetch('/api/webhook/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUserId,
+            studentId: targetStudent.id,
+            studentName: targetStudent.nama_lengkap,
+            senderPhone: targetStudent.nomor_whatsapp || '6281234567890',
+            messageText: simMessage,
+            proofImageUrl: newRecord.proof_image_url,
+            bulan: simBulan,
+            nominal: Number(simNominal),
+            tanggal: newRecord.tanggal_transfer,
+            waktu: newRecord.waktu_transfer,
+            bank: newRecord.bank_pengirim
+          })
+        });
+
+        // Hanya parse JSON bila response valid & berheader application/json (mencegah error di Safari/Vercel)
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data?.success && data?.data?.id) {
+            newRecord.id = data.data.id;
+          }
+        }
+      } catch (backendErr) {
+        // Backend offline / Vercel SPA static hosting: tidak apa-apa, simulasi tetap berhasil di client
+      }
+
+      // 3. Masukkan ke state antrean moderasi & local storage
+      setVerifications(prev => [newRecord, ...prev.filter(v => v.id !== newRecord.id)]);
+      saveLocalVerifications([newRecord, ...verifications.filter(v => v.id !== newRecord.id)], currentUserId);
+      setIsSimulateModalOpen(false);
+      setFilterTab('pending');
     } catch (e: any) {
-      alert('Gagal membuat simulasi: ' + e.message);
+      alert('Gagal membuat simulasi: ' + (e.message || e));
     }
   };
 

@@ -132,8 +132,43 @@ export async function sendWhatsAppMessage(payload: {
       body: JSON.stringify(payload)
     });
 
-    const result = await res.json();
-    return result;
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const result = await res.json();
+      return result;
+    }
+
+    // Jika berjalan di static hosting (misal Vercel) tanpa proxy Express backend:
+    // Coba kirim langsung ke gateway endpoint jika didukung
+    try {
+      const targetUrl = payload.apiUrl || 'https://app.starsender.online/api/sendText';
+      const formData = new URLSearchParams();
+      formData.append('message', payload.message);
+      formData.append('tujuan', payload.to);
+      if (payload.file) formData.append('file', payload.file);
+
+      const directRes = await fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': payload.appkey,
+          'Authorization': payload.authkey,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString()
+      });
+
+      if (directRes.ok && directRes.headers.get('content-type')?.includes('application/json')) {
+        const directJson = await directRes.json();
+        return { success: true, data: directJson };
+      }
+    } catch (directErr) {
+      // Direct send might be blocked by browser CORS
+    }
+
+    return { 
+      success: false, 
+      error: 'Backend proxy WhatsApp tidak aktif di hosting ini. Pesan tercatat secara lokal.' 
+    };
   } catch (err: any) {
     return { success: false, error: err.message || 'Gagal menghubungi server pengirim WhatsApp' };
   }
@@ -174,10 +209,11 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     }
   }
 
-  // 2. Coba fetch dari endpoint backend server.ts
+  // 2. Coba fetch dari endpoint backend server.ts (jika ada dan berformat json)
   try {
     const res = await fetch(`/api/webhook/verifications?userId=${activeUserId || ''}`);
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         return json.data;
