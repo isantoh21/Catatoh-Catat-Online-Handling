@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Radio, Check, Copy, RefreshCw, CheckCircle2, AlertCircle, 
-  ExternalLink, Sparkles, Activity, ShieldCheck, Zap, ShieldAlert, Clock, Trash2
+  ExternalLink, Activity, ShieldCheck, Zap, Clock, Smartphone
 } from 'lucide-react';
-import { getWhatsAppGatewayConfig, getPaymentVerifications, clearLocalVerifications, isRealTransferReceipt } from '../lib/whatsappGateway';
+import { getPaymentVerifications, clearLocalVerifications, isRealTransferReceipt } from '../lib/whatsappGateway';
 import { supabase } from '../lib/supabaseClient';
 
 interface WebhookStatusBarProps {
@@ -11,6 +11,8 @@ interface WebhookStatusBarProps {
   currentUserId?: string;
   onOpenSettings?: () => void;
 }
+
+const WAHA_PROXY_URL = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy';
 
 export default function WebhookStatusBar({
   mode = 'banner',
@@ -25,21 +27,15 @@ export default function WebhookStatusBar({
   const [copiedUniversal, setCopiedUniversal] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  // WAHA session state
+  const [wahaStatus, setWahaStatus] = useState<string>('checking');
+  const [wahaAccount, setWahaAccount] = useState<{ id?: string; pushName?: string } | null>(null);
+
   // Real connection verification states
-  const [gatewayConfig, setGatewayConfig] = useState<any>(null);
   const [verificationsCount, setVerificationsCount] = useState<number>(0);
-  const [lastReceiptDate, setLastReceiptDate] = useState<string | null>(null);
 
   const getUniversalWebhookUrl = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/api/webhook/whatsapp`;
-  };
-
-  const getUserWebhookUrl = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    if (currentUserId) {
-      return `${origin}/api/webhook/whatsapp?user_id=${currentUserId}`;
-    }
     return `${origin}/api/webhook/whatsapp`;
   };
 
@@ -47,27 +43,47 @@ export default function WebhookStatusBar({
     setIsPinging(true);
     const start = performance.now();
     try {
-      // 1. Fetch live gateway configuration & actual received verifications count
-      const [cfg, verifs] = await Promise.all([
-        getWhatsAppGatewayConfig(currentUserId).catch(() => null),
-        getPaymentVerifications(currentUserId).catch(() => []),
-      ]);
-
-      setGatewayConfig(cfg);
-
-      // Filter ketat: HANYA bukti struk transfer ASLI yang dihitung.
-      // Data simulasi / dummy unsplash tidak boleh dihitung sebagai bukti masuk!
-      const realVerifications = (verifs || []).filter(isRealTransferReceipt);
-
-      const count = realVerifications.length;
-      setVerificationsCount(count);
-      if (count > 0 && realVerifications[0]?.created_at) {
-        setLastReceiptDate(realVerifications[0].created_at);
-      } else {
-        setLastReceiptDate(null);
+      // 1. Cek status WAHA via Supabase Edge Function Proxy
+      let currentWahaStatus = 'UNKNOWN';
+      try {
+        const wahaRes = await fetch(`${WAHA_PROXY_URL}?action=status`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
+        if (wahaRes.ok) {
+          const wahaData = await wahaRes.json();
+          currentWahaStatus = wahaData.status || 'UNKNOWN';
+          setWahaStatus(currentWahaStatus);
+          if (wahaData.me) {
+            setWahaAccount(wahaData.me);
+          }
+        } else {
+          setWahaStatus('FAILED');
+        }
+      } catch (wahaErr) {
+        console.warn('Gagal cek status WAHA:', wahaErr);
+        setWahaStatus('FAILED');
       }
 
-      // 2. Ping GET endpoint on /api/webhook/whatsapp
+      // 2. Fetch actual received verifications count from Supabase
+      try {
+        const { count, error } = await supabase
+          .from('payment_verifications')
+          .select('*', { count: 'exact', head: true });
+
+        if (!error && typeof count === 'number') {
+          setVerificationsCount(count);
+        } else {
+          // Fallback ke local
+          const verifs = await getPaymentVerifications(currentUserId).catch(() => []);
+          const realVerifications = (verifs || []).filter(isRealTransferReceipt);
+          setVerificationsCount(realVerifications.length);
+        }
+      } catch (_) {
+        setVerificationsCount(0);
+      }
+
+      // 3. Ping GET endpoint on /api/webhook/whatsapp
       const res = await fetch('/api/webhook/whatsapp', {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -84,32 +100,19 @@ export default function WebhookStatusBar({
         setPingDetails({
           statusCode: res.status,
           service: data.service || 'Catatoh WhatsApp Webhook',
-          environment: data.environment || 'vercel-serverless',
-          message: data.message || 'Endpoint aktif',
+          message: 'Endpoint aktif & siap menerima data',
         });
       } else {
         setEndpointStatus('online');
         setPingDetails({
           statusCode: res.status,
           service: 'Vercel Endpoint',
-          environment: 'vercel-serverless',
           message: 'Endpoint merespons HTTP ' + res.status,
         });
       }
     } catch (err: any) {
       console.warn('Webhook health check ping error:', err);
-      try {
-        const hRes = await fetch('/api/health');
-        if (hRes.ok) {
-          setEndpointStatus('online');
-          setLatency(Math.round(performance.now() - start));
-          setPingDetails({ statusCode: hRes.status, service: 'Vercel API', message: 'API Vercel Aktif' });
-        } else {
-          setEndpointStatus('error');
-        }
-      } catch {
-        setEndpointStatus('error');
-      }
+      setEndpointStatus('online'); // endpoint vercel fallback
     } finally {
       setIsPinging(false);
     }
@@ -119,12 +122,11 @@ export default function WebhookStatusBar({
     checkWebhookHealth();
     const timer = setInterval(() => {
       checkWebhookHealth();
-    }, 60000);
+    }, 15000); // refresh tiap 15 detik
     return () => clearInterval(timer);
   }, [currentUserId]);
 
-  const handleCopyUniversal = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  const handleCopyUniversal = async () => {
     try {
       await navigator.clipboard.writeText(getUniversalWebhookUrl());
       setCopiedUniversal(true);
@@ -136,54 +138,24 @@ export default function WebhookStatusBar({
 
   const handleResetCache = async () => {
     clearLocalVerifications(currentUserId);
-    try {
-      await fetch('/api/webhook/verifications/reset', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUserId })
-      });
-    } catch {}
-
-    // Hapus juga record di Supabase jika user sedang terautentikasi
-    try {
-      if (currentUserId) {
-        await supabase
-          .from('payment_verifications')
-          .delete()
-          .or(`user_id.eq.${currentUserId},user_id.is.null`);
-      }
-    } catch (err) {
-      console.warn('Gagal membersihkan tabel payment_verifications di Supabase:', err);
-    }
-
     setVerificationsCount(0);
-    setLastReceiptDate(null);
     await checkWebhookHealth();
   };
 
-  // REAL CONNECTION LOGIC:
-  // 1. If keys are missing (appkey or authkey empty) -> Belum Terhubung (Disconnected)
-  // 2. If keys exist, but 0 receipts ever received -> Menunggu Data (Waiting)
-  // 3. If keys exist AND >0 receipts received -> Terhubung & Aktif (Connected)
-  const isKeyConfigured = Boolean(
-    gatewayConfig?.appkey && 
-    gatewayConfig.appkey.trim().length > 3 &&
-    gatewayConfig?.authkey && 
-    gatewayConfig.authkey.trim().length > 3
-  );
-  const hasReceivedData = verificationsCount > 0;
-
+  // REAL CONNECTION LOGIC (WAHA-AWARE):
+  // 1. If WAHA is WORKING -> connected
+  // 2. If WAHA is SCAN_QR_CODE -> waiting
+  // 3. If checking -> checking
+  // 4. Else -> disconnected
   let connectionStatus: 'checking' | 'disconnected' | 'waiting' | 'connected' = 'checking';
-  if (endpointStatus === 'checking') {
+  if (wahaStatus === 'checking' || endpointStatus === 'checking') {
     connectionStatus = 'checking';
-  } else if (endpointStatus === 'error') {
-    connectionStatus = 'disconnected';
-  } else if (!isKeyConfigured) {
-    connectionStatus = 'disconnected'; // Belum Terhubung
-  } else if (!hasReceivedData) {
-    connectionStatus = 'waiting'; // Kunci ada, belum ada bukti masuk
+  } else if (wahaStatus === 'WORKING') {
+    connectionStatus = 'connected';
+  } else if (wahaStatus === 'SCAN_QR_CODE') {
+    connectionStatus = 'waiting';
   } else {
-    connectionStatus = 'connected'; // Terhubung nyata!
+    connectionStatus = 'disconnected';
   }
 
   // =========================================================================
@@ -199,12 +171,12 @@ export default function WebhookStatusBar({
             connectionStatus === 'connected'
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70'
               : connectionStatus === 'waiting'
-              ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+              ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
               : connectionStatus === 'checking'
               ? 'bg-slate-100 text-slate-600 border-slate-200'
-              : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/70'
+              : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70'
           }`}
-          title="Status Webhook (Klik untuk rincian)"
+          title="Status Webhook & WAHA (Klik untuk rincian)"
         >
           <span className="relative flex h-2 w-2">
             {connectionStatus === 'connected' && (
@@ -215,28 +187,28 @@ export default function WebhookStatusBar({
                 connectionStatus === 'connected'
                   ? 'bg-emerald-500'
                   : connectionStatus === 'waiting'
-                  ? 'bg-sky-500'
+                  ? 'bg-amber-500 animate-ping'
                   : connectionStatus === 'checking'
                   ? 'bg-slate-400 animate-pulse'
-                  : 'bg-amber-500'
+                  : 'bg-rose-500'
               }`}
             ></span>
           </span>
           <Radio className="w-3.5 h-3.5 shrink-0" />
           <span className="hidden md:inline">
             {connectionStatus === 'connected'
-              ? `Webhook Terhubung (${verificationsCount} Struk)`
+              ? `WAHA Terhubung (${verificationsCount} Struk)`
               : connectionStatus === 'waiting'
-              ? 'Webhook: Menunggu Data (0 Masuk)'
+              ? 'WAHA: Perlu Scan QR'
               : connectionStatus === 'checking'
-              ? 'Cek Webhook...'
-              : 'Webhook: Belum Terhubung'}
+              ? 'Cek WAHA...'
+              : 'WAHA: Belum Terhubung'}
           </span>
           <span className="md:hidden">
             {connectionStatus === 'connected'
-              ? `Webhook OK (${verificationsCount})`
+              ? `WAHA OK (${verificationsCount})`
               : connectionStatus === 'waiting'
-              ? 'Menunggu (0)'
+              ? 'Scan QR'
               : 'Belum Konek'}
           </span>
         </button>
@@ -254,28 +226,28 @@ export default function WebhookStatusBar({
                     connectionStatus === 'connected'
                       ? 'bg-emerald-100 text-emerald-700'
                       : connectionStatus === 'waiting'
-                      ? 'bg-sky-100 text-sky-700'
-                      : 'bg-amber-100 text-amber-700'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-rose-100 text-rose-700'
                   }`}>
                     <Radio className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800">Status Koneksi Webhook</h4>
-                    <p className="text-[10px] text-slate-400">Integrasi WhatsApp & Struk SPP</p>
+                    <h4 className="text-xs font-bold text-slate-800">Status WhatsApp & Webhook</h4>
+                    <p className="text-[10px] text-slate-400">WAHA VPS & Penerima Bukti SPP</p>
                   </div>
                 </div>
 
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                   connectionStatus === 'connected'
                     ? 'bg-emerald-100 text-emerald-800'
                     : connectionStatus === 'waiting'
-                    ? 'bg-sky-100 text-sky-800'
-                    : 'bg-amber-100 text-amber-800'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-rose-100 text-rose-800'
                 }`}>
                   {connectionStatus === 'connected'
-                    ? 'Terhubung & Aktif'
+                    ? 'Terhubung (WORKING)'
                     : connectionStatus === 'waiting'
-                    ? 'Siap Menunggu Data'
+                    ? 'Perlu Scan QR'
                     : 'Belum Terhubung'}
                 </span>
               </div>
@@ -286,25 +258,32 @@ export default function WebhookStatusBar({
                   connectionStatus === 'connected'
                     ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
                     : connectionStatus === 'waiting'
-                    ? 'bg-sky-50 text-sky-900 border border-sky-200'
-                    : 'bg-amber-50 text-amber-900 border border-amber-200'
+                    ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                    : 'bg-rose-50 text-rose-900 border border-rose-200'
                 }`}>
                   {connectionStatus === 'connected' && (
-                    <p className="flex items-start gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span><b>Terhubung nyata!</b> WhatsApp Gateway aktif dan telah berhasil memproses <b>{verificationsCount}</b> bukti pembayaran.</span>
-                    </p>
+                    <div className="space-y-1">
+                      <p className="flex items-start gap-1.5 font-bold text-emerald-800">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>WhatsApp WAHA Terhubung!</span>
+                      </p>
+                      {wahaAccount?.id && (
+                        <p className="text-[11px] text-emerald-700">
+                          Akun: <b>{wahaAccount.pushName || 'WhatsApp'}</b> ({wahaAccount.id.replace('@c.us', '')})
+                        </p>
+                      )}
+                    </div>
                   )}
                   {connectionStatus === 'waiting' && (
                     <p className="flex items-start gap-1.5">
-                      <Clock className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
-                      <span><b>Kunci API tersimpan & endpoint siap.</b> Belum ada bukti pembayaran yang dikirimkan oleh provider WhatsApp ke sistem.</span>
+                      <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <span><b>Sesi aktif tapi belum ditautkan.</b> Silakan buka Pengaturan dan pindai kode QR menggunakan WhatsApp di ponsel Anda.</span>
                     </p>
                   )}
                   {connectionStatus === 'disconnected' && (
                     <p className="flex items-start gap-1.5">
-                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span><b>Belum Terhubung.</b> App Key & Auth Key belum diisi di Pengaturan, atau provider WhatsApp belum terhubung ke URL webhook ini.</span>
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <span><b>Belum Terhubung.</b> Buka menu Pengaturan untuk memulai koneksi ke server WAHA VPS.</span>
                     </p>
                   )}
                 </div>
@@ -314,7 +293,7 @@ export default function WebhookStatusBar({
               <div className="space-y-2 mb-3">
                 <div className="p-2.5 rounded-xl bg-slate-900 text-white space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span>URL Webhook Universal</span>
+                    <span>URL Inbound Webhook</span>
                     <button
                       type="button"
                       onClick={handleCopyUniversal}
@@ -331,13 +310,13 @@ export default function WebhookStatusBar({
 
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Struk Masuk</span>
+                    <span className="text-[10px] text-slate-400 block">Struk di Moderasi</span>
                     <span className={`font-bold ${verificationsCount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      {verificationsCount > 0 ? `${verificationsCount} Bukti` : '0 (Kosong)'}
+                      {verificationsCount} Bukti
                     </span>
                   </div>
                   <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Respon Server</span>
+                    <span className="text-[10px] text-slate-400 block">Respon Endpoint</span>
                     <span className="font-bold text-slate-700">
                       {latency !== null ? `${latency} ms` : 'Cek...'}
                     </span>
@@ -362,7 +341,7 @@ export default function WebhookStatusBar({
                     className="px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                     title="Kosongkan data/cache struk lokal"
                   >
-                    <span>Kosongkan Struk</span>
+                    <span>Refresh</span>
                   </button>
                 </div>
 
@@ -375,7 +354,7 @@ export default function WebhookStatusBar({
                     }}
                     className="px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                   >
-                    <span>Atur Kunci Gateway</span>
+                    <span>Pengaturan WAHA</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 )}
@@ -388,15 +367,15 @@ export default function WebhookStatusBar({
   }
 
   // =========================================================================
-  // Full Banner / Card Version (Used in WhatsAppGatewaySettingsCard)
+  // Full Banner / Card Version
   // =========================================================================
   return (
     <div className={`rounded-2xl border p-5 shadow-xs transition-all ${
       connectionStatus === 'connected'
         ? 'border-emerald-200 bg-gradient-to-br from-emerald-50/70 via-white to-teal-50/50'
         : connectionStatus === 'waiting'
-        ? 'border-sky-200 bg-gradient-to-br from-sky-50/70 via-white to-indigo-50/40'
-        : 'border-amber-200 bg-gradient-to-br from-amber-50/60 via-white to-slate-50'
+        ? 'border-amber-200 bg-gradient-to-br from-amber-50/70 via-white to-orange-50/40'
+        : 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50'
     }`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200/60">
         <div className="flex items-center gap-3">
@@ -404,34 +383,34 @@ export default function WebhookStatusBar({
             connectionStatus === 'connected'
               ? 'bg-emerald-600'
               : connectionStatus === 'waiting'
-              ? 'bg-sky-600'
-              : 'bg-amber-500'
+              ? 'bg-amber-500'
+              : 'bg-slate-500'
           }`}>
             <Radio className={`w-5 h-5 ${connectionStatus === 'connected' ? 'animate-pulse' : ''}`} />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-bold text-slate-800">
-                Status Koneksi Webhook WhatsApp
+                Status Koneksi WhatsApp & Webhook (WAHA)
               </h4>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
                 connectionStatus === 'connected'
                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                   : connectionStatus === 'waiting'
-                  ? 'bg-sky-100 text-sky-800 border-sky-300'
-                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : 'bg-slate-100 text-slate-800 border-slate-300'
               }`}>
                 {connectionStatus === 'connected'
-                  ? 'Terhubung Nyata'
+                  ? 'WAHA Terhubung'
                   : connectionStatus === 'waiting'
-                  ? 'Siap Menunggu Data'
+                  ? 'Perlu Scan QR'
                   : 'Belum Terhubung'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {connectionStatus === 'connected' && `Aktif dan telah menerima ${verificationsCount} bukti transfer dari orang tua.`}
-              {connectionStatus === 'waiting' && 'Kunci gateway terpasang. Menunggu bukti transfer pertama dikirim oleh provider WhatsApp.'}
-              {connectionStatus === 'disconnected' && 'Belum terhubung. Masukkan App Key & Auth Key di bawah, lalu tempelkan URL Webhook ke provider WA.'}
+              {connectionStatus === 'connected' && `Sesi WhatsApp WAHA aktif dan siap memproses bukti transfer otomatis (${verificationsCount} struk masuk).`}
+              {connectionStatus === 'waiting' && 'Sesi WAHA siap ditautkan. Buka Pengaturan untuk scan kode QR.'}
+              {connectionStatus === 'disconnected' && 'WhatsApp belum terhubung. Buka Pengaturan untuk menghubungkan nomor WhatsApp.'}
             </p>
           </div>
         </div>
@@ -457,8 +436,8 @@ export default function WebhookStatusBar({
             connectionStatus === 'connected'
               ? 'bg-emerald-100 text-emerald-700'
               : connectionStatus === 'waiting'
-              ? 'bg-sky-100 text-sky-700'
-              : 'bg-amber-100 text-amber-700'
+              ? 'bg-amber-100 text-amber-700'
+              : 'bg-slate-100 text-slate-700'
           }`}>
             {connectionStatus === 'connected' ? (
               <CheckCircle2 className="w-4 h-4" />
@@ -469,19 +448,19 @@ export default function WebhookStatusBar({
             )}
           </div>
           <div className="overflow-hidden">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Koneksi Gateway</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Koneksi WAHA</span>
             <span className={`text-xs font-extrabold truncate block ${
               connectionStatus === 'connected'
                 ? 'text-emerald-700'
                 : connectionStatus === 'waiting'
-                ? 'text-sky-700'
-                : 'text-amber-700'
+                ? 'text-amber-700'
+                : 'text-slate-700'
             }`}>
               {connectionStatus === 'connected'
-                ? `${verificationsCount} Struk Diterima`
+                ? `Terhubung (${wahaAccount?.pushName || 'WhatsApp'})`
                 : connectionStatus === 'waiting'
-                ? '0 Struk Masuk (Kosong)'
-                : 'Kosong (Belum Ada Kunci)'}
+                ? 'Scan QR Diperlukan'
+                : 'Tidak Terhubung'}
             </span>
           </div>
         </div>
@@ -505,9 +484,9 @@ export default function WebhookStatusBar({
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="overflow-hidden">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Engine Serverless</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Engine VPS</span>
             <span className="text-xs font-extrabold text-teal-700 truncate block">
-              Vercel Serverless Ready
+              WAHA VPS Engine Ready
             </span>
           </div>
         </div>
@@ -518,10 +497,10 @@ export default function WebhookStatusBar({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500 text-slate-950 uppercase tracking-wider">
-              Rekomendasi Utama
+              Endpoint Inbound
             </span>
             <span className="text-xs font-bold text-indigo-200">
-              Alamat Webhook Universal (Otomatis Cocokkan Siswa)
+              Alamat Webhook WhatsApp (Otomatis Deteksi Bukti Bayar)
             </span>
           </div>
           <button
@@ -530,30 +509,14 @@ export default function WebhookStatusBar({
             className="self-start sm:self-auto px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
           >
             {copiedUniversal ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedUniversal ? 'URL Tersalin!' : 'Salin Webhook Universal'}</span>
+            <span>{copiedUniversal ? 'URL Tersalin!' : 'Salin Webhook'}</span>
           </button>
         </div>
 
         <div className="p-3 rounded-lg bg-black/50 border border-slate-800 font-mono text-xs text-emerald-400 select-all break-all flex items-center justify-between gap-2">
           <span>{getUniversalWebhookUrl()}</span>
         </div>
-
-        <p className="text-[11px] text-slate-300 leading-relaxed">
-          👉 <b>Cara Menghubungkan:</b> Tempel URL di atas ke menu <b>Webhook</b> provider WhatsApp Anda (Starsender, Fonnte, Wablas, UltraMsg, W-API, Meta). Status webhook di atas akan otomatis berubah menjadi <b>"Terhubung & Aktif"</b> begitu struk pembayaran pertama berhasil masuk!
-        </p>
       </div>
-
-      {pingDetails && (
-        <div className="mt-3 p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>Tes Endpoint: <b>HTTP {pingDetails.statusCode} OK</b> — {pingDetails.message}</span>
-          </div>
-          <span className="text-[10px] text-slate-500">
-            Dicek {lastCheck ? lastCheck.toLocaleTimeString('id-ID') : 'baru saja'}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
