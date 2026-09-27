@@ -116,16 +116,38 @@ export async function saveWhatsAppGatewayConfig(
   }
 }
 
-// Kirim pesan WhatsApp melalui backend proxy (menghindari CORS)
+// Kirim pesan WhatsApp melalui WAHA Supabase Proxy atau backend proxy
 export async function sendWhatsAppMessage(payload: {
   apiUrl?: string;
-  appkey: string;
-  authkey: string;
+  appkey?: string;
+  authkey?: string;
   to: string;
   message: string;
   file?: string;
 }): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    // 1. Prioritaskan Supabase Edge Function WAHA Proxy
+    const wahaProxyUrl = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy?action=sendText';
+    try {
+      const res = await fetch(wahaProxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: payload.to,
+          message: payload.message,
+          file: payload.file,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, data };
+      }
+    } catch (proxyErr) {
+      console.warn('Gagal via waha-proxy, mencoba backend local:', proxyErr);
+    }
+
+    // 2. Coba backend internal /api/whatsapp/send
     const res = await fetch('/api/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -138,36 +160,9 @@ export async function sendWhatsAppMessage(payload: {
       return result;
     }
 
-    // Jika berjalan di static hosting (misal Vercel) tanpa proxy Express backend:
-    // Coba kirim langsung ke gateway endpoint jika didukung
-    try {
-      const targetUrl = payload.apiUrl || 'https://app.starsender.online/api/sendText';
-      const formData = new URLSearchParams();
-      formData.append('message', payload.message);
-      formData.append('tujuan', payload.to);
-      if (payload.file) formData.append('file', payload.file);
-
-      const directRes = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'apikey': payload.appkey,
-          'Authorization': payload.authkey,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString()
-      });
-
-      if (directRes.ok && directRes.headers.get('content-type')?.includes('application/json')) {
-        const directJson = await directRes.json();
-        return { success: true, data: directJson };
-      }
-    } catch (directErr) {
-      // Direct send might be blocked by browser CORS
-    }
-
     return { 
       success: false, 
-      error: 'Backend proxy WhatsApp tidak aktif di hosting ini. Pesan tercatat secara lokal.' 
+      error: 'Gagal mengirim pesan WhatsApp via WAHA. Pastikan WhatsApp berstatus terhubung (WORKING).' 
     };
   } catch (err: any) {
     return { success: false, error: err.message || 'Gagal menghubungi server pengirim WhatsApp' };

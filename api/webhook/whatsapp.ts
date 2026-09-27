@@ -227,8 +227,18 @@ export default async function handler(req: any, res: any) {
       const authkey = payload.authkey || query.authkey || req.headers["x-authkey"] || "";
       const explicitUserId = (query.user_id || payload.user_id || "").toString();
 
-      // Normalisasi Pengirim dari berbagai schema provider (Starsender, Fonnte, Wablas, UltraMsg, W-API, Meta)
-      const rawSender = payload.sender 
+      // Abaikan pesan keluar dari nomor bot/WAHA sendiri
+      if (payload.payload?.fromMe === true) {
+        return res.status(200).json({
+          status: "ignored",
+          reason: "outgoing_message_from_self",
+          message: "Pesan keluar dari akun sendiri diabaikan.",
+        });
+      }
+
+      // Normalisasi Pengirim dari berbagai schema provider (WAHA, Starsender, Fonnte, Wablas, UltraMsg, W-API, Meta)
+      const rawSender = payload.payload?.from
+        || payload.sender 
         || payload.from 
         || payload.phone 
         || payload.number 
@@ -237,11 +247,13 @@ export default async function handler(req: any, res: any) {
         || payload.data?.sender
         || payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from
         || "";
-      const senderPhone = normalizePhoneDigits(rawSender.toString());
+      const senderPhone = normalizePhoneDigits(rawSender.toString().replace('@c.us', ''));
 
       // Ekstraksi Teks dan Gambar Bukti
       const messageText = (
-        payload.message 
+        payload.payload?.body
+        || payload.payload?.caption
+        || payload.message 
         || payload.caption 
         || payload.text 
         || payload.body 
@@ -253,7 +265,9 @@ export default async function handler(req: any, res: any) {
       ).toString();
 
       const proofImageUrl = (
-        payload.file 
+        payload.payload?.media?.url
+        || payload.payload?.url
+        || payload.file 
         || payload.url 
         || payload.media 
         || payload.image 
@@ -265,7 +279,9 @@ export default async function handler(req: any, res: any) {
       ).toString();
 
       const senderName = (
-        payload.name 
+        payload.payload?._data?.notifyName
+        || payload.payload?.notifyName
+        || payload.name 
         || payload.sender_name 
         || payload.pushName 
         || payload.data?.name 

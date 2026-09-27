@@ -1,12 +1,12 @@
 // Supabase Edge Function: waha-proxy
-// Secure proxy between frontend and self-hosted WAHA (WhatsApp HTTP API)
+// Secure proxy between frontend/backend and self-hosted WAHA (WhatsApp HTTP API)
 
 declare const Deno: any;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
 };
 
 Deno.serve(async (req: Request) => {
@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           error: 'Missing action parameter',
-          message: 'Please provide query parameter "action=start", "action=status", "action=qr", or "action=restart".'
+          message: 'Please provide query parameter "action=start", "action=status", "action=qr", "action=sendText", or "action=setWebhook".'
         }),
         {
           status: 400,
@@ -210,10 +210,132 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // 5. Action: sendText (Outbound WhatsApp Messaging)
+    if (action === 'sendText') {
+      const body = await req.json().catch(() => ({}));
+      let rawTo = (body.to || body.chatId || '').toString();
+      let cleanDigits = rawTo.replace(/\D/g, '');
+      if (cleanDigits.startsWith('0')) cleanDigits = '62' + cleanDigits.slice(1);
+      else if (cleanDigits.startsWith('8')) cleanDigits = '62' + cleanDigits;
+
+      if (!cleanDigits) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Nomor WhatsApp tujuan (to) wajib diisi' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const chatId = cleanDigits.includes('@') ? cleanDigits : `${cleanDigits}@c.us`;
+      const messageText = body.message || body.text || '';
+      const fileUrl = body.file;
+
+      let wahaTargetUrl = `${WAHA_BASE_URL}/api/sendText`;
+      let wahaPayload: any = {
+        session: 'default',
+        chatId: chatId,
+        text: messageText,
+      };
+
+      if (fileUrl) {
+        wahaTargetUrl = `${WAHA_BASE_URL}/api/sendFile`;
+        wahaPayload = {
+          session: 'default',
+          chatId: chatId,
+          file: typeof fileUrl === 'string' ? { url: fileUrl } : fileUrl,
+          caption: messageText,
+        };
+      }
+
+      const sendRes = await fetch(wahaTargetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': WAHA_API_KEY,
+        },
+        body: JSON.stringify(wahaPayload),
+      });
+
+      const sendData = await sendRes.json().catch(() => ({}));
+      return new Response(
+        JSON.stringify({
+          success: sendRes.ok,
+          status: sendRes.status,
+          data: sendData,
+        }),
+        {
+          status: sendRes.ok ? 200 : sendRes.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // 6. Action: setWebhook (Register Inbound Webhook on WAHA)
+    if (action === 'setWebhook') {
+      const body = await req.json().catch(() => ({}));
+      const webhookUrl = body.url || body.webhookUrl || '';
+
+      if (!webhookUrl) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'URL webhook wajib diisi' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const putRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': WAHA_API_KEY,
+        },
+        body: JSON.stringify({
+          config: {
+            webhooks: [
+              {
+                url: webhookUrl,
+                events: ['message'],
+              },
+            ],
+          },
+        }),
+      });
+
+      const putData = await putRes.json().catch(() => ({}));
+      return new Response(
+        JSON.stringify({
+          success: putRes.ok,
+          webhookUrl,
+          data: putData,
+        }),
+        {
+          status: putRes.ok ? 200 : putRes.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // 7. Action: getWebhook (Inspect current Inbound Webhook)
+    if (action === 'getWebhook') {
+      const session = await fetchCurrentSession();
+      const currentWebhooks = session?.config?.webhooks || [];
+      const primaryUrl = currentWebhooks[0]?.url || '';
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          webhookUrl: primaryUrl,
+          webhooks: currentWebhooks,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         error: 'Invalid action',
-        message: `Action "${action}" is not supported. Supported actions: start, restart, status, qr, stop.`
+        message: `Action "${action}" is not supported. Supported actions: start, restart, status, qr, stop, sendText, setWebhook, getWebhook.`
       }),
       {
         status: 400,
