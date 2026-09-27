@@ -126,6 +126,42 @@ export async function saveWhatsAppGatewayConfig(
   }
 }
 
+// Validasi nomor WhatsApp (format dan kecukupan digit)
+export function validateWhatsAppNumber(phone: string): {
+  valid: boolean;
+  cleanNumber: string;
+  reason?: 'EMPTY' | 'TOO_SHORT' | 'TOO_LONG' | 'INVALID_FORMAT';
+  message?: string;
+} {
+  if (!phone || !phone.trim()) {
+    return { valid: false, cleanNumber: '', reason: 'EMPTY', message: 'Nomor WhatsApp belum diisi' };
+  }
+
+  let clean = phone.replace(/\D/g, '');
+  if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+  else if (clean.startsWith('8')) clean = '62' + clean;
+
+  if (clean.length < 10) {
+    return {
+      valid: false,
+      cleanNumber: clean,
+      reason: 'TOO_SHORT',
+      message: `Kurang digit (${clean.length} digit, minimal 10 digit)`
+    };
+  }
+
+  if (clean.length > 16) {
+    return {
+      valid: false,
+      cleanNumber: clean,
+      reason: 'TOO_LONG',
+      message: `Terlalu panjang (${clean.length} digit, maks 16 digit)`
+    };
+  }
+
+  return { valid: true, cleanNumber: clean };
+}
+
 // Kirim pesan WhatsApp melalui WAHA Supabase Proxy atau backend proxy
 export async function sendWhatsAppMessage(payload: {
   apiUrl?: string;
@@ -135,8 +171,18 @@ export async function sendWhatsAppMessage(payload: {
   message: string;
   file?: string;
   userId?: string;
-}): Promise<{ success: boolean; data?: any; error?: string }> {
+}): Promise<{ success: boolean; data?: any; error?: string; code?: string }> {
   try {
+    // 0. Pre-validasi nomor telepon di sisi client
+    const validation = validateWhatsAppNumber(payload.to);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: validation.message || 'Nomor WhatsApp tidak valid',
+        code: validation.reason
+      };
+    }
+
     let activeUid = payload.userId;
     if (!activeUid) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -154,15 +200,36 @@ export async function sendWhatsAppMessage(payload: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: payload.to,
+          to: validation.cleanNumber,
           message: payload.message,
           file: payload.file,
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        return { success: true, data };
+      const resData = await res.json().catch(() => ({}));
+
+      // Jika proxy merespons dengan hasil spesifik (baik berhasil maupun gagal seperti nomor tidak terdaftar)
+      if (res.ok && resData?.success !== false) {
+        return { success: true, data: resData };
+      }
+
+      // Jika nomor tidak ditemukan / kurang digit / session mati, jangan fallback ke tempat lain
+      if (resData?.code === 'NUMBER_NOT_FOUND' || resData?.code === 'INVALID_NUMBER_LENGTH' || resData?.code === 'SESSION_NOT_WORKING') {
+        return {
+          success: false,
+          error: resData.error || 'Nomor tidak terdaftar di WhatsApp',
+          code: resData.code,
+          data: resData
+        };
+      }
+
+      if (res.status === 404 || res.status === 422) {
+        return {
+          success: false,
+          error: resData?.error || 'Nomor WhatsApp tidak terdaftar atau tidak ditemukan.',
+          code: 'NUMBER_NOT_FOUND',
+          data: resData
+        };
       }
     } catch (proxyErr) {
       console.warn('Gagal via waha-proxy, mencoba backend local:', proxyErr);
@@ -172,21 +239,32 @@ export async function sendWhatsAppMessage(payload: {
     const res = await fetch('/api/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        to: validation.cleanNumber
+      })
     });
 
     const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
+    if (contentType.includes('application/json')) {
       const result = await res.json();
-      return result;
+      if (res.ok && result.success !== false) {
+        return { success: true, data: result };
+      }
+      return {
+        success: false,
+        error: result.error || 'Gagal mengirim pesan',
+        code: result.code
+      };
     }
 
     return { 
       success: false, 
-      error: 'Gagal mengirim pesan WhatsApp via WAHA. Pastikan WhatsApp berstatus terhubung (WORKING).' 
+      error: 'Gagal mengirim pesan WhatsApp via WAHA. Pastikan WhatsApp terhubung (WORKING).',
+      code: 'GATEWAY_ERROR'
     };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Gagal menghubungi server pengirim WhatsApp' };
+    return { success: false, error: err.message || 'Gagal menghubungi server pengirim WhatsApp', code: 'NETWORK_ERROR' };
   }
 }
 

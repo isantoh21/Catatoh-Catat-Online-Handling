@@ -25,6 +25,22 @@ export default async function handler(req: any, res: any) {
     if (cleanTo.startsWith('0')) cleanTo = '62' + cleanTo.slice(1);
     else if (cleanTo.startsWith('8')) cleanTo = '62' + cleanTo;
 
+    if (cleanTo.length < 10) {
+      return res.status(400).json({
+        success: false,
+        error: `Nomor WhatsApp tidak valid (hanya ${cleanTo.length} digit, minimal 10 digit)`,
+        code: 'INVALID_NUMBER_LENGTH'
+      });
+    }
+
+    if (cleanTo.length > 16) {
+      return res.status(400).json({
+        success: false,
+        error: `Nomor WhatsApp terlalu panjang (${cleanTo.length} digit, maksimal 16 digit)`,
+        code: 'INVALID_NUMBER_LENGTH'
+      });
+    }
+
     // Prioritas 1: Gunakan Supabase Edge Function WAHA Proxy
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://lzvrhtaewonmpsaiezai.supabase.co';
     const wahaProxyUrl = userId 
@@ -44,12 +60,23 @@ export default async function handler(req: any, res: any) {
         }),
       });
 
-      if (proxyRes.ok) {
-        const proxyData = await proxyRes.json().catch(() => ({}));
+      const proxyData = await proxyRes.json().catch(() => ({}));
+
+      if (proxyRes.ok && proxyData?.success !== false) {
         return res.status(200).json({
           success: true,
           provider: 'waha-proxy',
           data: proxyData,
+        });
+      }
+
+      // Jika error spesifik dari proxy (seperti nomor tidak terdaftar atau session belum aktif)
+      if (proxyData?.code || proxyRes.status === 404 || proxyRes.status === 400) {
+        return res.status(proxyRes.status || 400).json({
+          success: false,
+          error: proxyData.error || 'Nomor WhatsApp tidak terdaftar di WhatsApp',
+          code: proxyData.code || 'NUMBER_NOT_FOUND',
+          data: proxyData
         });
       }
     } catch (proxyErr) {

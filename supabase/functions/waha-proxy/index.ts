@@ -309,7 +309,57 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 5. Action: sendText (Outbound WhatsApp Messaging)
+    // 5. Action: checkNumber (Cek apakah nomor terdaftar di WhatsApp sebelum kirim)
+    if (action === 'checkNumber' || action === 'checkContact') {
+      const phoneParam = url.searchParams.get('phone') || '';
+      let cleanDigits = phoneParam.replace(/\D/g, '');
+      if (cleanDigits.startsWith('0')) cleanDigits = '62' + cleanDigits.slice(1);
+      else if (cleanDigits.startsWith('8')) cleanDigits = '62' + cleanDigits;
+
+      if (!cleanDigits || cleanDigits.length < 10) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            numberExists: false, 
+            error: `Nomor WhatsApp tidak valid (hanya ${cleanDigits ? cleanDigits.length : 0} digit, minimal 10 digit)`, 
+            code: 'INVALID_NUMBER_LENGTH' 
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      try {
+        const checkRes = await fetch(`${WAHA_BASE_URL}/api/contacts/check-exists?phone=${cleanDigits}&session=${sessionName}`, {
+          headers: { 'X-Api-Key': WAHA_API_KEY },
+        });
+
+        if (!checkRes.ok) {
+          const errorText = await checkRes.text();
+          return new Response(
+            JSON.stringify({ success: false, numberExists: false, error: errorText }),
+            { status: checkRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const checkData = await checkRes.json();
+        return new Response(
+          JSON.stringify({
+            success: true,
+            numberExists: checkData.numberExists ?? false,
+            chatId: checkData.chatId,
+            data: checkData
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err: any) {
+        return new Response(
+          JSON.stringify({ success: false, numberExists: false, error: err.message || 'Gagal memeriksa kontak' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // 6. Action: sendText (Outbound WhatsApp Messaging with Pre-Flight Validation)
     if (action === 'sendText') {
       const body = await req.json().catch(() => ({}));
       let rawTo = (body.to || body.chatId || '').toString();
@@ -317,11 +367,62 @@ Deno.serve(async (req: Request) => {
       if (cleanDigits.startsWith('0')) cleanDigits = '62' + cleanDigits.slice(1);
       else if (cleanDigits.startsWith('8')) cleanDigits = '62' + cleanDigits;
 
-      if (!cleanDigits) {
+      // 1. Validasi panjang digit nomor (Nomor Indonesia/Internasional minimal 10 digit)
+      if (!cleanDigits || cleanDigits.length < 10) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Nomor WhatsApp tujuan (to) wajib diisi' }),
+          JSON.stringify({ 
+            success: false, 
+            error: `Nomor WhatsApp tidak valid (hanya ${cleanDigits ? cleanDigits.length : 0} digit, minimal 10 digit)`,
+            code: 'INVALID_NUMBER_LENGTH' 
+          }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+      if (cleanDigits.length > 16) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Nomor WhatsApp terlalu panjang (${cleanDigits.length} digit, maksimal 16 digit)`,
+            code: 'INVALID_NUMBER_LENGTH' 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // 2. Cek apakah session WhatsApp aktif / WORKING
+      const currentSessionData = await fetchCurrentSession(sessionName);
+      if (!currentSessionData || currentSessionData.status !== 'WORKING') {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `WhatsApp belum terhubung (Status: ${currentSessionData?.status || 'OFFLINE'}). Silakan scan QR WhatsApp terlebih dahulu.`,
+            code: 'SESSION_NOT_WORKING'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // 3. Pre-flight check: Verifikasi apakah nomor benar-benar terdaftar di WhatsApp
+      try {
+        const checkRes = await fetch(`${WAHA_BASE_URL}/api/contacts/check-exists?phone=${cleanDigits}&session=${sessionName}`, {
+          headers: { 'X-Api-Key': WAHA_API_KEY },
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData && checkData.numberExists === false) {
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: `Nomor WhatsApp (${cleanDigits}) tidak ditemukan atau belum terdaftar di WhatsApp.`,
+                code: 'NUMBER_NOT_FOUND',
+                data: checkData
+              }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Gagal pre-flight check-exists, lanjut mencoba kirim:', checkErr);
       }
 
       const chatId = cleanDigits.includes('@') ? cleanDigits : `${cleanDigits}@c.us`;
@@ -355,14 +456,18 @@ Deno.serve(async (req: Request) => {
       });
 
       const sendData = await sendRes.json().catch(() => ({}));
+      const isSuccess = sendRes.ok && (!sendData?.error);
+      const errorMessage = sendData?.error || sendData?.message || (sendRes.ok ? undefined : 'Gagal mengirim pesan via WAHA');
+
       return new Response(
         JSON.stringify({
-          success: sendRes.ok,
+          success: isSuccess,
           status: sendRes.status,
+          error: errorMessage,
           data: sendData,
         }),
         {
-          status: sendRes.ok ? 200 : sendRes.status,
+          status: isSuccess ? 200 : (sendRes.status >= 400 ? sendRes.status : 400),
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

@@ -10,7 +10,7 @@ import {
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal from './PaymentModerationModal';
-import { getPaymentVerifications, sendWhatsAppMessage } from '../lib/whatsappGateway';
+import { getPaymentVerifications, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -577,15 +577,16 @@ export default function DashboardView() {
   });
 
   // Buka modal reminder dan inisialisasi checklist default
+  // Buka modal reminder dan inisialisasi checklist default (hanya nomor valid yang dicentang otomatis)
   const handleOpenReminderModal = (bulanToUse?: string) => {
     const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
     setReminderBulan(target);
     const unpayed = students.filter(s => 
       !payments.some(p => p.student_id === s.id && p.bulan === target)
     );
-    // Centang default semua siswa yang nomor WA-nya valid
+    // Centang default HANYA siswa yang nomor WA-nya valid (min 10 digit)
     const withValidPhone = unpayed
-      .filter(s => s.nomor_whatsapp && s.nomor_whatsapp.trim().length >= 8)
+      .filter(s => validateWhatsAppNumber(s.nomor_whatsapp).valid)
       .map(s => s.id);
     setSelectedReminderIds(withValidPhone);
     setIsReminderModalOpen(true);
@@ -624,8 +625,17 @@ export default function DashboardView() {
 
   // Kirim satuan langsung via WAHA WhatsApp Gateway
   const handleKirimSingleWAHA = async (student: any) => {
-    if (!student.nomor_whatsapp || student.nomor_whatsapp.trim().length < 8) {
-      alert(`Nomor WhatsApp untuk ${student.nama_lengkap} belum valid atau belum terdaftar.`);
+    const val = validateWhatsAppNumber(student.nomor_whatsapp);
+    if (!val.valid) {
+      setStudentSendStatuses(prev => ({
+        ...prev,
+        [student.id]: { 
+          status: 'failed', 
+          error: val.message || 'Nomor tidak valid',
+          code: val.reason 
+        }
+      }));
+      alert(`Nomor WhatsApp ${student.nama_lengkap} ${val.message}. Mohon perbaiki nomor telepon siswa.`);
       return;
     }
 
@@ -659,13 +669,21 @@ export default function DashboardView() {
       } else {
         setStudentSendStatuses(prev => ({
           ...prev,
-          [student.id]: { status: 'failed', error: res.error || 'Gagal mengirim via WAHA' }
+          [student.id]: { 
+            status: 'failed', 
+            error: res.error || 'Gagal mengirim via WAHA',
+            code: res.code
+          }
         }));
       }
     } catch (err: any) {
       setStudentSendStatuses(prev => ({
         ...prev,
-        [student.id]: { status: 'failed', error: err.message || 'Error koneksi gateway' }
+        [student.id]: { 
+          status: 'failed', 
+          error: err.message || 'Error koneksi gateway',
+          code: 'NETWORK_ERROR'
+        }
       }));
     } finally {
       setSendingSingleId(null);
@@ -761,8 +779,19 @@ export default function DashboardView() {
       }));
 
       try {
-        if (!student.nomor_whatsapp || student.nomor_whatsapp.trim().length < 8) {
-          throw new Error('Nomor WhatsApp belum valid');
+        const val = validateWhatsAppNumber(student.nomor_whatsapp);
+        if (!val.valid) {
+          failCount++;
+          setStudentSendStatuses(prev => ({
+            ...prev,
+            [student.id]: { 
+              status: 'failed', 
+              error: val.message || 'Nomor tidak valid',
+              code: val.reason 
+            }
+          }));
+          setBatchProgress(prev => ({ ...prev, failCount }));
+          continue; // Lanjut ke siswa berikutnya tanpa delay
         }
 
         const message = formatReminderMessage(student);
@@ -786,7 +815,11 @@ export default function DashboardView() {
           failCount++;
           setStudentSendStatuses(prev => ({
             ...prev,
-            [student.id]: { status: 'failed', error: res.error || 'Gagal mengirim via WAHA' }
+            [student.id]: { 
+              status: 'failed', 
+              error: res.error || 'Gagal mengirim via WAHA',
+              code: res.code 
+            }
           }));
           setBatchProgress(prev => ({ ...prev, failCount }));
         }
@@ -794,7 +827,11 @@ export default function DashboardView() {
         failCount++;
         setStudentSendStatuses(prev => ({
           ...prev,
-          [student.id]: { status: 'failed', error: err.message || 'Error pengiriman' }
+          [student.id]: { 
+            status: 'failed', 
+            error: err.message || 'Error pengiriman',
+            code: 'EXCEPTION'
+          }
         }));
         setBatchProgress(prev => ({ ...prev, failCount }));
       }
@@ -844,6 +881,13 @@ export default function DashboardView() {
     } else {
       setSelectedReminderIds(prev => Array.from(new Set([...prev, ...allIds])));
     }
+  };
+
+  const handleSelectOnlyValid = () => {
+    const validIds = reminderFilteredStudents
+      .filter(s => validateWhatsAppNumber(s.nomor_whatsapp).valid && studentSendStatuses[s.id]?.status !== 'success')
+      .map(s => s.id);
+    setSelectedReminderIds(validIds);
   };
 
   const handleSelectOnlyUnsent = () => {
@@ -1635,7 +1679,7 @@ export default function DashboardView() {
                 </div>
 
                 {/* Seleksi Tombol */}
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <button
                     type="button"
                     disabled={isBatchRunning}
@@ -1646,6 +1690,16 @@ export default function DashboardView() {
                       ? 'Batal Pilih Semua'
                       : `Pilih Semua (${reminderFilteredStudents.length})`
                     }
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={handleSelectOnlyValid}
+                    className="px-2.5 py-1 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg font-semibold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                    title="Pilih hanya siswa dengan nomor WhatsApp valid (min 10 digit) yang belum terkirim"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Pilih yg Valid
                   </button>
                   <button
                     type="button"
@@ -1682,7 +1736,8 @@ export default function DashboardView() {
                       const isSelected = selectedReminderIds.includes(student.id);
                       const statusObj = studentSendStatuses[student.id];
                       const isSendingThis = sendingSingleId === student.id || (isBatchRunning && statusObj?.status === 'sending');
-                      const hasPhone = student.nomor_whatsapp && student.nomor_whatsapp.trim().length >= 8;
+                      const phoneValidation = validateWhatsAppNumber(student.nomor_whatsapp || '');
+                      const isValidPhone = phoneValidation.valid;
 
                       return (
                         <li 
@@ -1722,13 +1777,24 @@ export default function DashboardView() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {hasPhone ? (
-                                  <span className="text-[11px] text-slate-500 font-mono">
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                {isValidPhone ? (
+                                  <span className="text-[11px] text-slate-600 font-mono font-medium">
                                     {student.nomor_whatsapp}
                                   </span>
+                                ) : phoneValidation.reason === 'TOO_SHORT' ? (
+                                  <span className="text-[10px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    {student.nomor_whatsapp} (Kurang Digit: {phoneValidation.cleanNumber.length} angka)
+                                  </span>
+                                ) : phoneValidation.reason === 'TOO_LONG' ? (
+                                  <span className="text-[10px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    {student.nomor_whatsapp} (Terlalu Panjang)
+                                  </span>
                                 ) : (
-                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200 flex items-center gap-1">
+                                    <XCircle className="w-3 h-3 text-rose-500" />
                                     Nomor WA Belum Ada
                                   </span>
                                 )}
@@ -1756,22 +1822,50 @@ export default function DashboardView() {
                               </span>
                             )}
                             {statusObj?.status === 'failed' && (
-                              <span 
-                                className="px-2 py-1 rounded-md text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 cursor-help"
-                                title={statusObj.error || 'Gagal mengirim'}
-                              >
-                                <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                Gagal
-                              </span>
+                              <div>
+                                {statusObj.code === 'NUMBER_NOT_FOUND' || (statusObj.error && statusObj.error.toLowerCase().includes('tidak ditemukan')) || (statusObj.error && statusObj.error.toLowerCase().includes('tidak terdaftar')) ? (
+                                  <span 
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-xs"
+                                    title={statusObj.error || 'Nomor tidak terdaftar di WhatsApp'}
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                    Nomor Tidak Terdaftar di WA
+                                  </span>
+                                ) : statusObj.code === 'TOO_SHORT' || statusObj.code === 'INVALID_NUMBER_LENGTH' || (statusObj.error && statusObj.error.toLowerCase().includes('kurang digit')) ? (
+                                  <span 
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-xs"
+                                    title={statusObj.error || 'Nomor kurang digit (minimal 10 digit)'}
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    Kurang Digit ({phoneValidation.cleanNumber.length} angka)
+                                  </span>
+                                ) : statusObj.code === 'SESSION_NOT_WORKING' ? (
+                                  <span 
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs"
+                                    title={statusObj.error}
+                                  >
+                                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    WA Belum Terhubung
+                                  </span>
+                                ) : (
+                                  <span 
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 cursor-help"
+                                    title={statusObj.error || 'Gagal mengirim'}
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                    Gagal: {statusObj.error ? (statusObj.error.length > 25 ? statusObj.error.slice(0, 25) + '...' : statusObj.error) : 'Error'}
+                                  </span>
+                                )}
+                              </div>
                             )}
 
                             {/* Tombol Kirim Satuan via WAHA */}
                             <button
                               type="button"
-                              disabled={isBatchRunning || isSendingThis || !hasPhone}
+                              disabled={isBatchRunning || isSendingThis || !isValidPhone}
                               onClick={() => handleKirimSingleWAHA(student)}
                               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                              title="Kirim reminder langsung sekarang via WAHA"
+                              title={!isValidPhone ? (phoneValidation.message || 'Nomor tidak valid') : 'Kirim reminder langsung sekarang via WAHA'}
                             >
                               {isSendingThis ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1784,7 +1878,7 @@ export default function DashboardView() {
                             {/* Tombol Fallback Manual WhatsApp Web */}
                             <button
                               type="button"
-                              disabled={isBatchRunning || !hasPhone}
+                              disabled={isBatchRunning || !student.nomor_whatsapp}
                               onClick={() => handleKirimManualWA(student)}
                               className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
                               title="Fallback: Buka wa.me manual di tab baru jika dibutuhkan"
