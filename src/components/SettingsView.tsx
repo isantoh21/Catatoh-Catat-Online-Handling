@@ -24,6 +24,7 @@ export default function SettingsView({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [adminName, setAdminName] = useState('');
   const [city, setCity] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const [cityChangeCount, setCityChangeCount] = useState(0);
   const [isSavingCity, setIsSavingCity] = useState(false);
   const [cityMessage, setCityMessage] = useState({ type: '', text: '' });
@@ -44,6 +45,7 @@ export default function SettingsView({
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        setCurrentUserId(session.user.id);
         setCity(session.user.user_metadata?.city || '');
         setCityChangeCount(session.user.user_metadata?.city_change_count || 0);
         setAdminName(session.user.user_metadata?.full_name || '');
@@ -388,7 +390,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
           </div>
 
           {/* Koneksi WhatsApp WAHA & Proxy Supabase */}
-          <WahaConnect />
+          <WahaConnect currentUserId={currentUserId} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-8">

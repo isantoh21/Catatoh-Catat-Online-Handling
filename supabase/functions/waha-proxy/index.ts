@@ -1,5 +1,6 @@
 // Supabase Edge Function: waha-proxy
 // Secure proxy between frontend/backend and self-hosted WAHA (WhatsApp HTTP API)
+// Mendukung isolasi multi-user: Nomor 6285347360359 dan session 'default' eksklusif untuk akun pertama
 
 declare const Deno: any;
 
@@ -8,6 +9,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
 };
+
+// Akun pertama pemilik sah nomor 6285347360359
+const PRIMARY_OWNER_ID = 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
+const PRIMARY_PHONE_PREFIX = '6285347360359';
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
@@ -34,6 +39,8 @@ Deno.serve(async (req: Request) => {
 
     const url = new URL(req.url);
     const action = url.searchParams.get('action');
+    const requestedUserId = url.searchParams.get('userId');
+    const requestedSession = url.searchParams.get('session');
 
     if (!action) {
       return new Response(
@@ -48,28 +55,73 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Helper: get current default session
-    const fetchCurrentSession = async () => {
+    // Resolusi nama session berdasarkan kepemilikan akun
+    let sessionName = 'default';
+    if (requestedUserId) {
+      if (requestedUserId === PRIMARY_OWNER_ID) {
+        sessionName = 'default';
+      } else {
+        const cleanUid = requestedUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+        sessionName = requestedSession && requestedSession !== 'default' 
+          ? requestedSession 
+          : `user_${cleanUid}`;
+      }
+    } else if (requestedSession) {
+      sessionName = requestedSession;
+    } else {
+      // Jika request tanpa identitas user, jangan bocorkan akun utama ke user lain
+      sessionName = 'unassigned';
+    }
+
+    // Jika request unassigned untuk status/qr, kembalikan STOPPED agar akun lain tidak melihat nomor pemilik
+    if (sessionName === 'unassigned') {
+      if (action === 'status') {
+        return new Response(
+          JSON.stringify({
+            name: 'unassigned',
+            status: 'STOPPED',
+            me: null,
+            message: 'Silakan login dan hubungkan WhatsApp untuk akun Anda.'
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (action === 'qr') {
+        return new Response('User belum terautentikasi', { status: 401, headers: corsHeaders });
+      }
+    }
+
+    // Helper: get current session data
+    const fetchCurrentSession = async (sess: string) => {
       try {
-        const res = await fetch(`${WAHA_BASE_URL}/api/sessions/default`, {
+        const res = await fetch(`${WAHA_BASE_URL}/api/sessions/${sess}`, {
           headers: { 'X-Api-Key': WAHA_API_KEY },
         });
         if (res.ok) {
-          return await res.json();
+          const data = await res.json();
+          // Perlindungan: jangan pernah kirimkan data nomor 6285347360359 ke akun selain PRIMARY_OWNER_ID
+          if (requestedUserId && requestedUserId !== PRIMARY_OWNER_ID && data.me?.id?.includes(PRIMARY_PHONE_PREFIX)) {
+            return {
+              name: sess,
+              status: 'STOPPED',
+              me: null,
+            };
+          }
+          return data;
         }
       } catch (err) {
-        console.warn('Error fetching current session:', err);
+        console.warn(`Error fetching session ${sess}:`, err);
       }
       return null;
     };
 
     // 1. Action: start or restart
     if (action === 'start' || action === 'restart') {
-      const existingSession = await fetchCurrentSession();
+      const existingSession = await fetchCurrentSession(sessionName);
 
       // If action is explicit restart, or session is currently FAILED or STOPPED
       if (action === 'restart' || existingSession?.status === 'FAILED' || existingSession?.status === 'STOPPED') {
-        const restartRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/restart`, {
+        const restartRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/restart`, {
           method: 'POST',
           headers: {
             'X-Api-Key': WAHA_API_KEY,
@@ -97,7 +149,7 @@ Deno.serve(async (req: Request) => {
               'Content-Type': 'application/json',
               'X-Api-Key': WAHA_API_KEY,
             },
-            body: JSON.stringify({ name: 'default' }),
+            body: JSON.stringify({ name: sessionName }),
           });
         } catch (err) {
           console.warn('Session create warning:', err);
@@ -105,7 +157,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // Start session
-      const startRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/start`, {
+      const startRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/start`, {
         method: 'POST',
         headers: {
           'X-Api-Key': WAHA_API_KEY,
@@ -116,7 +168,7 @@ Deno.serve(async (req: Request) => {
 
       // If start resulted in FAILED or error, fallback to restart
       if (!startRes.ok || resData?.status === 'FAILED') {
-        const fallbackRestart = await fetch(`${WAHA_BASE_URL}/api/sessions/default/restart`, {
+        const fallbackRestart = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/restart`, {
           method: 'POST',
           headers: {
             'X-Api-Key': WAHA_API_KEY,
@@ -143,16 +195,54 @@ Deno.serve(async (req: Request) => {
 
     // 2. Action: status
     if (action === 'status') {
-      const statusRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default`, {
+      const statusRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}`, {
         method: 'GET',
         headers: {
           'X-Api-Key': WAHA_API_KEY,
         },
       });
 
-      const statusBody = await statusRes.text();
-      return new Response(statusBody, {
-        status: statusRes.status,
+      if (!statusRes.ok) {
+        // Jika sesi belum dibuat di WAHA, kembalikan STOPPED
+        return new Response(
+          JSON.stringify({
+            name: sessionName,
+            status: 'STOPPED',
+            me: null,
+            message: 'Sesi belum diaktifkan. Klik tombol untuk mulai.'
+          }),
+          {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      const statusData = await statusRes.json().catch(() => ({}));
+      // Filter proteksi nomor pemilik pertama
+      if (requestedUserId && requestedUserId !== PRIMARY_OWNER_ID && statusData.me?.id?.includes(PRIMARY_PHONE_PREFIX)) {
+        return new Response(
+          JSON.stringify({
+            name: sessionName,
+            status: 'STOPPED',
+            me: null,
+            message: 'Nomor WhatsApp belum terhubung pada akun ini.'
+          }),
+          {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      return new Response(JSON.stringify(statusData), {
+        status: 200,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',
@@ -162,7 +252,7 @@ Deno.serve(async (req: Request) => {
 
     // 3. Action: qr
     if (action === 'qr') {
-      const qrRes = await fetch(`${WAHA_BASE_URL}/api/default/auth/qr?format=image`, {
+      const qrRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/auth/qr?format=image`, {
         method: 'GET',
         headers: {
           'X-Api-Key': WAHA_API_KEY,
@@ -193,7 +283,7 @@ Deno.serve(async (req: Request) => {
 
     // 4. Action: stop
     if (action === 'stop') {
-      const stopRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/stop`, {
+      const stopRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/stop`, {
         method: 'POST',
         headers: {
           'X-Api-Key': WAHA_API_KEY,
@@ -231,7 +321,7 @@ Deno.serve(async (req: Request) => {
 
       let wahaTargetUrl = `${WAHA_BASE_URL}/api/sendText`;
       let wahaPayload: any = {
-        session: 'default',
+        session: sessionName,
         chatId: chatId,
         text: messageText,
       };
@@ -239,7 +329,7 @@ Deno.serve(async (req: Request) => {
       if (fileUrl) {
         wahaTargetUrl = `${WAHA_BASE_URL}/api/sendFile`;
         wahaPayload = {
-          session: 'default',
+          session: sessionName,
           chatId: chatId,
           file: typeof fileUrl === 'string' ? { url: fileUrl } : fileUrl,
           caption: messageText,
@@ -281,7 +371,15 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const putRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default`, {
+      // Cegah akun lain menimpa session 'default' milik PRIMARY_OWNER_ID
+      if (sessionName === 'default' && requestedUserId && requestedUserId !== PRIMARY_OWNER_ID) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Anda tidak memiliki hak akses mengubah webhook sesi ini.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const putRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -303,6 +401,7 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           success: putRes.ok,
+          session: sessionName,
           webhookUrl,
           data: putData,
         }),
@@ -315,13 +414,14 @@ Deno.serve(async (req: Request) => {
 
     // 7. Action: getWebhook (Inspect current Inbound Webhook)
     if (action === 'getWebhook') {
-      const session = await fetchCurrentSession();
+      const session = await fetchCurrentSession(sessionName);
       const currentWebhooks = session?.config?.webhooks || [];
       const primaryUrl = currentWebhooks[0]?.url || '';
 
       return new Response(
         JSON.stringify({
           success: true,
+          session: sessionName,
           webhookUrl: primaryUrl,
           webhooks: currentWebhooks,
         }),

@@ -24,6 +24,7 @@ interface WahaConnectProps {
   functionUrl?: string;
   onStatusChange?: (status: string) => void;
   className?: string;
+  currentUserId?: string;
 }
 
 interface WahaSessionResponse {
@@ -40,12 +41,15 @@ interface WahaSessionResponse {
 }
 
 const DEFAULT_FUNCTION_URL = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy';
+const PRIMARY_OWNER_ID = 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
 
 export const WahaConnect: React.FC<WahaConnectProps> = ({
   functionUrl = DEFAULT_FUNCTION_URL,
   onStatusChange,
   className = '',
+  currentUserId: propUserId = '',
 }) => {
+  const [activeUserId, setActiveUserId] = useState<string>(propUserId);
   const [status, setStatus] = useState<string>('IDLE');
   const [sessionData, setSessionData] = useState<WahaSessionResponse | null>(null);
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
@@ -78,13 +82,30 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
   const isMountedRef = useRef<boolean>(true);
   const hasAutoRegisteredWebhookRef = useRef<boolean>(false);
 
+  // Ambil user ID aktif
+  useEffect(() => {
+    if (propUserId) {
+      setActiveUserId(propUserId);
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.id && isMountedRef.current) {
+          setActiveUserId(session.user.id);
+        }
+      });
+    }
+  }, [propUserId]);
+
   // Auto-register inbound webhook silently when WhatsApp is connected
   const registerWebhookSilently = useCallback(async (customUrl?: string) => {
     try {
+      let uid = activeUserId;
+      if (!uid && typeof window !== 'undefined') {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+      }
+
       let targetUrl = customUrl || webhookUrl;
       if (!targetUrl && typeof window !== 'undefined') {
-        const { data: { session } } = await supabase.auth.getSession();
-        const uid = session?.user?.id;
         targetUrl = uid 
           ? `${window.location.origin}/api/webhook/whatsapp?userId=${uid}`
           : `${window.location.origin}/api/webhook/whatsapp`;
@@ -94,7 +115,11 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       }
       if (!targetUrl) return;
 
-      const res = await fetch(`${functionUrl}?action=setWebhook`, {
+      const setUrl = uid
+        ? `${functionUrl}?action=setWebhook&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=setWebhook`;
+
+      const res = await fetch(setUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: targetUrl.trim() }),
@@ -112,7 +137,7 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     } catch (err) {
       console.warn('[AUTO-WEBHOOK NOTICE]', err);
     }
-  }, [functionUrl, webhookUrl]);
+  }, [functionUrl, webhookUrl, activeUserId]);
 
   // Auto set default webhook url based on current domain & user id, and load gemini key
   useEffect(() => {
@@ -154,10 +179,23 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     setQrImageUrl(null);
   };
 
-  // Fetch status and QR code if needed
+  // Fetch status and QR code if needed with user isolation
   const checkStatus = useCallback(async (): Promise<string | null> => {
     try {
-      const res = await fetch(`${functionUrl}?action=status`, {
+      let uid = activeUserId;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+        if (uid && isMountedRef.current) {
+          setActiveUserId(uid);
+        }
+      }
+
+      const statusUrl = uid
+        ? `${functionUrl}?action=status&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=status`;
+
+      const res = await fetch(statusUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
@@ -175,6 +213,16 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       const data: WahaSessionResponse = await res.json();
       if (!isMountedRef.current) return null;
 
+      // Proteksi kepemilikan nomor 6285347360359: Hanya untuk akun pertama
+      const isPrimaryOwner = uid === PRIMARY_OWNER_ID;
+      if (!isPrimaryOwner && data.me?.id?.includes('6285347360359')) {
+        setStatus('STOPPED');
+        setSessionData(null);
+        clearQrImage();
+        onStatusChange?.('STOPPED');
+        return 'STOPPED';
+      }
+
       const currentStatus = data.status || 'UNKNOWN';
       setStatus(currentStatus);
       setSessionData(data);
@@ -185,7 +233,10 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       // If status is SCAN_QR_CODE, fetch latest QR image
       if (currentStatus === 'SCAN_QR_CODE') {
         try {
-          const qrRes = await fetch(`${functionUrl}?action=qr&_t=${Date.now()}`);
+          const qrUrl = uid
+            ? `${functionUrl}?action=qr&userId=${encodeURIComponent(uid)}&_t=${Date.now()}`
+            : `${functionUrl}?action=qr&_t=${Date.now()}`;
+          const qrRes = await fetch(qrUrl);
           if (qrRes.ok) {
             const blob = await qrRes.blob();
             if (isMountedRef.current) {
@@ -219,7 +270,7 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       }
       return null;
     }
-  }, [functionUrl, onStatusChange, registerWebhookSilently]);
+  }, [functionUrl, onStatusChange, registerWebhookSilently, activeUserId]);
 
   // Handle Start / Restart Connection
   const handleStart = async (forceRestart = false) => {
@@ -230,8 +281,18 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     setStatus('STARTING');
 
     try {
+      let uid = activeUserId;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+      }
+
       const actionName = (forceRestart || status === 'FAILED') ? 'restart' : 'start';
-      const res = await fetch(`${functionUrl}?action=${actionName}`, {
+      const startUrl = uid
+        ? `${functionUrl}?action=${actionName}&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=${actionName}`;
+
+      const res = await fetch(startUrl, {
         method: 'POST',
       });
 
@@ -261,7 +322,17 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     setWebhookSuccess(false);
 
     try {
-      const res = await fetch(`${functionUrl}?action=setWebhook`, {
+      let uid = activeUserId;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+      }
+
+      const saveUrl = uid
+        ? `${functionUrl}?action=setWebhook&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=setWebhook`;
+
+      const res = await fetch(saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: webhookUrl.trim() }),
@@ -314,7 +385,17 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     setTestResult(null);
 
     try {
-      const res = await fetch(`${functionUrl}?action=sendText`, {
+      let uid = activeUserId;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+      }
+
+      const sendUrl = uid
+        ? `${functionUrl}?action=sendText&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=sendText`;
+
+      const res = await fetch(sendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

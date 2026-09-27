@@ -43,26 +43,50 @@ export default function WebhookStatusBar({
     setIsPinging(true);
     const start = performance.now();
     try {
-      // 1. Cek status WAHA via Supabase Edge Function Proxy
+      // 1. Cek status WAHA via Supabase Edge Function Proxy dengan isolasi user
       let currentWahaStatus = 'UNKNOWN';
       try {
-        const wahaRes = await fetch(`${WAHA_PROXY_URL}?action=status`, {
+        let activeUid = currentUserId;
+        if (!activeUid) {
+          const { data: { session } } = await supabase.auth.getSession();
+          activeUid = session?.user?.id || '';
+        }
+
+        const urlWithUser = activeUid 
+          ? `${WAHA_PROXY_URL}?action=status&userId=${encodeURIComponent(activeUid)}`
+          : `${WAHA_PROXY_URL}?action=status`;
+
+        const wahaRes = await fetch(urlWithUser, {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
         });
+
         if (wahaRes.ok) {
           const wahaData = await wahaRes.json();
-          currentWahaStatus = wahaData.status || 'UNKNOWN';
-          setWahaStatus(currentWahaStatus);
-          if (wahaData.me) {
-            setWahaAccount(wahaData.me);
+          const isPrimaryOwner = activeUid === 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
+
+          // Proteksi ketat: nomor 6285347360359 HANYA untuk akun pertama
+          if (!isPrimaryOwner && wahaData.me?.id?.includes('6285347360359')) {
+            currentWahaStatus = 'STOPPED';
+            setWahaStatus('STOPPED');
+            setWahaAccount(null);
+          } else {
+            currentWahaStatus = wahaData.status || 'UNKNOWN';
+            setWahaStatus(currentWahaStatus);
+            if (wahaData.me && (isPrimaryOwner || !wahaData.me?.id?.includes('6285347360359'))) {
+              setWahaAccount(wahaData.me);
+            } else {
+              setWahaAccount(null);
+            }
           }
         } else {
           setWahaStatus('FAILED');
+          setWahaAccount(null);
         }
       } catch (wahaErr) {
         console.warn('Gagal cek status WAHA:', wahaErr);
         setWahaStatus('FAILED');
+        setWahaAccount(null);
       }
 
       // 2. Fetch actual received verifications count from Supabase

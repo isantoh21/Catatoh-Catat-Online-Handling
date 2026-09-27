@@ -134,10 +134,21 @@ export async function sendWhatsAppMessage(payload: {
   to: string;
   message: string;
   file?: string;
+  userId?: string;
 }): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    // 1. Prioritaskan Supabase Edge Function WAHA Proxy
-    const wahaProxyUrl = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy?action=sendText';
+    let activeUid = payload.userId;
+    if (!activeUid) {
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUid = session?.user?.id;
+    }
+
+    // 1. Prioritaskan Supabase Edge Function WAHA Proxy dengan isolasi user
+    const proxyBase = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy?action=sendText';
+    const wahaProxyUrl = activeUid 
+      ? `${proxyBase}&userId=${encodeURIComponent(activeUid)}` 
+      : proxyBase;
+
     try {
       const res = await fetch(wahaProxyUrl, {
         method: 'POST',
