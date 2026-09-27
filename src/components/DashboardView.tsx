@@ -1,12 +1,16 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
-import { Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, Building2, Copy, MessageSquare } from 'lucide-react';
+import { 
+  Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, 
+  CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, 
+  Building2, Copy, MessageSquare, Play, Pause, AlertTriangle, AlertCircle, XCircle, 
+  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert
+} from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal from './PaymentModerationModal';
-import { getPaymentVerifications } from '../lib/whatsappGateway';
+import { getPaymentVerifications, sendWhatsAppMessage } from '../lib/whatsappGateway';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -37,6 +41,35 @@ export default function DashboardView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [reminderBulan, setReminderBulan] = useState('');
+
+  // Batch Reminder WhatsApp (WAHA) State
+  const [selectedReminderIds, setSelectedReminderIds] = useState<string[]>([]);
+  const [reminderFilterKelompok, setReminderFilterKelompok] = useState<string>('Semua Kelompok');
+  const [reminderSearchQuery, setReminderSearchQuery] = useState<string>('');
+  const [safetyIntervalPreset, setSafetyIntervalPreset] = useState<'safe' | 'standard' | 'relaxed' | 'custom'>('safe');
+  const [customMinDelay, setCustomMinDelay] = useState<number>(10);
+  const [customMaxDelay, setCustomMaxDelay] = useState<number>(20);
+  const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
+  const [isBatchPaused, setIsBatchPaused] = useState<boolean>(false);
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+    successCount: number;
+    failCount: number;
+    currentStudentName: string;
+  }>({ current: 0, total: 0, successCount: 0, failCount: 0, currentStudentName: '' });
+  const [batchCountdown, setBatchCountdown] = useState<number>(0);
+  const [batchCountdownTargetName, setBatchCountdownTargetName] = useState<string>('');
+  const [studentSendStatuses, setStudentSendStatuses] = useState<Record<string, {
+    status: 'idle' | 'sending' | 'success' | 'failed';
+    error?: string;
+    timestamp?: string;
+  }>>({});
+  const [sendingSingleId, setSendingSingleId] = useState<string | null>(null);
+
+  const batchCancelRef = useRef<boolean>(false);
+  const batchPauseRef = useRef<boolean>(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedModalBulan, setSelectedModalBulan] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
@@ -526,20 +559,298 @@ export default function DashboardView() {
   );
 
 
-  const belumLunasStudents = baseFilteredStudents.filter(s => 
-    !payments.some(p => p.student_id === s.id && p.bulan === (isReminderModalOpen ? reminderBulan : selectedBulan))
+  // Reminder data filtering
+  const targetReminderBulan = reminderBulan || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
+  
+  // Seluruh siswa yang belum lunas pada bulan reminder yang dipilih
+  const allBelumLunasStudents = students.filter(s => 
+    !payments.some(p => p.student_id === s.id && p.bulan === targetReminderBulan)
   );
 
-  const handleKirimWA = (student: any) => {
+  // Filter khusus di dalam Reminder Modal (pencarian nama/WA & filter kelompok)
+  const reminderFilteredStudents = allBelumLunasStudents.filter(s => {
+    const matchKelompok = reminderFilterKelompok === 'Semua Kelompok' || s.kelompok === reminderFilterKelompok;
+    const matchSearch = !reminderSearchQuery.trim() || 
+      s.nama_lengkap.toLowerCase().includes(reminderSearchQuery.toLowerCase()) ||
+      (s.nomor_whatsapp && s.nomor_whatsapp.includes(reminderSearchQuery));
+    return matchKelompok && matchSearch;
+  });
+
+  // Buka modal reminder dan inisialisasi checklist default
+  const handleOpenReminderModal = (bulanToUse?: string) => {
+    const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
+    setReminderBulan(target);
+    const unpayed = students.filter(s => 
+      !payments.some(p => p.student_id === s.id && p.bulan === target)
+    );
+    // Centang default semua siswa yang nomor WA-nya valid
+    const withValidPhone = unpayed
+      .filter(s => s.nomor_whatsapp && s.nomor_whatsapp.trim().length >= 8)
+      .map(s => s.id);
+    setSelectedReminderIds(withValidPhone);
+    setIsReminderModalOpen(true);
+  };
+
+  // Tutup modal dengan peringatan jika batch sedang berjalan
+  const handleCloseReminderModal = () => {
+    if (isBatchRunning) {
+      if (window.confirm('Pengiriman pesan massal masih berlangsung. Anda yakin ingin membatalkan dan keluar?')) {
+        handleStopBatch();
+        setIsReminderModalOpen(false);
+      }
+    } else {
+      setIsReminderModalOpen(false);
+    }
+  };
+
+  // Helper pemformat template pesan reminder
+  const formatReminderMessage = (student: any) => {
     const parentSppLink = `https://${getSchoolParentUrl()}`;
-    let message = waTemplate
+    return waTemplate
       .replace(/\[NAMA_SISWA\]/g, student.nama_lengkap)
-      .replace(/\[BULAN\]/g, reminderBulan || selectedBulan)
+      .replace(/\[BULAN\]/g, targetReminderBulan)
       .replace(/\[TAHUN\]/g, selectedTahun)
       .replace(/\[NOMINAL\]/g, "Rp" + (student.nominal_spp ? student.nominal_spp.toLocaleString('id-ID') : '0'))
       .replace(/\[LINK_SPP\]/g, parentSppLink);
-    const url = `https://wa.me/${student.nomor_whatsapp}?text=${encodeURIComponent(message)}`;
+  };
+
+  // Fallback: Kirim manual via link wa.me
+  const handleKirimManualWA = (student: any) => {
+    const message = formatReminderMessage(student);
+    const cleanPhone = (student.nomor_whatsapp || '').replace(/[^0-9]/g, '');
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
+  };
+
+  // Kirim satuan langsung via WAHA WhatsApp Gateway
+  const handleKirimSingleWAHA = async (student: any) => {
+    if (!student.nomor_whatsapp || student.nomor_whatsapp.trim().length < 8) {
+      alert(`Nomor WhatsApp untuk ${student.nama_lengkap} belum valid atau belum terdaftar.`);
+      return;
+    }
+
+    setSendingSingleId(student.id);
+    setStudentSendStatuses(prev => ({
+      ...prev,
+      [student.id]: { status: 'sending' }
+    }));
+
+    try {
+      const message = formatReminderMessage(student);
+      const res = await sendWhatsAppMessage({
+        to: student.nomor_whatsapp,
+        message: message,
+        userId: currentUserId
+      });
+
+      if (res.success) {
+        setStudentSendStatuses(prev => ({
+          ...prev,
+          [student.id]: { 
+            status: 'success', 
+            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) 
+          }
+        }));
+        await logActivity(
+          'Kirim Reminder WA',
+          `Kirim reminder SPP ${targetReminderBulan} ke ${student.nama_lengkap} (${student.nomor_whatsapp}) via WAHA`,
+          'info'
+        );
+      } else {
+        setStudentSendStatuses(prev => ({
+          ...prev,
+          [student.id]: { status: 'failed', error: res.error || 'Gagal mengirim via WAHA' }
+        }));
+      }
+    } catch (err: any) {
+      setStudentSendStatuses(prev => ({
+        ...prev,
+        [student.id]: { status: 'failed', error: err.message || 'Error koneksi gateway' }
+      }));
+    } finally {
+      setSendingSingleId(null);
+    }
+  };
+
+  // Hitung rentang delay teraman untuk menghindari pemblokiran Meta/WhatsApp
+  const getDelayRange = () => {
+    switch (safetyIntervalPreset) {
+      case 'relaxed':
+        return { min: 20, max: 35 };
+      case 'standard':
+        return { min: 8, max: 15 };
+      case 'custom':
+        return { 
+          min: Math.max(6, Number(customMinDelay) || 10), 
+          max: Math.max(Number(customMinDelay) || 10, Number(customMaxDelay) || 20) 
+        };
+      case 'safe':
+      default:
+        // Default teraman untuk WAHA unofficial: 10 hingga 20 detik acak
+        return { min: 10, max: 20 };
+    }
+  };
+
+  // Countdown timer sleep yang responsif terhadap Pause & Stop
+  const sleepWithCountdown = async (seconds: number, targetName: string) => {
+    setBatchCountdown(seconds);
+    setBatchCountdownTargetName(targetName);
+    
+    for (let s = seconds; s > 0; s--) {
+      if (batchCancelRef.current) break;
+      
+      // Tunggu selagi pause aktif
+      while (batchPauseRef.current && !batchCancelRef.current) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+      
+      setBatchCountdown(s);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    
+    setBatchCountdown(0);
+    setBatchCountdownTargetName('');
+  };
+
+  // Eksekusi pengiriman batch / massal via WAHA dengan interval acak anti-banned
+  const handleStartBatchSend = async () => {
+    const targetStudents = reminderFilteredStudents.filter(s => selectedReminderIds.includes(s.id));
+    if (targetStudents.length === 0) {
+      alert('Silakan pilih minimal 1 siswa dengan mencentang kotak di daftar.');
+      return;
+    }
+
+    batchCancelRef.current = false;
+    batchPauseRef.current = false;
+    setIsBatchRunning(true);
+    setIsBatchPaused(false);
+
+    const { min, max } = getDelayRange();
+    let successCount = 0;
+    let failCount = 0;
+
+    setBatchProgress({
+      current: 0,
+      total: targetStudents.length,
+      successCount: 0,
+      failCount: 0,
+      currentStudentName: targetStudents[0]?.nama_lengkap || ''
+    });
+
+    for (let i = 0; i < targetStudents.length; i++) {
+      if (batchCancelRef.current) break;
+
+      // Tunggu jika sedang di-pause
+      while (batchPauseRef.current && !batchCancelRef.current) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+
+      if (batchCancelRef.current) break;
+
+      const student = targetStudents[i];
+      setBatchProgress(prev => ({
+        ...prev,
+        current: i + 1,
+        currentStudentName: student.nama_lengkap
+      }));
+
+      // Tandai baris siswa sedang mengirim
+      setStudentSendStatuses(prev => ({
+        ...prev,
+        [student.id]: { status: 'sending' }
+      }));
+
+      try {
+        if (!student.nomor_whatsapp || student.nomor_whatsapp.trim().length < 8) {
+          throw new Error('Nomor WhatsApp belum valid');
+        }
+
+        const message = formatReminderMessage(student);
+        const res = await sendWhatsAppMessage({
+          to: student.nomor_whatsapp,
+          message: message,
+          userId: currentUserId
+        });
+
+        if (res.success) {
+          successCount++;
+          setStudentSendStatuses(prev => ({
+            ...prev,
+            [student.id]: { 
+              status: 'success', 
+              timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) 
+            }
+          }));
+          setBatchProgress(prev => ({ ...prev, successCount }));
+        } else {
+          failCount++;
+          setStudentSendStatuses(prev => ({
+            ...prev,
+            [student.id]: { status: 'failed', error: res.error || 'Gagal mengirim via WAHA' }
+          }));
+          setBatchProgress(prev => ({ ...prev, failCount }));
+        }
+      } catch (err: any) {
+        failCount++;
+        setStudentSendStatuses(prev => ({
+          ...prev,
+          [student.id]: { status: 'failed', error: err.message || 'Error pengiriman' }
+        }));
+        setBatchProgress(prev => ({ ...prev, failCount }));
+      }
+
+      // Berikan jeda acak aman (random jitter) sebelum pesan berikutnya
+      if (i < targetStudents.length - 1 && !batchCancelRef.current) {
+        const nextStudent = targetStudents[i + 1];
+        const randomDelay = Math.floor(Math.random() * (max - min + 1)) + min;
+        await sleepWithCountdown(randomDelay, nextStudent.nama_lengkap);
+      }
+    }
+
+    await logActivity(
+      'Kirim Reminder WA Massal',
+      `Kirim reminder SPP massal ${targetReminderBulan}: ${successCount} sukses, ${failCount} gagal dari total ${targetStudents.length} siswa.`,
+      successCount > 0 ? 'info' : 'warning'
+    );
+
+    setIsBatchRunning(false);
+    setIsBatchPaused(false);
+    setBatchCountdown(0);
+  };
+
+  const handleTogglePauseBatch = () => {
+    if (isBatchPaused) {
+      batchPauseRef.current = false;
+      setIsBatchPaused(false);
+    } else {
+      batchPauseRef.current = true;
+      setIsBatchPaused(true);
+    }
+  };
+
+  const handleStopBatch = () => {
+    batchCancelRef.current = true;
+    batchPauseRef.current = false;
+    setIsBatchPaused(false);
+    setIsBatchRunning(false);
+    setBatchCountdown(0);
+  };
+
+  const handleToggleSelectAllReminder = () => {
+    const allIds = reminderFilteredStudents.map(s => s.id);
+    const areAllSelected = allIds.length > 0 && allIds.every(id => selectedReminderIds.includes(id));
+    if (areAllSelected) {
+      setSelectedReminderIds(prev => prev.filter(id => !allIds.includes(id)));
+    } else {
+      setSelectedReminderIds(prev => Array.from(new Set([...prev, ...allIds])));
+    }
+  };
+
+  const handleSelectOnlyUnsent = () => {
+    const unsentIds = reminderFilteredStudents
+      .filter(s => studentSendStatuses[s.id]?.status !== 'success')
+      .map(s => s.id);
+    setSelectedReminderIds(unsentIds);
   };
 
   return (
@@ -612,11 +923,13 @@ export default function DashboardView() {
             <span>Template WA</span>
           </button>
           <button 
-            onClick={() => { setReminderBulan(selectedBulan === 'Semua Bulan' ? 'Januari' : selectedBulan); setIsReminderModalOpen(true); }}
+            onClick={() => handleOpenReminderModal()}
+            id="btnKirimReminderWaha"
             className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+            title="Kirim reminder SPP massal atau satuan via WAHA WhatsApp Gateway"
           >
             <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span>Kirim Reminder</span>
+            <span>Kirim Reminder (WAHA)</span>
           </button>
         </div>
       </div>
@@ -1023,60 +1336,507 @@ export default function DashboardView() {
           </div>
         </div>
       )}
-      {/* Reminder Modal */}
+      {/* WAHA Batch & Single Reminder Modal */}
       {isReminderModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/80">
               <div className="flex items-center gap-3">
-                <h3 className="text-sm font-bold text-slate-800">Kirim Reminder WA</h3>
-                <select 
-                  value={reminderBulan}
-                  onChange={e => setReminderBulan(e.target.value)}
-                  className="px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white font-semibold text-slate-700"
-                >
-                  {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-              <button onClick={() => setIsReminderModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-0 max-h-[60vh] overflow-y-auto">
-              {belumLunasStudents.length === 0 ? (
-                <div className="p-8 text-center">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                  <p className="text-sm font-bold text-slate-800">Semua Lunas!</p>
-                  <p className="text-xs text-slate-500 mt-1">Tidak ada tagihan yang belum dibayar bulan ini.</p>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-200 shrink-0">
+                  <MessageCircle className="w-5 h-5" />
                 </div>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {belumLunasStudents.map(student => (
-                    <li key={student.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
-                          {student.nama_lengkap.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-800 leading-tight">{student.nama_lengkap}</p>
-                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">{student.nomor_whatsapp}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleKirimWA(student)}
-                        className="px-3 py-1.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 hover:text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" /> Kirim WA
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-800">Kirim Reminder WhatsApp (WAHA)</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                      Anti-Ban Proteksi
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Kirim pengingat SPP otomatis ke orang tua langsung melalui WAHA Gateway.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-sm">
+                  <span className="text-xs text-slate-500 font-medium">Bulan:</span>
+                  <select 
+                    value={targetReminderBulan}
+                    disabled={isBatchRunning}
+                    onChange={e => handleOpenReminderModal(e.target.value)}
+                    className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent cursor-pointer disabled:opacity-50"
+                  >
+                    {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                <button 
+                  onClick={handleCloseReminderModal}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  title="Tutup"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-              <button onClick={() => setIsReminderModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors">
-                Tutup
-              </button>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Box Pengaturan Interval Keamanan Anti-Blokir WAHA */}
+              <div className="bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-slate-50 p-4 rounded-xl border border-emerald-200/80 shadow-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        Interval Keamanan Anti-Blokir Meta
+                        <span className="text-[10px] font-normal text-emerald-700 bg-emerald-100/80 px-2 py-0.2 rounded-md">
+                          Wajib untuk WAHA Unofficial
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                        WhatsApp unofficial (WAHA) rentan diblokir jika mengirim pesan berturut-turut terlalu cepat. Kami menerapkan <span className="font-semibold text-emerald-800">jeda acak dinamis (random jitter)</span> agar menyerupai ketikan manusia asli.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-3">
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={() => setSafetyIntervalPreset('safe')}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                      safetyIntervalPreset === 'safe'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">🛡️ Sangat Aman</span>
+                      {safetyIntervalPreset === 'safe' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${safetyIntervalPreset === 'safe' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      10 - 20 detik (Acak)
+                    </p>
+                    <span className={`text-[9px] block mt-1 font-medium ${safetyIntervalPreset === 'safe' ? 'text-emerald-200' : 'text-emerald-600'}`}>
+                      Rekomendasi Utama
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={() => setSafetyIntervalPreset('relaxed')}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                      safetyIntervalPreset === 'relaxed'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">🧘 Ekstra Santai</span>
+                      {safetyIntervalPreset === 'relaxed' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${safetyIntervalPreset === 'relaxed' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      20 - 35 detik (Acak)
+                    </p>
+                    <span className={`text-[9px] block mt-1 font-medium ${safetyIntervalPreset === 'relaxed' ? 'text-emerald-200' : 'text-slate-400'}`}>
+                      Untuk akun baru / blast banyak
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={() => setSafetyIntervalPreset('standard')}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                      safetyIntervalPreset === 'standard'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">⚡ Standar</span>
+                      {safetyIntervalPreset === 'standard' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${safetyIntervalPreset === 'standard' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      8 - 15 detik (Acak)
+                    </p>
+                    <span className={`text-[9px] block mt-1 font-medium ${safetyIntervalPreset === 'standard' ? 'text-emerald-200' : 'text-slate-400'}`}>
+                      Akun yang sudah sering chat
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={() => setSafetyIntervalPreset('custom')}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                      safetyIntervalPreset === 'custom'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">⚙️ Kustom</span>
+                      {safetyIntervalPreset === 'custom' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${safetyIntervalPreset === 'custom' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                      {customMinDelay} - {customMaxDelay} detik
+                    </p>
+                    <span className={`text-[9px] block mt-1 font-medium ${safetyIntervalPreset === 'custom' ? 'text-emerald-200' : 'text-slate-400'}`}>
+                      Tentukan rentang sendiri
+                    </span>
+                  </button>
+                </div>
+
+                {/* Input Kustom (jika preset custom aktif) */}
+                {safetyIntervalPreset === 'custom' && (
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-emerald-200/60 bg-white/70 p-2.5 rounded-lg">
+                    <span className="text-xs text-slate-600 font-medium">Rentang Detik Acak:</span>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="number" 
+                        min="6"
+                        max="60"
+                        disabled={isBatchRunning}
+                        value={customMinDelay}
+                        onChange={e => setCustomMinDelay(Math.max(6, Number(e.target.value)))}
+                        className="w-16 px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-center focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs text-slate-400">s/d</span>
+                      <input 
+                        type="number" 
+                        min={customMinDelay || 6}
+                        max="120"
+                        disabled={isBatchRunning}
+                        value={customMaxDelay}
+                        onChange={e => setCustomMaxDelay(Math.max(Number(customMinDelay), Number(e.target.value)))}
+                        className="w-16 px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-center focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs text-slate-500 font-medium">detik</span>
+                    </div>
+                    <span className="text-[10px] text-amber-700 ml-auto bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      Minimal 6 detik untuk mencegah banned instan.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Panel Status Live Progress Pengiriman Batch */}
+              {(isBatchRunning || batchProgress.total > 0) && (
+                <div className="bg-slate-900 text-white p-4 rounded-xl shadow-lg border border-slate-800 space-y-3 animate-in fade-in duration-300">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {isBatchRunning ? (
+                        <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                      <span className="text-xs font-bold">
+                        {isBatchRunning ? 'Sedang Mengirim Pesan Massal...' : 'Pengiriman Massal Selesai'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-slate-300">
+                        {batchProgress.current} dari {batchProgress.total} Siswa
+                      </span>
+                    </div>
+
+                    {/* Kontrol Pause / Stop */}
+                    {isBatchRunning && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTogglePauseBatch}
+                          className={`px-2.5 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                            isBatchPaused 
+                              ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' 
+                              : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                          }`}
+                        >
+                          {isBatchPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+                          {isBatchPaused ? 'Lanjutkan' : 'Jeda'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleStopBatch}
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <StopCircle className="w-3.5 h-3.5" />
+                          Hentikan
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2.5 rounded-full transition-all duration-300"
+                      style={{ 
+                        width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` 
+                      }}
+                    />
+                  </div>
+
+                  {/* Stats Counter & Countdown Jeda */}
+                  <div className="flex flex-wrap items-center justify-between text-xs gap-2 pt-1 border-t border-slate-800/80">
+                    <div className="flex items-center gap-4 text-[11px]">
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> {batchProgress.successCount} Berhasil
+                      </span>
+                      <span className="text-rose-400 flex items-center gap-1">
+                        <XCircle className="w-3.5 h-3.5" /> {batchProgress.failCount} Gagal
+                      </span>
+                      <span className="text-slate-400">
+                        Sisa: {Math.max(0, batchProgress.total - batchProgress.current)}
+                      </span>
+                    </div>
+
+                    {/* Countdown Banner */}
+                    {batchCountdown > 0 && isBatchRunning && (
+                      <div className="flex items-center gap-1.5 text-amber-300 font-mono text-[11px] animate-pulse">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Jeda Aman: {batchCountdown}s sebelum ke &quot;{batchCountdownTargetName}&quot;</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Toolbar Pencarian & Filter List */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  <div className="relative min-w-[200px] flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder="Cari nama atau nomor WA..."
+                      value={reminderSearchQuery}
+                      onChange={e => setReminderSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <select
+                    value={reminderFilterKelompok}
+                    onChange={e => setReminderFilterKelompok(e.target.value)}
+                    className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none bg-white text-slate-700 font-medium"
+                  >
+                    <option value="Semua Kelompok">Semua Kelompok</option>
+                    {uniqueKelompokList.map(k => (
+                      <option key={k as string} value={k as string}>{k as string}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Seleksi Tombol */}
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={handleToggleSelectAllReminder}
+                    className="px-2.5 py-1 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {reminderFilteredStudents.length > 0 && reminderFilteredStudents.every(s => selectedReminderIds.includes(s.id))
+                      ? 'Batal Pilih Semua'
+                      : `Pilih Semua (${reminderFilteredStudents.length})`
+                    }
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBatchRunning}
+                    onClick={handleSelectOnlyUnsent}
+                    className="px-2.5 py-1 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Pilih yg Belum Terkirim
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Header Baris */}
+              <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                <span>
+                  Menampilkan <strong className="text-slate-800">{reminderFilteredStudents.length}</strong> siswa belum lunas bulan <strong>{targetReminderBulan}</strong>
+                </span>
+                <span>
+                  <strong className="text-emerald-700">{selectedReminderIds.length}</strong> siswa terpilih untuk batch
+                </span>
+              </div>
+
+              {/* Daftar Siswa */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                {reminderFilteredStudents.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                    <p className="text-sm font-bold text-slate-800">Tidak ada tagihan yang belum lunas!</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Semua siswa pada filter ini sudah tercatat lunas untuk bulan {targetReminderBulan}.</p>
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-slate-100 max-h-[38vh] overflow-y-auto">
+                    {reminderFilteredStudents.map(student => {
+                      const isSelected = selectedReminderIds.includes(student.id);
+                      const statusObj = studentSendStatuses[student.id];
+                      const isSendingThis = sendingSingleId === student.id || (isBatchRunning && statusObj?.status === 'sending');
+                      const hasPhone = student.nomor_whatsapp && student.nomor_whatsapp.trim().length >= 8;
+
+                      return (
+                        <li 
+                          key={student.id} 
+                          className={`p-3 sm:p-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 transition-colors ${
+                            isSelected ? 'bg-indigo-50/20' : 'hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-[200px]">
+                            {/* Checkbox */}
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isBatchRunning}
+                              onChange={() => {
+                                setSelectedReminderIds(prev => 
+                                  prev.includes(student.id) 
+                                    ? prev.filter(id => id !== student.id)
+                                    : [...prev, student.id]
+                                );
+                              }}
+                              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer disabled:opacity-50"
+                            />
+
+                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                              {student.nama_lengkap.charAt(0).toUpperCase()}
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-slate-800 leading-tight">
+                                  {student.nama_lengkap}
+                                </p>
+                                {student.kelompok && (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                    {student.kelompok}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {hasPhone ? (
+                                  <span className="text-[11px] text-slate-500 font-mono">
+                                    {student.nomor_whatsapp}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                    Nomor WA Belum Ada
+                                  </span>
+                                )}
+                                <span className="text-[11px] text-slate-400">•</span>
+                                <span className="text-[11px] font-semibold text-slate-700">
+                                  Rp{(student.nominal_spp || 100000).toLocaleString('id-ID')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Status Badge & Actions */}
+                          <div className="flex items-center gap-2 ml-auto">
+                            {/* Status Chip */}
+                            {statusObj?.status === 'sending' && (
+                              <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1.5 animate-pulse">
+                                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                Mengirim...
+                              </span>
+                            )}
+                            {statusObj?.status === 'success' && (
+                              <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Terkirim {statusObj.timestamp ? `(${statusObj.timestamp})` : ''}
+                              </span>
+                            )}
+                            {statusObj?.status === 'failed' && (
+                              <span 
+                                className="px-2 py-1 rounded-md text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 cursor-help"
+                                title={statusObj.error || 'Gagal mengirim'}
+                              >
+                                <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                Gagal
+                              </span>
+                            )}
+
+                            {/* Tombol Kirim Satuan via WAHA */}
+                            <button
+                              type="button"
+                              disabled={isBatchRunning || isSendingThis || !hasPhone}
+                              onClick={() => handleKirimSingleWAHA(student)}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                              title="Kirim reminder langsung sekarang via WAHA"
+                            >
+                              {isSendingThis ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Send className="w-3.5 h-3.5" />
+                              )}
+                              Kirim WAHA
+                            </button>
+
+                            {/* Tombol Fallback Manual WhatsApp Web */}
+                            <button
+                              type="button"
+                              disabled={isBatchRunning || !hasPhone}
+                              onClick={() => handleKirimManualWA(student)}
+                              className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+                              title="Fallback: Buka wa.me manual di tab baru jika dibutuhkan"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-slate-400" />
+                <span>Pesan menggunakan template SPP resmi yang telah disesuaikan.</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button"
+                  disabled={isBatchRunning}
+                  onClick={handleCloseReminderModal}
+                  className="px-4 py-2 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Tutup
+                </button>
+
+                {/* Tombol Utama Kirim Massal (WAHA) */}
+                <button
+                  type="button"
+                  disabled={isBatchRunning || selectedReminderIds.length === 0}
+                  onClick={handleStartBatchSend}
+                  className="px-4 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBatchRunning ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Sedang Mengirim Massal ({batchProgress.current}/{batchProgress.total})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Kirim Batch ke {selectedReminderIds.length} Siswa (WAHA)</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
