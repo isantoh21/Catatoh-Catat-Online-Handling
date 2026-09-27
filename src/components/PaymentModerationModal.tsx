@@ -134,12 +134,15 @@ export default function PaymentModerationModal({
 
       // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua via WAHA / Gateway
       const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
+      let waSuccess = false;
+      let waMsg = '';
+
       if (targetPhone) {
         const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${Number(item.nominal).toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
 
         try {
           const config = await getWhatsAppGatewayConfig(uid);
-          await sendWhatsAppMessage({
+          const sendRes = await sendWhatsAppMessage({
             apiUrl: config?.apiUrl,
             appkey: config?.appkey,
             authkey: config?.authkey,
@@ -147,7 +150,10 @@ export default function PaymentModerationModal({
             message: approvalMsg,
             userId: uid,
           });
-        } catch (waErr) {
+          waSuccess = sendRes.success;
+          if (!sendRes.success) waMsg = sendRes.error || '';
+        } catch (waErr: any) {
+          waMsg = waErr.message || '';
           console.warn('Gagal mengirim notifikasi WA approval:', waErr);
         }
       }
@@ -165,8 +171,53 @@ export default function PaymentModerationModal({
       if (onPaymentApproved) {
         onPaymentApproved();
       }
+
+      if (waSuccess) {
+        alert(`✅ Pembayaran ananda ${studentName} berhasil disetujui & dicatat LUNAS.\n\nPesan konfirmasi WhatsApp telah berhasil terkirim ke nomor ${targetPhone}.`);
+      } else if (targetPhone) {
+        alert(`ℹ️ Pembayaran ananda ${studentName} telah dicatat LUNAS.\n\nCatatan WA: ${waMsg || 'Pesan sedang dalam antrean pengiriman WAHA.'}`);
+      }
     } catch (err: any) {
       alert('Terjadi kesalahan saat memproses: ' + err.message);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // Handle Resend WhatsApp notification for approved item
+  const handleResendNotification = async (item: PaymentVerification) => {
+    setIsProcessingAction(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      const targetStudent = students.find(s => s.id === item.student_id);
+      const studentName = targetStudent?.nama_lengkap || item.student_name || 'Siswa';
+      const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
+
+      if (!targetPhone) {
+        alert('Nomor WhatsApp orang tua tidak ditemukan.');
+        return;
+      }
+
+      const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${Number(item.nominal).toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
+
+      const config = await getWhatsAppGatewayConfig(uid);
+      const sendRes = await sendWhatsAppMessage({
+        apiUrl: config?.apiUrl,
+        appkey: config?.appkey,
+        authkey: config?.authkey,
+        to: targetPhone,
+        message: approvalMsg,
+        userId: uid,
+      });
+
+      if (sendRes.success) {
+        alert(`✅ Pesan konfirmasi pelunasan berhasil dikirim ulang ke nomor ${targetPhone}.`);
+      } else {
+        alert(`⚠️ Gagal mengirim pesan WhatsApp: ${sendRes.error || 'Pastikan WhatsApp berstatus WORKING di Pengaturan Gateway.'}`);
+      }
+    } catch (e: any) {
+      alert('Terjadi kesalahan saat mengirim pesan: ' + e.message);
     } finally {
       setIsProcessingAction(false);
     }
@@ -894,7 +945,16 @@ export default function PaymentModerationModal({
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           Telah Disetujui & Masuk Catatan SPP
                         </span>
-                        <span className="text-[11px] font-normal text-slate-500">Notifikasi WA terkirim</span>
+                        <button
+                          type="button"
+                          disabled={isProcessingAction}
+                          onClick={() => handleResendNotification(item)}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                          title="Kirim ulang konfirmasi pelunasan ke nomor WhatsApp orang tua"
+                        >
+                          <Send className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Kirim Ulang WA</span>
+                        </button>
                       </div>
                     )}
                   </div>

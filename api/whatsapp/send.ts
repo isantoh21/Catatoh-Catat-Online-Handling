@@ -12,7 +12,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { to, message, file, appkey, authkey, apiUrl } = req.body || {};
+    const { to, message, file, appkey, authkey, apiUrl, userId } = req.body || {};
 
     if (!to || !message) {
       return res.status(400).json({
@@ -27,7 +27,9 @@ export default async function handler(req: any, res: any) {
 
     // Prioritas 1: Gunakan Supabase Edge Function WAHA Proxy
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://lzvrhtaewonmpsaiezai.supabase.co';
-    const wahaProxyUrl = `${supabaseUrl}/functions/v1/waha-proxy?action=sendText`;
+    const wahaProxyUrl = userId 
+      ? `${supabaseUrl}/functions/v1/waha-proxy?action=sendText&userId=${encodeURIComponent(userId)}`
+      : `${supabaseUrl}/functions/v1/waha-proxy?action=sendText`;
 
     try {
       const proxyRes = await fetch(wahaProxyUrl, {
