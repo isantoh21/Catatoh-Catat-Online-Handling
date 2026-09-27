@@ -132,18 +132,24 @@ export default function PaymentModerationModal({
         // Abaikan jika di static host seperti Vercel
       }
 
-      // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua
-      const config = await getWhatsAppGatewayConfig(uid);
-      if (config.appkey && config.authkey && item.sender_phone) {
-        const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${item.nominal.toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
-        
-        await sendWhatsAppMessage({
-          apiUrl: config.apiUrl,
-          appkey: config.appkey,
-          authkey: config.authkey,
-          to: item.sender_phone,
-          message: approvalMsg
-        });
+      // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua via WAHA / Gateway
+      const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
+      if (targetPhone) {
+        const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${Number(item.nominal).toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
+
+        try {
+          const config = await getWhatsAppGatewayConfig(uid);
+          await sendWhatsAppMessage({
+            apiUrl: config?.apiUrl,
+            appkey: config?.appkey,
+            authkey: config?.authkey,
+            to: targetPhone,
+            message: approvalMsg,
+            userId: uid,
+          });
+        } catch (waErr) {
+          console.warn('Gagal mengirim notifikasi WA approval:', waErr);
+        }
       }
 
       // 4. Update UI & log activity
@@ -203,18 +209,27 @@ export default function PaymentModerationModal({
         // Abaikan jika di static host seperti Vercel
       }
 
-      // 2. Kirim pesan penolakan sopan ke nomor orang tua
-      const config = await getWhatsAppGatewayConfig(uid);
-      if (config.appkey && config.authkey && rejectingItem.sender_phone) {
-        const rejectMsg = `*PEMBERITAHUAN VERIFIKASI SPP* ⚠️\n\nHalo Ayah/Bunda, mohon maaf bukti pembayaran SPP ananda *${rejectingItem.student_name || 'Siswa'}* belum dapat kami verifikasi dengan alasan:\n\n👉 *${finalReason}*\n\nMohon mengirimkan ulang foto struk transfer yang jelas atau konfirmasi kembali ke pihak tata usaha. Terima kasih.`;
+      // 2. Kirim pesan penolakan sopan ke nomor orang tua via WAHA / Gateway
+      const rejectTargetStudent = students.find(s => s.id === rejectingItem.student_id);
+      const targetPhone = rejectingItem.sender_phone || rejectTargetStudent?.nomor_whatsapp;
+      const rejectStudentName = rejectTargetStudent?.nama_lengkap || rejectingItem.student_name || 'Siswa';
 
-        await sendWhatsAppMessage({
-          apiUrl: config.apiUrl,
-          appkey: config.appkey,
-          authkey: config.authkey,
-          to: rejectingItem.sender_phone,
-          message: rejectMsg
-        });
+      if (targetPhone) {
+        const rejectMsg = `*PEMBERITAHUAN VERIFIKASI SPP* ⚠️\n\nHalo Ayah/Bunda, mohon maaf bukti pembayaran SPP ananda *${rejectStudentName}* belum dapat kami verifikasi dengan alasan:\n\n👉 *${finalReason}*\n\nMohon mengirimkan ulang foto struk transfer yang jelas atau konfirmasi kembali ke pihak tata usaha. Terima kasih.`;
+
+        try {
+          const config = await getWhatsAppGatewayConfig(uid);
+          await sendWhatsAppMessage({
+            apiUrl: config?.apiUrl,
+            appkey: config?.appkey,
+            authkey: config?.authkey,
+            to: targetPhone,
+            message: rejectMsg,
+            userId: uid,
+          });
+        } catch (waErr) {
+          console.warn('Gagal mengirim notifikasi WA reject:', waErr);
+        }
       }
 
       // 3. Update state
