@@ -86,12 +86,8 @@ export default function PaymentModerationModal({
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
 
-      // Validasi: pastikan siswa sudah dipilih sebelum disetujui
-      if (!item.student_id) {
-        alert('Silakan pilih nama siswa terlebih dahulu pada menu "Kaitkan Siswa" sebelum menyetujui pembayaran ini.');
-        setIsProcessingAction(false);
-        return;
-      }
+      // Jika student_id null (nomor tidak terdaftar di data siswa), tetap bisa disetujui
+      // Bukti bayar disimpan tanpa keterkaitan ke siswa tertentu
 
       // 1. Simpan ke tabel payments menggunakan tanggal & jam transfer asli dari struk
       const targetStudent = students.find(s => s.id === item.student_id);
@@ -415,8 +411,9 @@ export default function PaymentModerationModal({
     }
   };
 
-  // Filter items
+  // Filter items: HANYA tampilkan bukti bayar dari siswa yang terdaftar
   const filteredItems = verifications.filter(item => {
+    if (!item.student_id) return false;
     if (filterTab !== 'all' && item.status !== filterTab) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -428,7 +425,7 @@ export default function PaymentModerationModal({
     return true;
   });
 
-  const pendingCount = verifications.filter(v => v.status === 'pending').length;
+  const pendingCount = verifications.filter(v => v.status === 'pending' && Boolean(v.student_id)).length;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-200">
@@ -691,28 +688,20 @@ export default function PaymentModerationModal({
                           </div>
                         </div>
 
-                        {/* Matched vs Selector & Delete Button */}
+                        {/* Student match badge & Delete button */}
                         <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2">
-                          {item.status === 'pending' ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-semibold text-slate-500">Kaitkan Siswa:</span>
-                              <select
-                                value={item.student_id || ''}
-                                onChange={e => handleUpdateItem(item.id, 'student_id', e.target.value)}
-                                className="text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700"
-                              >
-                                <option value="">-- Pilih Nama Siswa --</option>
-                                {students.map(s => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.nama_lengkap} ({s.kelompok})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                          {item.student_id ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
                               <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              {item.student_name}
+                              <span>{item.student_name || 'Siswa Terdaftar'}</span>
+                              {item.student_kelompok && item.student_kelompok !== '-' && (
+                                <span className="text-emerald-600 font-medium">({item.student_kelompok})</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Nomor tidak terdaftar
                             </span>
                           )}
 

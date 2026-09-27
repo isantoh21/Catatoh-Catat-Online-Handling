@@ -558,10 +558,25 @@ export default async function handler(req: any, res: any) {
         } catch (_) {}
       }
 
-      // Jika nomor HP siswa belum terdaftar di database, tetap izinkan masuk ke antrean moderasi
-      // agar bendahara sekolah dapat meninjau dan memilih siswa secara manual di UI Moderasi.
+      // 1. Validasi: HANYA gambar struk transfer asli yang diproses
+      if (geminiAnalysis && geminiAnalysis.isTransferReceipt === false) {
+        console.log(`[WEBHOOK IGNORE] Gambar dari ${senderPhone || 'pengirim'} bukan bukti transfer/struk pembayaran.`);
+        return res.status(200).json({
+          status: "ignored",
+          reason: "not_a_transfer_receipt",
+          message: "Gambar yang dikirim terdeteksi bukan struk/bukti transfer bank/QRIS/e-wallet."
+        });
+      }
+
+      // 2. Validasi: HANYA nomor HP siswa yang terdaftar yang masuk ke laman moderasi
       if (!matchedStudent) {
-        console.log(`[WEBHOOK INFO] Pengirim ${senderPhone || 'tidak dikenal'} belum terdaftar di nomor WhatsApp siswa. Bukti transfer tetap disimpan ke antrean moderasi dengan status belum dikaitkan.`);
+        console.log(`[WEBHOOK IGNORE] Nomor ${senderPhone || 'tidak dikenal'} bukan nomor WhatsApp siswa yang terdaftar.`);
+        return res.status(200).json({
+          status: "ignored",
+          reason: "unregistered_student_number",
+          message: "Nomor pengirim tidak terdaftar di data siswa. Bukti transfer hanya diproses dari nomor HP siswa yang terdaftar.",
+          senderPhone
+        });
       }
 
       // Deteksi Nilai Nominal dan Bulan
@@ -587,24 +602,7 @@ export default async function handler(req: any, res: any) {
         : (matchedStudent?.nominal_spp || detectedNominal);
 
       // Tentukan catatan verifikasi AI
-      let confidenceNotes = "";
-      if (geminiAnalysis) {
-        if (geminiAnalysis.isTransferReceipt === false) {
-          confidenceNotes = "Perlu dicek manual (AI mendeteksi kemungkinan bukan bukti transfer)";
-        } else {
-          confidenceNotes = geminiAnalysis.confidenceNotes || "Terverifikasi AI Vision";
-        }
-      } else if (geminiApiKey) {
-        confidenceNotes = "Gambar Diterima - Menunggu Verifikasi Manual";
-      } else {
-        confidenceNotes = "Menunggu Verifikasi Manual";
-      }
-
-      if (!matchedStudent) {
-        confidenceNotes = confidenceNotes
-          ? `${confidenceNotes} • Nomor belum terdaftar (Pilih siswa di dropdown)`
-          : "Nomor belum terdaftar (Pilih siswa di dropdown)";
-      }
+      const confidenceNotes = geminiAnalysis?.confidenceNotes || (geminiApiKey ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual");
 
       const resolvedSenderName = matchedStudent?.nama_lengkap 
         || senderName 

@@ -267,8 +267,8 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
       }));
-      // Filter ketat: HANYA bukti struk transfer nyata yang lolos
-      return mapped.filter(isRealTransferReceipt);
+      // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar
+      return mapped.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
     }
   } catch (err) {
     console.warn('Tabel payment_verifications belum dibuat di Supabase, beralih ke cache lokal/server.');
@@ -281,7 +281,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.filter(isRealTransferReceipt);
+        return json.data.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
       }
     }
   } catch (e) {
@@ -294,7 +294,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     try {
       const parsed = JSON.parse(localList);
       if (Array.isArray(parsed)) {
-        return parsed.filter(isRealTransferReceipt);
+        return parsed.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
       }
       return [];
     } catch (e) {
