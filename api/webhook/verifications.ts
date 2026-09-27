@@ -17,6 +17,10 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     try {
       const { userId } = req.query || {};
+      if (!userId) {
+        return res.status(200).json({ success: true, data: [] });
+      }
+
       let query = serverSupabase
         .from('payment_verifications')
         .select(`
@@ -26,11 +30,8 @@ export default async function handler(req: any, res: any) {
             kelompok
           )
         `)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
-
-      if (userId) {
-        query = query.or(`user_id.eq.${userId},user_id.is.null`);
-      }
 
       const { data, error } = await query;
       if (error) {
@@ -101,7 +102,7 @@ export default async function handler(req: any, res: any) {
         const { error } = await serverSupabase
           .from('payment_verifications')
           .delete()
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('user_id', userId);
 
         if (error) {
           return res.status(500).json({ success: false, error: error.message });

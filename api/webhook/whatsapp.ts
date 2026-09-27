@@ -68,18 +68,46 @@ interface ReceiptAnalysisResult {
   confidenceNotes: string;
 }
 
-// Ekstraksi nomor HP pengirim secara komprehensif dari payload WAHA (NOWEB, WEBJS, GOWS, LID)
-function extractSenderPhone(payload: any): string {
+// Ekstraksi nomor HP PENGIRIM secara akurat (BUKAN nomor penerima/bot sekolah)
+async function extractSenderPhone(payload: any): Promise<string> {
   if (!payload) return '';
   const p = payload.payload || payload;
-  
-  // 1. Kumpulan kandidat field nomor pengirim
-  const candidates: any[] = [
+
+  // 1. Kumpulkan nomor penerima / bot pemilik akun WhatsApp untuk DIBLOKIR agar tidak tertukar
+  const receiverNumbers = new Set<string>();
+  const addReceiver = (val: any) => {
+    if (typeof val === 'string' && val.trim()) {
+      const clean = normalizePhoneDigits(val.split('@')[0].replace(/\D/g, ''));
+      if (clean.length >= 8) receiverNumbers.add(clean);
+    }
+  };
+  addReceiver(payload.me?.id);
+  addReceiver(payload.sessionInfo?.me?.id);
+  addReceiver(p.to);
+  addReceiver(payload.to);
+  addReceiver(payload.sessionInfo?.to);
+
+  const isReceiver = (phone: string): boolean => {
+    if (!phone || phone.length < 8) return false;
+    const clean = normalizePhoneDigits(phone);
+    for (const r of receiverNumbers) {
+      if (clean === r || clean.endsWith(r.slice(-8)) || r.endsWith(clean.slice(-8))) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // 2. Kumpulan kandidat field nomor pengirim yang valid (dari yang paling spesifik)
+  const rawCandidates: any[] = [
     p.from,
-    p.sender?.id,
-    p.sender?.phone,
     p._data?.key?.remoteJid,
     p._data?.remoteJid,
+    p.sender?.id,
+    p.sender?.phone,
+    p.sender?.number,
+    p._data?.key?.participantPn,
+    p._data?.key?.remoteJidPn,
     p._data?.participant,
     p._data?.author,
     p._data?.from,
@@ -89,56 +117,80 @@ function extractSenderPhone(payload: any): string {
     p.phone,
     p.number,
     p.wa_number,
-    payload.from,
-    payload.sender,
-    p.fromMe ? p.to : null
+    p.fromMe ? null : p.from,
   ];
 
-  // Cari kandidat yang mengandung @c.us atau @s.whatsapp.net
-  for (const c of candidates) {
+  // 3. Periksa kandidat nomor WhatsApp murni (@c.us atau @s.whatsapp.net)
+  for (const c of rawCandidates) {
     if (typeof c === 'string' && (c.includes('@c.us') || c.includes('@s.whatsapp.net'))) {
-      const num = c.split('@')[0].replace(/\D/g, '');
-      if (num.length >= 8) {
-        return normalizePhoneDigits(num);
+      const num = normalizePhoneDigits(c.split('@')[0].replace(/\D/g, ''));
+      if (num.length >= 8 && !isReceiver(num)) {
+        return num;
       }
     }
   }
 
-  // Cari di message id (format WAHA: false_628xxxxxx@c.us_...)
+  // 4. Cari dari message ID (format WAHA: false_628xxxxxx@c.us_...)
   const msgId = typeof p.id === 'string' ? p.id : '';
-  const idMatch = msgId.match(/([0-9]{9,15})@(c\.us|s\.whatsapp\.net)/);
+  const idMatch = msgId.match(/false_([0-9]{9,15})@(c\.us|s\.whatsapp\.net)/);
   if (idMatch && idMatch[1]) {
-    return normalizePhoneDigits(idMatch[1]);
+    const num = normalizePhoneDigits(idMatch[1]);
+    if (num.length >= 8 && !isReceiver(num)) {
+      return num;
+    }
   }
 
-  // Scan JSON payload untuk pattern nomor WA
+  // 5. Jika pengirim menggunakan LID WhatsApp (format: xxxxxxx@lid)
+  const rawLid = [p.from, p._data?.key?.remoteJid, p.chatId].find(
+    (x) => typeof x === 'string' && x.includes('@lid')
+  );
+  if (rawLid) {
+    // Coba ambil nomor telepon nyata dari WAHA Contact API
+    try {
+      const WAHA_PUBLIC = 'http://13.140.178.167:29001';
+      const WAHA_KEY = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+      const session = payload.session || 'default';
+      const contactUrl = `${WAHA_PUBLIC}/api/contacts/${encodeURIComponent(rawLid)}?session=${encodeURIComponent(session)}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const cRes = await fetch(contactUrl, {
+        headers: { 'X-Api-Key': WAHA_KEY },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (cRes.ok) {
+        const contactData = await cRes.json();
+        const contactNum = contactData?.number || contactData?.id?.split('@')[0];
+        if (contactNum) {
+          const cleanNum = normalizePhoneDigits(contactNum);
+          if (cleanNum.length >= 8 && !isReceiver(cleanNum)) {
+            return cleanNum;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 6. Scan string payload untuk nomor WhatsApp pengirim (EKSKLUSIFKAN nomor penerima)
   try {
     const rawJson = JSON.stringify(payload);
     const jidMatches = rawJson.match(/\b(628\d{7,12}|08\d{8,11})@(c\.us|s\.whatsapp\.net)\b/g);
     if (jidMatches && jidMatches.length > 0) {
-      const firstNum = jidMatches[0].split('@')[0].replace(/\D/g, '');
-      if (firstNum.length >= 8) {
-        return normalizePhoneDigits(firstNum);
+      for (const m of jidMatches) {
+        const num = normalizePhoneDigits(m.split('@')[0].replace(/\D/g, ''));
+        if (num.length >= 8 && !isReceiver(num)) {
+          return num;
+        }
       }
     }
   } catch (_) {}
 
-  // Jika ada format angka non-LID
-  for (const c of candidates) {
+  // 7. Kandidat non-LID digit umum (yang bukan receiver)
+  for (const c of rawCandidates) {
     if (typeof c === 'string' && c.trim() && !c.includes('@lid')) {
-      const clean = c.replace(/\D/g, '');
-      if (clean.length >= 8) {
-        return normalizePhoneDigits(clean);
-      }
-    }
-  }
-
-  // Fallback ke field mana pun yang membawa digit
-  for (const c of candidates) {
-    if (typeof c === 'string' && c.trim()) {
-      const clean = c.replace(/\D/g, '');
-      if (clean.length >= 8) {
-        return normalizePhoneDigits(clean);
+      const clean = normalizePhoneDigits(c.replace(/\D/g, ''));
+      if (clean.length >= 8 && !isReceiver(clean)) {
+        return clean;
       }
     }
   }
@@ -334,7 +386,7 @@ export default async function handler(req: any, res: any) {
       const payload = req.body || {};
       const query = req.query || {};
 
-      // Abaikan pesan keluar dari nomor bot/WAHA sendiri
+      // 1. Abaikan pesan keluar dari nomor bot/WAHA sendiri
       if (payload.payload?.fromMe === true || payload.fromMe === true) {
         return res.status(200).json({
           status: "ignored",
@@ -343,10 +395,52 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      const explicitUserId = (query.userId || query.user_id || payload.userId || payload.user_id || "").toString();
+      // 2. Abaikan pesan grup, channel/newsletter, dan status broadcast (HANYA PRIVATE CHAT)
+      const rawFrom = String(payload.payload?.from || payload.from || payload.chatId || payload.payload?.chatId || "").toLowerCase();
+      const isGroup = payload.payload?.isGroup === true || payload.isGroup === true || rawFrom.endsWith("@g.us") || Boolean(payload.payload?.participant && rawFrom.endsWith("@g.us"));
+      const isNewsletter = rawFrom.endsWith("@newsletter") || rawFrom.includes("newsletter");
+      const isStatus = rawFrom.includes("broadcast") || rawFrom.includes("status@broadcast") || payload.payload?.isStatus === true;
 
-      // Ekstraksi Pengirim secara cerdas (mendukung format WAHA NOWEB, Baileys, LID, WEBJS, dll.)
-      const senderPhone = extractSenderPhone(payload);
+      if (isGroup || isNewsletter || isStatus) {
+        return res.status(200).json({
+          status: "ignored",
+          reason: isGroup ? "group_message" : (isNewsletter ? "channel_newsletter" : "status_broadcast"),
+          message: "Hanya pesan private chat (jalur pribadi) yang diproses ke moderasi.",
+        });
+      }
+
+      // 3. Abaikan stiker, voice note/audio, video, reaksi, dan pesan non-gambar
+      const msgType = String(payload.payload?.type || payload.type || payload.payload?._data?.type || "").toLowerCase();
+      const ignoredTypes = ['sticker', 'ptt', 'audio', 'voice', 'video', 'reaction', 'call_log', 'protocol', 'notification', 'location', 'contact'];
+      if (ignoredTypes.includes(msgType)) {
+        return res.status(200).json({
+          status: "ignored",
+          reason: `non_image_type_${msgType}`,
+          message: "Stiker, audio, video, dan reaksi diabaikan. Hanya gambar struk transfer yang diproses.",
+        });
+      }
+
+      // 4. Resolusi Akun Sekolah (User ID) untuk Isolasi Data Multi-Tenant
+      let targetUserId = (query.userId || query.user_id || payload.userId || payload.user_id || "").toString();
+
+      // Coba identifikasi dari session WAHA (format: user_<uid16>)
+      if (!targetUserId && payload.session && typeof payload.session === 'string' && payload.session.startsWith('user_')) {
+        const cleanSessPrefix = payload.session.replace('user_', '');
+        try {
+          const { data: users } = await serverSupabase
+            .from("user_settings")
+            .select("user_id");
+          const matchedUser = users?.find((u: any) => 
+            (u.user_id || "").replace(/[^a-zA-Z0-9]/g, '').startsWith(cleanSessPrefix)
+          );
+          if (matchedUser?.user_id) {
+            targetUserId = matchedUser.user_id;
+          }
+        } catch (_) {}
+      }
+
+      // Ekstraksi Pengirim secara cerdas (BUKAN nomor penerima/bot sekolah)
+      const senderPhone = await extractSenderPhone(payload);
 
       // Ekstraksi Teks Caption
       const messageText = (
@@ -386,7 +480,17 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({
           status: "ignored",
           reason: "no_image_attached",
-          message: "Pesan teks diterima tanpa lampiran bukti transfer. Moderasi tidak dipicu.",
+          message: "Pesan diterima tanpa lampiran gambar struk transfer. Moderasi tidak dipicu.",
+        });
+      }
+
+      // Cek mimetype media jika ada: harus berformat gambar (image/*)
+      const rawMime = String(payload.payload?.media?.mimetype || payload.payload?.mimetype || '').toLowerCase();
+      if (rawMime && !rawMime.startsWith('image/')) {
+        return res.status(200).json({
+          status: "ignored",
+          reason: "non_image_mimetype",
+          message: "Lampiran bukan berformat gambar. Moderasi diabaikan.",
         });
       }
 
@@ -405,9 +509,8 @@ export default async function handler(req: any, res: any) {
         || "Wali Siswa"
       ).toString();
 
-      // Universal Student & User_Id Auto-Matching
+      // Pencocokan Siswa Terdaftar dengan ISOLASI KETAT per Akun Pengguna
       let matchedStudent: any = null;
-      let targetUserId = explicitUserId;
 
       try {
         let studentQuery = serverSupabase
@@ -415,6 +518,7 @@ export default async function handler(req: any, res: any) {
           .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
           .eq("status_aktif", true);
 
+        // Jika akun sekolah sudah teridentifikasi, batasi pencarian HANYA ke siswa milik akun tersebut
         if (targetUserId) {
           studentQuery = studentQuery.eq("user_id", targetUserId);
         }
@@ -455,46 +559,14 @@ export default async function handler(req: any, res: any) {
         console.warn("[WEBHOOK LOOKUP STUDENTS ERROR]", lookupErr);
       }
 
-      // Jika targetUserId belum didapat, coba ekstrak dari session WAHA (contoh: user_400dd5042e144502)
-      if (!targetUserId && payload.session && typeof payload.session === 'string' && payload.session.startsWith('user_')) {
-        const cleanSessPrefix = payload.session.replace('user_', '');
-        try {
-          const { data: users } = await serverSupabase
-            .from("user_settings")
-            .select("user_id");
-          const matchedUser = users?.find((u: any) => 
-            (u.user_id || "").replace(/[^a-zA-Z0-9]/g, '').startsWith(cleanSessPrefix)
-          );
-          if (matchedUser?.user_id) {
-            targetUserId = matchedUser.user_id;
-          }
-        } catch (_) {}
-      }
-
-      // Ambil default admin dari user_settings jika belum ada targetUserId
+      // Validasi Isolasi: Jika akun sekolah tidak dapat ditentukan, tolak pesan
       if (!targetUserId) {
-        try {
-          const { data: users } = await serverSupabase
-            .from("user_settings")
-            .select("user_id, wa_gateway_config, school_name");
-
-          if (users && users.length > 0) {
-            const activeUser = users.find((u: any) => 
-              u.wa_gateway_config && (
-                u.wa_gateway_config.schoolUserId || 
-                u.wa_gateway_config.apiUrl || 
-                u.wa_gateway_config.appkey
-              )
-            );
-            if (activeUser?.user_id) {
-              targetUserId = activeUser.user_id;
-            } else {
-              targetUserId = users[0].user_id;
-            }
-          }
-        } catch (userErr) {
-          console.warn("[WEBHOOK DEFAULT USER LOOKUP ERROR]", userErr);
-        }
+        console.log(`[WEBHOOK IGNORED] Tidak dapat mengidentifikasi akun sekolah (user_id). Pesan diabaikan demi isolasi data.`);
+        return res.status(200).json({
+          status: "ignored",
+          reason: "unauthorized_or_unknown_account",
+          message: "Akun sekolah penerima tidak dapat diverifikasi."
+        });
       }
 
       // Cari Kunci Gemini API dari ENV atau database user_settings

@@ -224,9 +224,14 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     activeUserId = session?.user?.id;
   }
 
-  // 1. Coba dari tabel Supabase `payment_verifications`
+  // Jika tidak ada user_id aktif, kembalikan kosong (isolasi total antar akun)
+  if (!activeUserId) {
+    return [];
+  }
+
+  // 1. Coba dari tabel Supabase `payment_verifications` dengan filter KETAT per user_id
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('payment_verifications')
       .select(`
         *,
@@ -235,31 +240,8 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
           kelompok
         )
       `)
+      .eq('user_id', activeUserId)
       .order('created_at', { ascending: false });
-
-    if (activeUserId) {
-      query = query.or(`user_id.eq.${activeUserId},user_id.is.null`);
-    }
-
-    let { data, error } = await query;
-
-    // Jika filter spesifik user_id kosong, fallback ambil semua verifikasi siswa di sekolah ini
-    if ((!data || data.length === 0) && activeUserId) {
-      const fallbackRes = await supabase
-        .from('payment_verifications')
-        .select(`
-          *,
-          students (
-            nama_lengkap,
-            kelompok
-          )
-        `)
-        .order('created_at', { ascending: false });
-      if (fallbackRes.data && fallbackRes.data.length > 0) {
-        data = fallbackRes.data;
-        error = fallbackRes.error;
-      }
-    }
 
     if (!error && data) {
       const mapped = data.map((item: any) => ({
@@ -267,34 +249,34 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
       }));
-      // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar
+      // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar milik akun ini
       return mapped.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
     }
   } catch (err) {
-    console.warn('Tabel payment_verifications belum dibuat di Supabase, beralih ke cache lokal/server.');
+    console.warn('Tabel payment_verifications error di Supabase, beralih ke cache lokal/server.');
   }
 
   // 2. Coba fetch dari endpoint backend server.ts (jika ada dan berformat json)
   try {
-    const res = await fetch(`/api/webhook/verifications?userId=${activeUserId || ''}`);
+    const res = await fetch(`/api/webhook/verifications?userId=${encodeURIComponent(activeUserId)}`);
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
+        return json.data.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId);
       }
     }
   } catch (e) {
     // Fallback
   }
 
-  // 3. Fallback dari LocalStorage
+  // 3. Fallback dari LocalStorage HANYA untuk user yang bersangkutan
   const localList = localStorage.getItem(getVerificationsStorageKey(activeUserId));
   if (localList) {
     try {
       const parsed = JSON.parse(localList);
       if (Array.isArray(parsed)) {
-        return parsed.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
+        return parsed.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId);
       }
       return [];
     } catch (e) {
@@ -315,7 +297,11 @@ export function saveLocalVerifications(items: PaymentVerification[], userId?: st
 export async function deletePaymentVerification(id: string, userId?: string): Promise<boolean> {
   // 1. Hapus dari Supabase
   try {
-    await supabase.from('payment_verifications').delete().eq('id', id);
+    let q = supabase.from('payment_verifications').delete().eq('id', id);
+    if (userId) {
+      q = q.eq('user_id', userId);
+    }
+    await q;
   } catch {}
 
   // 2. Hapus dari backend server

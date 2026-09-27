@@ -259,7 +259,7 @@ export default function PaymentModerationModal({
         await supabase
           .from('payment_verifications')
           .delete()
-          .or(`user_id.eq.${currentUserId},user_id.is.null`);
+          .eq('user_id', currentUserId);
       }
       await fetch('/api/webhook/verifications/reset', { 
         method: 'POST',
