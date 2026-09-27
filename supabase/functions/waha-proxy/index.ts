@@ -115,27 +115,63 @@ Deno.serve(async (req: Request) => {
       return null;
     };
 
-    // 1. Action: start or restart
+    // 1. Action: start, restart, logout, or reset
+    if (action === 'logout' || action === 'reset') {
+      try {
+        const logoutRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
+          method: 'POST',
+          headers: { 'X-Api-Key': WAHA_API_KEY },
+        });
+        const logoutData = await logoutRes.text();
+        return new Response(logoutData, {
+          status: logoutRes.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     if (action === 'start' || action === 'restart') {
       const existingSession = await fetchCurrentSession(sessionName);
 
-      // If action is explicit restart, or session is currently FAILED or STOPPED
-      if (action === 'restart' || existingSession?.status === 'FAILED' || existingSession?.status === 'STOPPED') {
+      // Jika session FAILED (misal di-logout dari HP) atau action adalah explicit restart:
+      // Panggil WAHA /logout agar auth credentials lama dibersihkan dan kode QR baru langsung diterbitkan
+      if (action === 'restart' || existingSession?.status === 'FAILED') {
+        try {
+          const cleanLogoutRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
+            method: 'POST',
+            headers: { 'X-Api-Key': WAHA_API_KEY },
+          });
+
+          if (cleanLogoutRes.ok) {
+            const restartData = await cleanLogoutRes.text();
+            return new Response(restartData, {
+              status: 200,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+              },
+            });
+          }
+        } catch (e) {
+          console.warn('Logout fallback error:', e);
+        }
+
+        // Fallback jika logout gagal
         const restartRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/restart`, {
           method: 'POST',
-          headers: {
-            'X-Api-Key': WAHA_API_KEY,
-          },
+          headers: { 'X-Api-Key': WAHA_API_KEY },
         });
 
         if (restartRes.ok) {
           const restartData = await restartRes.text();
           return new Response(restartData, {
             status: restartRes.status,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
       }
@@ -149,7 +185,17 @@ Deno.serve(async (req: Request) => {
               'Content-Type': 'application/json',
               'X-Api-Key': WAHA_API_KEY,
             },
-            body: JSON.stringify({ name: sessionName }),
+            body: JSON.stringify({
+              name: sessionName,
+              config: {
+                webhooks: [
+                  {
+                    url: `https://catatoh.vercel.app/api/webhook/whatsapp?userId=${requestedUserId || PRIMARY_OWNER_ID}`,
+                    events: ['message'],
+                  },
+                ],
+              },
+            }),
           });
         } catch (err) {
           console.warn('Session create warning:', err);
@@ -166,17 +212,17 @@ Deno.serve(async (req: Request) => {
 
       let resData = await startRes.json().catch(() => null);
 
-      // If start resulted in FAILED or error, fallback to restart
+      // If start resulted in FAILED or error, fallback to clean logout
       if (!startRes.ok || resData?.status === 'FAILED') {
-        const fallbackRestart = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/restart`, {
+        const fallbackLogout = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
           method: 'POST',
           headers: {
             'X-Api-Key': WAHA_API_KEY,
           },
         });
-        const fallbackText = await fallbackRestart.text();
+        const fallbackText = await fallbackLogout.text();
         return new Response(fallbackText, {
-          status: fallbackRestart.status,
+          status: 200,
           headers: {
             ...corsHeaders,
             'Content-Type': 'application/json',

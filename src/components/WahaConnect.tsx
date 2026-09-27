@@ -315,6 +315,42 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     }
   };
 
+  // Handle Putuskan / Reset WhatsApp
+  const handleLogout = async () => {
+    if (!confirm('Apakah Anda yakin ingin memutuskan koneksi WhatsApp ini? Anda dapat memindai kode QR baru kapan saja untuk menghubungkan kembali.')) {
+      return;
+    }
+    setIsStarting(true);
+    setErrorMessage(null);
+    clearQrImage();
+    hasAutoRegisteredWebhookRef.current = false;
+    setStatus('STARTING');
+
+    try {
+      let uid = activeUserId;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id || '';
+      }
+
+      const logoutUrl = uid
+        ? `${functionUrl}?action=logout&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=logout`;
+
+      await fetch(logoutUrl, { method: 'POST' });
+      setIsPolling(true);
+      setTimeout(() => {
+        checkStatus();
+      }, 1200);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Gagal memutuskan sesi');
+    } finally {
+      if (isMountedRef.current) {
+        setIsStarting(false);
+      }
+    }
+  };
+
   // Handle Save Inbound Webhook to WAHA
   const handleSaveWebhook = async () => {
     if (!webhookUrl) return;
@@ -593,14 +629,25 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 Proxy aman via Supabase Edge Function
               </span>
-              <button
-                type="button"
-                onClick={checkStatus}
-                className="px-3.5 py-1.5 text-xs font-bold text-emerald-700 bg-white hover:bg-emerald-100/60 border border-emerald-300 rounded-xl transition-colors flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Cek Ulang Status</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isStarting}
+                  className="px-3.5 py-1.5 text-xs font-bold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <Power className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Putuskan (Logout)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={checkStatus}
+                  className="px-3.5 py-1.5 text-xs font-bold text-emerald-700 bg-white hover:bg-emerald-100/60 border border-emerald-300 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Cek Ulang Status</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -645,9 +692,20 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-              <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-              <span>Kode QR dan status diperbarui otomatis setiap 2.5 detik</span>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleStart(true)}
+                disabled={isStarting}
+                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl shadow-sm transition-all flex items-center gap-2"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isStarting ? 'animate-spin' : ''}`} />
+                <span>Perbarui / Terbitkan Kode QR Baru</span>
+              </button>
+              <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+                <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                <span>Kode QR dan status diperbarui otomatis setiap 2.5 detik</span>
+              </div>
             </div>
           </div>
         )}
@@ -662,32 +720,32 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
               </h4>
               <p className="text-xs text-slate-500 max-w-lg">
                 {status === 'FAILED' 
-                  ? 'Sesi sebelumnya terhenti atau batas waktu scan QR telah habis. Klik tombol di samping untuk me-restart sesi dan memunculkan kode QR baru.' 
+                  ? 'Koneksi WhatsApp sebelumnya terputus dari ponsel atau sesi telah kadaluarsa. Klik tombol di samping untuk me-reset sesi dan menerbitkan kode QR baru.' 
                   : 'Klik tombol di samping untuk menginisiasi sesi WAHA di server VPS Anda dan menampilkan kode QR untuk ditautkan.'}
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => handleStart(status === 'FAILED')}
+              onClick={() => handleStart(true)}
               disabled={isStarting}
               className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 ${
                 isStarting
                   ? 'bg-slate-300 text-slate-600 cursor-not-allowed'
                   : status === 'FAILED'
-                    ? 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-500/25'
+                    ? 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-500/25 ring-2 ring-amber-300 ring-offset-1'
                     : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-emerald-500/25'
               }`}
             >
               {isStarting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Memulai...</span>
+                  <span>Memproses...</span>
                 </>
               ) : status === 'FAILED' ? (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  <span>Mulai Ulang (Restart) Sesi</span>
+                  <span>Reset & Buat QR Baru</span>
                 </>
               ) : (
                 <>
