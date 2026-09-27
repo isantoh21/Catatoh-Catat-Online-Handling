@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           error: 'Missing action parameter',
-          message: 'Please provide query parameter "action=start", "action=status", or "action=qr".'
+          message: 'Please provide query parameter "action=start", "action=status", "action=qr", or "action=restart".'
         }),
         {
           status: 400,
@@ -48,23 +48,63 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 1. Action: start
-    if (action === 'start') {
-      // Step A: Create session 'default' (safe if session already exists)
+    // Helper: get current default session
+    const fetchCurrentSession = async () => {
       try {
-        await fetch(`${WAHA_BASE_URL}/api/sessions`, {
+        const res = await fetch(`${WAHA_BASE_URL}/api/sessions/default`, {
+          headers: { 'X-Api-Key': WAHA_API_KEY },
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Error fetching current session:', err);
+      }
+      return null;
+    };
+
+    // 1. Action: start or restart
+    if (action === 'start' || action === 'restart') {
+      const existingSession = await fetchCurrentSession();
+
+      // If action is explicit restart, or session is currently FAILED or STOPPED
+      if (action === 'restart' || existingSession?.status === 'FAILED' || existingSession?.status === 'STOPPED') {
+        const restartRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/restart`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'X-Api-Key': WAHA_API_KEY,
           },
-          body: JSON.stringify({ name: 'default' }),
         });
-      } catch (err) {
-        console.warn('Session create warning (session may already exist):', err);
+
+        if (restartRes.ok) {
+          const restartData = await restartRes.text();
+          return new Response(restartData, {
+            status: restartRes.status,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          });
+        }
       }
 
-      // Step B: Start session 'default'
+      // If session does not exist yet, create it
+      if (!existingSession) {
+        try {
+          await fetch(`${WAHA_BASE_URL}/api/sessions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': WAHA_API_KEY,
+            },
+            body: JSON.stringify({ name: 'default' }),
+          });
+        } catch (err) {
+          console.warn('Session create warning:', err);
+        }
+      }
+
+      // Start session
       const startRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/start`, {
         method: 'POST',
         headers: {
@@ -72,8 +112,27 @@ Deno.serve(async (req: Request) => {
         },
       });
 
-      const resBody = await startRes.text();
-      return new Response(resBody, {
+      let resData = await startRes.json().catch(() => null);
+
+      // If start resulted in FAILED or error, fallback to restart
+      if (!startRes.ok || resData?.status === 'FAILED') {
+        const fallbackRestart = await fetch(`${WAHA_BASE_URL}/api/sessions/default/restart`, {
+          method: 'POST',
+          headers: {
+            'X-Api-Key': WAHA_API_KEY,
+          },
+        });
+        const fallbackText = await fallbackRestart.text();
+        return new Response(fallbackText, {
+          status: fallbackRestart.status,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
+
+      return new Response(JSON.stringify(resData), {
         status: startRes.status,
         headers: {
           ...corsHeaders,
@@ -132,10 +191,29 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // 4. Action: stop
+    if (action === 'stop') {
+      const stopRes = await fetch(`${WAHA_BASE_URL}/api/sessions/default/stop`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': WAHA_API_KEY,
+        },
+      });
+
+      const stopBody = await stopRes.text();
+      return new Response(stopBody, {
+        status: stopRes.status,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+
     return new Response(
       JSON.stringify({
         error: 'Invalid action',
-        message: `Action "${action}" is not supported. Supported actions: start, status, qr.`
+        message: `Action "${action}" is not supported. Supported actions: start, restart, status, qr, stop.`
       }),
       {
         status: 400,

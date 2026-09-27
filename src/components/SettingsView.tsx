@@ -2,7 +2,6 @@ import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
-import WhatsAppGatewaySettingsCard from './WhatsAppGatewaySettingsCard';
 import WahaConnect from './WahaConnect';
 
 export default function SettingsView({ 
@@ -390,9 +389,6 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
 
           {/* Koneksi WhatsApp WAHA & Proxy Supabase */}
           <WahaConnect />
-
-          {/* Integrasi WhatsApp Gateway & Webhook */}
-          <WhatsAppGatewaySettingsCard />
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-8">

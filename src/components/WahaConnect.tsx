@@ -129,15 +129,16 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
     }
   }, [functionUrl, onStatusChange]);
 
-  // Handle Start Connection
-  const handleStart = async () => {
+  // Handle Start / Restart Connection
+  const handleStart = async (forceRestart = false) => {
     setIsStarting(true);
     setErrorMessage(null);
     clearQrImage();
     setStatus('STARTING');
 
     try {
-      const res = await fetch(`${functionUrl}?action=start`, {
+      const actionName = (forceRestart || status === 'FAILED') ? 'restart' : 'start';
+      const res = await fetch(`${functionUrl}?action=${actionName}`, {
         method: 'POST',
       });
 
@@ -365,33 +366,42 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
           </div>
         )}
 
-        {/* Not Connected / Idle / Stopped View */}
+        {/* Not Connected / Idle / Stopped / Failed View */}
         {status !== 'WORKING' && status !== 'SCAN_QR_CODE' && (
           <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Wifi className="w-4 h-4 text-slate-500" />
-                Status Sesi: {status === 'IDLE' ? 'Siap Dihubungkan' : status}
+                Status Sesi: {status === 'IDLE' ? 'Siap Dihubungkan' : status === 'FAILED' ? 'Sesi Terhenti / Expired' : status}
               </h4>
               <p className="text-xs text-slate-500 max-w-lg">
-                Klik tombol di samping untuk menginisiasi sesi WAHA di server VPS Anda dan menampilkan kode QR untuk ditautkan.
+                {status === 'FAILED' 
+                  ? 'Sesi sebelumnya terhenti atau batas waktu scan QR telah habis. Klik tombol di samping untuk me-restart sesi dan memunculkan kode QR baru.' 
+                  : 'Klik tombol di samping untuk menginisiasi sesi WAHA di server VPS Anda dan menampilkan kode QR untuk ditautkan.'}
               </p>
             </div>
 
             <button
               type="button"
-              onClick={handleStart}
+              onClick={() => handleStart(status === 'FAILED')}
               disabled={isStarting}
               className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 ${
                 isStarting
                   ? 'bg-slate-300 text-slate-600 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-emerald-500/25'
+                  : status === 'FAILED'
+                    ? 'bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-amber-500/25'
+                    : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-emerald-500/25'
               }`}
             >
               {isStarting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Memulai...</span>
+                </>
+              ) : status === 'FAILED' ? (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Mulai Ulang (Restart) Sesi</span>
                 </>
               ) : (
                 <>
