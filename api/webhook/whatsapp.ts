@@ -605,27 +605,33 @@ export default async function handler(req: any, res: any) {
         || senderName 
         || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa");
 
-      const verificationPayload = {
+      const verificationPayload: Record<string, any> = {
         user_id: targetUserId || null,
         student_id: matchedStudent?.id || null,
-        sender_phone: senderPhone,
+        sender_phone: senderPhone || "",
         sender_name: resolvedSenderName,
-        message_text: messageText,
+        message_text: messageText || "",
         proof_image_url: proofImageUrl,
         bulan: detectedBulan,
         tahun: currentYear,
-        nominal: finalNominal,
+        nominal: Number(finalNominal) || 0,
         tanggal_transfer: detectedDate,
         waktu_transfer: detectedTime,
         bank_pengirim: geminiAnalysis?.bankPengirim || "Bank / E-Wallet",
-        bank_tujuan: geminiAnalysis?.bankTujuan || undefined,
-        nama_rekening_pengirim: geminiAnalysis?.namaPengirim || undefined,
         confidence_notes: confidenceNotes,
         status: "pending",
       };
 
+      if (geminiAnalysis?.bankTujuan) {
+        verificationPayload.bank_tujuan = geminiAnalysis.bankTujuan;
+      }
+      if (geminiAnalysis?.namaPengirim) {
+        verificationPayload.nama_rekening_pengirim = geminiAnalysis.namaPengirim;
+      }
+
       // Simpan ke Supabase (payment_verifications)
       let insertedId = null;
+      let dbError: any = null;
       try {
         const { data: insertedData, error: insertError } = await serverSupabase
           .from("payment_verifications")
@@ -634,11 +640,13 @@ export default async function handler(req: any, res: any) {
           .maybeSingle();
 
         if (insertError) {
+          dbError = insertError.message || insertError;
           console.error("[SUPABASE INSERT ERROR]", insertError);
         } else if (insertedData) {
           insertedId = insertedData.id;
         }
-      } catch (dbErr) {
+      } catch (dbErr: any) {
+        dbError = dbErr?.message || dbErr;
         console.error("[SUPABASE CONNECTION ERROR]", dbErr);
       }
 
@@ -678,6 +686,7 @@ export default async function handler(req: any, res: any) {
         matchedStudent: matchedStudent ? matchedStudent.nama_lengkap : null,
         detectedNominal: finalNominal,
         detectedBulan: detectedBulan,
+        dbError: dbError || undefined,
       });
 
     } catch (error: any) {
