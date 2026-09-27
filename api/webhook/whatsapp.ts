@@ -319,33 +319,35 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
 }`;
 
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              imagePart,
-              { text: prompt }
-            ]
-          }
-        ]
-      });
-    } catch (modelErr) {
-      console.warn("[GEMINI 2.5 FLASH FAILED, TRYING gemini-1.5-flash]", modelErr);
-      response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              imagePart,
-              { text: prompt }
-            ]
-          }
-        ]
-      });
+    const modelCandidates = ["gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
+    let lastError: any = null;
+
+    for (const model of modelCandidates) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                imagePart,
+                { text: prompt }
+              ]
+            }
+          ]
+        });
+        if (response && response.text) {
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[GEMINI MODEL ${model} FAILED]`, err.message || err.status || err);
+      }
+    }
+
+    if (!response || !response.text) {
+      console.error("[GEMINI VISION ALL MODELS FAILED]", lastError);
+      return null;
     }
 
     const text = response.text || "";
@@ -355,6 +357,8 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
       return null;
     }
     const parsed = JSON.parse(jsonMatch[0]);
+    // Pastikan isTransferReceipt murni boolean
+    parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
     return parsed as ReceiptAnalysisResult;
   } catch (error) {
     console.error("[GEMINI VISION ERROR]", error);
@@ -630,13 +634,20 @@ export default async function handler(req: any, res: any) {
         } catch (_) {}
       }
 
-      // 1. Validasi: HANYA gambar struk transfer asli yang diproses
-      if (geminiAnalysis && geminiAnalysis.isTransferReceipt === false) {
-        console.log(`[WEBHOOK IGNORE] Gambar dari ${senderPhone || 'pengirim'} bukan bukti transfer/struk pembayaran.`);
+      // 1. Validasi: HANYA gambar yang terbukti secara tegas sebagai struk transfer resmi yang diizinkan
+      const isVerifiedReceipt = Boolean(
+        geminiAnalysis && (
+          geminiAnalysis.isTransferReceipt === true ||
+          String(geminiAnalysis.isTransferReceipt).toLowerCase() === 'true'
+        )
+      );
+
+      if (!isVerifiedReceipt) {
+        console.log(`[WEBHOOK IGNORE] Gambar dari ${senderPhone || 'pengirim'} BUKAN bukti transfer/struk pembayaran yang sah. Ditolak.`);
         return res.status(200).json({
           status: "ignored",
           reason: "not_a_transfer_receipt",
-          message: "Gambar yang dikirim terdeteksi bukan struk/bukti transfer bank/QRIS/e-wallet."
+          message: "Gambar yang dikirim terdeteksi bukan bukti transfer/struk pembayaran sah. Hanya struk transfer resmi yang diizinkan masuk ke moderasi."
         });
       }
 

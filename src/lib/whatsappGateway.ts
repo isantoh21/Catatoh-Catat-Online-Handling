@@ -213,6 +213,12 @@ export function isRealTransferReceipt(v: any): boolean {
   // 3. Wajib ada gambar bukti nyata
   if (!v.proof_image_url || v.proof_image_url.trim() === '') return false;
 
+  // 4. Tolak jika catatan verifikasi menandai bukan bukti transfer
+  if (notes.includes('bukan bukti transfer') || notes.includes('bukan struk') || notes.includes('kemungkinan bukan')) return false;
+
+  // 5. Wajib teridentifikasi ke siswa yang terdaftar
+  if (!v.student_id) return false;
+
   return true;
 }
 
