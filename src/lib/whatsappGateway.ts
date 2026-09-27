@@ -1,12 +1,18 @@
 import { supabase } from './supabaseClient';
 import { WhatsAppGatewayConfig, PaymentVerification } from '../types/whatsapp';
 
+// Base64 encoded universal Gemini API key
+const UNIVERSAL_GEMINI_KEY = typeof atob !== 'undefined'
+  ? atob('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=')
+  : (typeof Buffer !== 'undefined' ? Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8') : '');
+
 export const DEFAULT_GATEWAY_CONFIG: WhatsAppGatewayConfig = {
   apiUrl: 'https://app.starsender.online/api/sendText',
   appkey: '',
   authkey: '',
   autoReplyEnabled: true,
   autoReplyMessage: 'Halo Ayah/Bunda, bukti pembayaran SPP Anda telah kami terima dan sedang diverifikasi oleh bendahara sekolah. Kami akan segera mengirim konfirmasi lunas. Terima kasih 🙏',
+  geminiApiKey: UNIVERSAL_GEMINI_KEY,
 };
 
 // Key format for localStorage
@@ -34,6 +40,7 @@ export async function getWhatsAppGatewayConfig(userId?: string): Promise<WhatsAp
         return {
           ...DEFAULT_GATEWAY_CONFIG,
           ...data.wa_gateway_config,
+          geminiApiKey: data.wa_gateway_config.geminiApiKey || UNIVERSAL_GEMINI_KEY,
           schoolUserId: activeUserId
         };
       }
@@ -47,6 +54,7 @@ export async function getWhatsAppGatewayConfig(userId?: string): Promise<WhatsAp
       return {
         ...DEFAULT_GATEWAY_CONFIG,
         ...session.user.user_metadata.wa_gateway_config,
+        geminiApiKey: session.user.user_metadata.wa_gateway_config.geminiApiKey || UNIVERSAL_GEMINI_KEY,
         schoolUserId: activeUserId
       };
     }
@@ -56,9 +64,11 @@ export async function getWhatsAppGatewayConfig(userId?: string): Promise<WhatsAp
   const localSaved = localStorage.getItem(getStorageKey(activeUserId));
   if (localSaved) {
     try {
+      const parsed = JSON.parse(localSaved);
       return {
         ...DEFAULT_GATEWAY_CONFIG,
-        ...JSON.parse(localSaved),
+        ...parsed,
+        geminiApiKey: parsed.geminiApiKey || UNIVERSAL_GEMINI_KEY,
         schoolUserId: activeUserId
       };
     } catch (e) {
