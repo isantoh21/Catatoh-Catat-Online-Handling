@@ -13,9 +13,12 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  Check
+  Check,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { getWhatsAppGatewayConfig, saveWhatsAppGatewayConfig } from '../lib/whatsappGateway';
 
 interface WahaConnectProps {
   functionUrl?: string;
@@ -57,6 +60,11 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
   const [webhookSuccess, setWebhookSuccess] = useState<boolean>(false);
   const [copiedWebhook, setCopiedWebhook] = useState<boolean>(false);
 
+  // Gemini AI Vision Key State
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [isSavingGeminiKey, setIsSavingGeminiKey] = useState<boolean>(false);
+  const [geminiKeySaved, setGeminiKeySaved] = useState<boolean>(false);
+
   // Outbound Test Message State
   const [testNumber, setTestNumber] = useState<string>('');
   const [testMessage, setTestMessage] = useState<string>('Halo, ini adalah pesan uji coba dari WAHA WhatsApp VPS Catatoh!');
@@ -69,21 +77,26 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
   const prevBlobUrlRef = useRef<string | null>(null);
   const isMountedRef = useRef<boolean>(true);
 
-  // Auto set default webhook url based on current domain & user id
+  // Auto set default webhook url based on current domain & user id, and load gemini key
   useEffect(() => {
-    async function initWebhookUrl() {
+    async function initConfig() {
       if (typeof window !== 'undefined') {
         let defaultUrl = `${window.location.origin}/api/webhook/whatsapp`;
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user?.id) {
-            defaultUrl = `${window.location.origin}/api/webhook/whatsapp?userId=${session.user.id}`;
+          const uid = session?.user?.id;
+          if (uid) {
+            defaultUrl = `${window.location.origin}/api/webhook/whatsapp?userId=${uid}`;
+            const config = await getWhatsAppGatewayConfig(uid);
+            if (config?.geminiApiKey) {
+              setGeminiApiKey(config.geminiApiKey);
+            }
           }
         } catch (_) {}
         setWebhookUrl(defaultUrl);
       }
     }
-    initWebhookUrl();
+    initConfig();
   }, []);
 
   // Helper to cleanup QR blob object URLs
@@ -221,6 +234,27 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       alert('Error: ' + (err.message || 'Gagal menyimpan webhook'));
     } finally {
       setIsSavingWebhook(false);
+    }
+  };
+
+  // Handle Save Gemini API Key
+  const handleSaveGeminiKey = async () => {
+    setIsSavingGeminiKey(true);
+    setGeminiKeySaved(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      const currentConfig = await getWhatsAppGatewayConfig(uid);
+      await saveWhatsAppGatewayConfig({
+        ...currentConfig,
+        geminiApiKey: geminiApiKey.trim()
+      }, uid);
+      setGeminiKeySaved(true);
+      setTimeout(() => setGeminiKeySaved(false), 3000);
+    } catch (e: any) {
+      alert('Gagal menyimpan API Key Gemini: ' + (e.message || e));
+    } finally {
+      setIsSavingGeminiKey(false);
     }
   };
 
@@ -585,6 +619,62 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
                   <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Webhook berhasil didaftarkan ke sesi WAHA VPS Anda!
+                  </p>
+                )}
+              </div>
+
+              {/* Google Gemini Vision Configuration */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Google Gemini AI Vision (OCR Struk Pembayaran Otomatis)</span>
+                    </h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Kunci API Google Gemini untuk mengekstrak nominal, tanggal, jam transfer, bank, dan rekening secara presisi dari gambar struk WhatsApp.
+                    </p>
+                  </div>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 self-start sm:self-center ${
+                    geminiApiKey ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                  }`}>
+                    {geminiApiKey ? 'AI Vision Aktif' : 'Belum Dikonfigurasi'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    placeholder="Masukkan Google Gemini API Key (AIzaSy...)"
+                    className="flex-1 px-3.5 py-2 text-xs font-mono border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                    title="Buka Google AI Studio untuk dapatkan API Key gratis"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Dapatkan Key Gratis</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleSaveGeminiKey}
+                    disabled={isSavingGeminiKey}
+                    className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {isSavingGeminiKey ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <span>Simpan Key AI</span>
+                  </button>
+                </div>
+
+                {geminiKeySaved && (
+                  <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Google Gemini API Key berhasil disimpan! Struk transfer WhatsApp yang masuk akan dianalisis otomatis.
                   </p>
                 )}
               </div>

@@ -63,8 +63,87 @@ interface ReceiptAnalysisResult {
   bankPengirim: string;
   bankTujuan: string;
   namaPengirim: string;
+  namaSiswa?: string;
   statusTransaksi: string;
   confidenceNotes: string;
+}
+
+// Ekstraksi nomor HP pengirim secara komprehensif dari payload WAHA (NOWEB, WEBJS, GOWS, LID)
+function extractSenderPhone(payload: any): string {
+  if (!payload) return '';
+  const p = payload.payload || payload;
+  
+  // 1. Kumpulan kandidat field nomor pengirim
+  const candidates: any[] = [
+    p.from,
+    p.sender?.id,
+    p.sender?.phone,
+    p._data?.key?.remoteJid,
+    p._data?.remoteJid,
+    p._data?.participant,
+    p._data?.author,
+    p._data?.from,
+    p.participant,
+    p.author,
+    p.chatId,
+    p.phone,
+    p.number,
+    p.wa_number,
+    payload.from,
+    payload.sender,
+    p.fromMe ? p.to : null
+  ];
+
+  // Cari kandidat yang mengandung @c.us atau @s.whatsapp.net
+  for (const c of candidates) {
+    if (typeof c === 'string' && (c.includes('@c.us') || c.includes('@s.whatsapp.net'))) {
+      const num = c.split('@')[0].replace(/\D/g, '');
+      if (num.length >= 8) {
+        return normalizePhoneDigits(num);
+      }
+    }
+  }
+
+  // Cari di message id (format WAHA: false_628xxxxxx@c.us_...)
+  const msgId = typeof p.id === 'string' ? p.id : '';
+  const idMatch = msgId.match(/([0-9]{9,15})@(c\.us|s\.whatsapp\.net)/);
+  if (idMatch && idMatch[1]) {
+    return normalizePhoneDigits(idMatch[1]);
+  }
+
+  // Scan JSON payload untuk pattern nomor WA
+  try {
+    const rawJson = JSON.stringify(payload);
+    const jidMatches = rawJson.match(/\b(628\d{7,12}|08\d{8,11})@(c\.us|s\.whatsapp\.net)\b/g);
+    if (jidMatches && jidMatches.length > 0) {
+      const firstNum = jidMatches[0].split('@')[0].replace(/\D/g, '');
+      if (firstNum.length >= 8) {
+        return normalizePhoneDigits(firstNum);
+      }
+    }
+  } catch (_) {}
+
+  // Jika ada format angka non-LID
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim() && !c.includes('@lid')) {
+      const clean = c.replace(/\D/g, '');
+      if (clean.length >= 8) {
+        return normalizePhoneDigits(clean);
+      }
+    }
+  }
+
+  // Fallback ke field mana pun yang membawa digit
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) {
+      const clean = c.replace(/\D/g, '');
+      if (clean.length >= 8) {
+        return normalizePhoneDigits(clean);
+      }
+    }
+  }
+
+  return '';
 }
 
 // Download image securely from WAHA VPS or external URL and convert to Base64
@@ -119,9 +198,10 @@ async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: strin
 
 async function analyzeReceiptWithGemini(
   imageInfo: { mimeType: string; base64: string }, 
-  messageCaption?: string
+  messageCaption?: string,
+  customApiKey?: string
 ): Promise<ReceiptAnalysisResult | null> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     return null;
   }
@@ -161,8 +241,9 @@ TUGAS UTAMA:
    - "bankPengirim": nama bank / e-wallet pengirim (misal BCA, BRI, Mandiri, BSI, DANA).
    - "bankTujuan": nama bank tujuan atau rekening penerima jika terlihat.
    - "namaPengirim": nama pemilik rekening pengirim jika tertera.
+   - "namaSiswa": nama siswa atau ananda jika tertulis di kolom berita/catatan transfer atau di caption.
    - "statusTransaksi": 'BERHASIL' / 'PENDING' / 'GAGAL'.
-   - "confidenceNotes": ringkasan singkat hasil bacaan.
+   - "confidenceNotes": ringkasan singkat hasil bacaan struk (misal: "Struk BCA Mobile Rp 150.000 atas nama Budi").
 
 Teks pesan pengirim: "${messageCaption || ''}"
 
@@ -177,6 +258,7 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
   "bankPengirim": "NamaBank",
   "bankTujuan": "BankTujuan",
   "namaPengirim": "NamaDiStruk",
+  "namaSiswa": "NamaSiswaJikaAda",
   "statusTransaksi": "BERHASIL",
   "confidenceNotes": "..."
 }`;
@@ -239,18 +321,8 @@ export default async function handler(req: any, res: any) {
 
       const explicitUserId = (query.user_id || payload.user_id || "").toString();
 
-      // Normalisasi Pengirim dari berbagai schema provider (WAHA, Starsender, Fonnte, Wablas, UltraMsg, W-API, Meta)
-      const rawSender = payload.payload?.from
-        || payload.sender 
-        || payload.from 
-        || payload.phone 
-        || payload.number 
-        || payload.wa_number 
-        || payload.data?.from 
-        || payload.data?.sender
-        || payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from
-        || "";
-      const senderPhone = normalizePhoneDigits(rawSender.toString().replace('@c.us', ''));
+      // Ekstraksi Pengirim secara cerdas (mendukung format WAHA NOWEB, Baileys, LID, WEBJS, dll.)
+      const senderPhone = extractSenderPhone(payload);
 
       // Ekstraksi Teks Caption
       const messageText = (
@@ -309,59 +381,54 @@ export default async function handler(req: any, res: any) {
         || "Wali Siswa"
       ).toString();
 
-      // Analisis Gambar dengan Gemini Vision (jika tersedia)
-      let geminiAnalysis: ReceiptAnalysisResult | null = null;
-      if (downloadedImage) {
-        geminiAnalysis = await analyzeReceiptWithGemini(
-          { mimeType: downloadedImage.mimeType, base64: downloadedImage.base64 },
-          messageText
-        );
-      }
-
-      // Deteksi Nilai Nominal dan Bulan
-      const detectedBulan = (geminiAnalysis?.bulan && INDONESIAN_MONTHS.includes(geminiAnalysis.bulan))
-        ? geminiAnalysis.bulan
-        : detectMonthFromText(messageText);
-
-      const detectedNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0)
-        ? geminiAnalysis.nominal
-        : detectNominalFromText(messageText);
-
-      const detectedDate = geminiAnalysis?.tanggal || new Date().toISOString().split("T")[0];
-      const detectedTime = geminiAnalysis?.waktu || new Date().toTimeString().slice(0, 5);
-      const currentYear = geminiAnalysis?.tahun || new Date().getFullYear();
-
       // Universal Student & User_Id Auto-Matching
       let matchedStudent: any = null;
       let targetUserId = explicitUserId;
 
-      if (senderPhone) {
-        const suffix8 = senderPhone.slice(-8);
-        try {
-          let studentQuery = serverSupabase
-            .from("students")
-            .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
-            .eq("status_aktif", true);
+      try {
+        let studentQuery = serverSupabase
+          .from("students")
+          .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
+          .eq("status_aktif", true);
 
-          if (targetUserId) {
-            studentQuery = studentQuery.eq("user_id", targetUserId);
-          }
+        if (targetUserId) {
+          studentQuery = studentQuery.eq("user_id", targetUserId);
+        }
 
-          const { data: students } = await studentQuery;
+        const { data: students } = await studentQuery;
 
-          if (students && students.length > 0) {
+        if (students && students.length > 0) {
+          // 1. Cocokkan berdasarkan nomor HP WhatsApp orang tua (8 digit belakang)
+          if (senderPhone && senderPhone.length >= 8) {
+            const suffix8 = senderPhone.slice(-8);
             matchedStudent = students.find((s: any) => {
               const cleanS = (s.nomor_whatsapp || "").replace(/\D/g, "");
-              return cleanS.endsWith(suffix8) || senderPhone.endsWith(cleanS.slice(-8));
+              if (!cleanS || cleanS.length < 8) return false;
+              const cleanSuffix = cleanS.slice(-8);
+              return cleanS === senderPhone 
+                || senderPhone.endsWith(cleanSuffix) 
+                || cleanS.endsWith(suffix8);
             });
-
-            if (matchedStudent && !targetUserId) {
-              targetUserId = matchedStudent.user_id;
-            }
           }
-        } catch (lookupErr) {
-          console.warn("[WEBHOOK LOOKUP STUDENTS ERROR]", lookupErr);
+
+          // 2. Jika belum cocok nomornya, coba cocokkan nama siswa di caption pesan
+          if (!matchedStudent && messageText && messageText.trim().length >= 3) {
+            const lowerMsg = messageText.toLowerCase();
+            matchedStudent = students.find((s: any) => {
+              const name = (s.nama_lengkap || "").trim().toLowerCase();
+              if (name.length >= 3 && lowerMsg.includes(name)) {
+                return true;
+              }
+              return false;
+            });
+          }
+
+          if (matchedStudent && !targetUserId) {
+            targetUserId = matchedStudent.user_id;
+          }
         }
+      } catch (lookupErr) {
+        console.warn("[WEBHOOK LOOKUP STUDENTS ERROR]", lookupErr);
       }
 
       // Ambil default admin dari user_settings jika belum ada targetUserId
@@ -372,7 +439,6 @@ export default async function handler(req: any, res: any) {
             .select("user_id, wa_gateway_config, school_name");
 
           if (users && users.length > 0) {
-            // Prioritas: user yang telah mengatur WA gateway
             const activeUser = users.find((u: any) => 
               u.wa_gateway_config && (
                 u.wa_gateway_config.schoolUserId || 
@@ -390,6 +456,77 @@ export default async function handler(req: any, res: any) {
           console.warn("[WEBHOOK DEFAULT USER LOOKUP ERROR]", userErr);
         }
       }
+
+      // Cari Kunci Gemini API dari ENV atau database user_settings
+      let geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      if (!geminiApiKey && targetUserId) {
+        try {
+          const { data: userConf } = await serverSupabase
+            .from("user_settings")
+            .select("wa_gateway_config")
+            .eq("user_id", targetUserId)
+            .maybeSingle();
+          if (userConf?.wa_gateway_config?.geminiApiKey) {
+            geminiApiKey = userConf.wa_gateway_config.geminiApiKey;
+          }
+        } catch (_) {}
+      }
+      if (!geminiApiKey) {
+        try {
+          const { data: allUsers } = await serverSupabase
+            .from("user_settings")
+            .select("wa_gateway_config")
+            .not("wa_gateway_config", "is", null);
+          const found = allUsers?.find((u: any) => u.wa_gateway_config?.geminiApiKey);
+          if (found?.wa_gateway_config?.geminiApiKey) {
+            geminiApiKey = found.wa_gateway_config.geminiApiKey;
+          }
+        } catch (_) {}
+      }
+
+      // Analisis Gambar dengan Gemini Vision AI
+      let geminiAnalysis: ReceiptAnalysisResult | null = null;
+      if (downloadedImage) {
+        geminiAnalysis = await analyzeReceiptWithGemini(
+          { mimeType: downloadedImage.mimeType, base64: downloadedImage.base64 },
+          messageText,
+          geminiApiKey
+        );
+      }
+
+      // Jika ada nama siswa terdeteksi di struk oleh Gemini dan belum ada matchedStudent, coba cocokkan kembali
+      if (!matchedStudent && geminiAnalysis?.namaSiswa) {
+        try {
+          const targetName = geminiAnalysis.namaSiswa.toLowerCase();
+          const { data: students } = await serverSupabase
+            .from("students")
+            .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
+            .eq("status_aktif", true);
+
+          if (students) {
+            matchedStudent = students.find((s: any) => {
+              const name = (s.nama_lengkap || "").toLowerCase();
+              return targetName.includes(name) || name.includes(targetName);
+            });
+            if (matchedStudent && !targetUserId) {
+              targetUserId = matchedStudent.user_id;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Deteksi Nilai Nominal dan Bulan
+      const detectedBulan = (geminiAnalysis?.bulan && INDONESIAN_MONTHS.includes(geminiAnalysis.bulan))
+        ? geminiAnalysis.bulan
+        : detectMonthFromText(messageText);
+
+      const detectedNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0)
+        ? geminiAnalysis.nominal
+        : detectNominalFromText(messageText);
+
+      const detectedDate = geminiAnalysis?.tanggal || new Date().toISOString().split("T")[0];
+      const detectedTime = geminiAnalysis?.waktu || new Date().toTimeString().slice(0, 5);
+      const currentYear = geminiAnalysis?.tahun || new Date().getFullYear();
 
       const finalNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0) 
         ? geminiAnalysis.nominal 
@@ -409,8 +546,7 @@ export default async function handler(req: any, res: any) {
         waktu_transfer: detectedTime,
         bank_pengirim: geminiAnalysis?.bankPengirim || "Bank / E-Wallet",
         bank_tujuan: geminiAnalysis?.bankTujuan || undefined,
-        nama_rekening_pengirim: geminiAnalysis?.namaPengirim || senderName,
-        confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual (Gambar Diterima)"),
+        confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi AI Vision" : (geminiApiKey ? "Gambar Diterima - Menunggu Verifikasi Manual" : "Menunggu Verifikasi Manual (Kunci Gemini API belum diatur di Pengaturan)")),
         status: "pending",
       };
 

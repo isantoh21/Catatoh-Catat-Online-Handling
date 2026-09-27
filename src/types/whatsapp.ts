@@ -5,6 +5,7 @@ export interface WhatsAppGatewayConfig {
   autoReplyEnabled: boolean;
   autoReplyMessage?: string;
   schoolUserId?: string;
+  geminiApiKey?: string;
 }
 
 export interface PaymentVerification {
