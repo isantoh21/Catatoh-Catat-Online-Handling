@@ -367,14 +367,24 @@ export default async function handler(req: any, res: any) {
       // Ambil default admin dari user_settings jika belum ada targetUserId
       if (!targetUserId) {
         try {
-          const { data: defaultUser } = await serverSupabase
+          const { data: users } = await serverSupabase
             .from("user_settings")
-            .select("user_id")
-            .limit(1)
-            .maybeSingle();
+            .select("user_id, wa_gateway_config, school_name");
 
-          if (defaultUser?.user_id) {
-            targetUserId = defaultUser.user_id;
+          if (users && users.length > 0) {
+            // Prioritas: user yang telah mengatur WA gateway
+            const activeUser = users.find((u: any) => 
+              u.wa_gateway_config && (
+                u.wa_gateway_config.schoolUserId || 
+                u.wa_gateway_config.apiUrl || 
+                u.wa_gateway_config.appkey
+              )
+            );
+            if (activeUser?.user_id) {
+              targetUserId = activeUser.user_id;
+            } else {
+              targetUserId = users[0].user_id;
+            }
           }
         } catch (userErr) {
           console.warn("[WEBHOOK DEFAULT USER LOOKUP ERROR]", userErr);

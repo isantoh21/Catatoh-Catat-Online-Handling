@@ -15,6 +15,7 @@ import {
   Copy,
   Check
 } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
 interface WahaConnectProps {
   functionUrl?: string;
@@ -68,12 +69,21 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
   const prevBlobUrlRef = useRef<string | null>(null);
   const isMountedRef = useRef<boolean>(true);
 
-  // Auto set default webhook url based on current domain
+  // Auto set default webhook url based on current domain & user id
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const defaultUrl = `${window.location.origin}/api/webhook/whatsapp`;
-      setWebhookUrl(defaultUrl);
+    async function initWebhookUrl() {
+      if (typeof window !== 'undefined') {
+        let defaultUrl = `${window.location.origin}/api/webhook/whatsapp`;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            defaultUrl = `${window.location.origin}/api/webhook/whatsapp?userId=${session.user.id}`;
+          }
+        } catch (_) {}
+        setWebhookUrl(defaultUrl);
+      }
     }
+    initWebhookUrl();
   }, []);
 
   // Helper to cleanup QR blob object URLs

@@ -204,9 +204,27 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
   }
 
   // 1. Coba dari tabel Supabase `payment_verifications`
-  if (activeUserId) {
-    try {
-      const { data, error } = await supabase
+  try {
+    let query = supabase
+      .from('payment_verifications')
+      .select(`
+        *,
+        students (
+          nama_lengkap,
+          kelompok
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (activeUserId) {
+      query = query.or(`user_id.eq.${activeUserId},user_id.is.null`);
+    }
+
+    let { data, error } = await query;
+
+    // Jika filter spesifik user_id kosong, fallback ambil semua verifikasi di sekolah ini
+    if ((!data || data.length === 0) && activeUserId) {
+      const fallbackRes = await supabase
         .from('payment_verifications')
         .select(`
           *,
@@ -215,21 +233,24 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
             kelompok
           )
         `)
-        .or(`user_id.eq.${activeUserId},user_id.is.null`)
         .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        const mapped = data.map((item: any) => ({
-          ...item,
-          student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
-          student_kelompok: item.students?.kelompok || '-'
-        }));
-        // Filter ketat: HANYA bukti struk transfer nyata yang lolos
-        return mapped.filter(isRealTransferReceipt);
+      if (fallbackRes.data && fallbackRes.data.length > 0) {
+        data = fallbackRes.data;
+        error = fallbackRes.error;
       }
-    } catch (err) {
-      console.warn('Tabel payment_verifications belum dibuat di Supabase, beralih ke cache lokal/server.');
     }
+
+    if (!error && data) {
+      const mapped = data.map((item: any) => ({
+        ...item,
+        student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
+        student_kelompok: item.students?.kelompok || '-'
+      }));
+      // Filter ketat: HANYA bukti struk transfer nyata yang lolos
+      return mapped.filter(isRealTransferReceipt);
+    }
+  } catch (err) {
+    console.warn('Tabel payment_verifications belum dibuat di Supabase, beralih ke cache lokal/server.');
   }
 
   // 2. Coba fetch dari endpoint backend server.ts (jika ada dan berformat json)

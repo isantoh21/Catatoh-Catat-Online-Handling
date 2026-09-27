@@ -67,18 +67,9 @@ export default function WebhookStatusBar({
 
       // 2. Fetch actual received verifications count from Supabase
       try {
-        const { count, error } = await supabase
-          .from('payment_verifications')
-          .select('*', { count: 'exact', head: true });
-
-        if (!error && typeof count === 'number') {
-          setVerificationsCount(count);
-        } else {
-          // Fallback ke local
-          const verifs = await getPaymentVerifications(currentUserId).catch(() => []);
-          const realVerifications = (verifs || []).filter(isRealTransferReceipt);
-          setVerificationsCount(realVerifications.length);
-        }
+        const verifs = await getPaymentVerifications(currentUserId).catch(() => []);
+        const pendingCount = (verifs || []).filter(v => v.status === 'pending').length;
+        setVerificationsCount(pendingCount);
       } catch (_) {
         setVerificationsCount(0);
       }
