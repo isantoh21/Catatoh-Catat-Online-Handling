@@ -515,6 +515,26 @@ export default async function handler(req: any, res: any) {
         } catch (_) {}
       }
 
+      // FILTER KETAT 1: Pastikan hanya nomor HP siswa yang terdaftar yang masuk ke moderasi
+      if (!matchedStudent) {
+        console.warn(`[WEBHOOK IGNORED] Pengirim ${senderPhone || 'tidak dikenal'} bukan nomor siswa yang terdaftar.`);
+        return res.status(200).json({
+          status: "ignored",
+          reason: "unregistered_student",
+          message: `Nomor WhatsApp ${senderPhone || 'tidak dikenal'} tidak terdaftar pada siswa sekolah mana pun. Hanya nomor siswa terdaftar yang diproses ke moderasi.`,
+        });
+      }
+
+      // FILTER KETAT 2: Pastikan gambar adalah bukti transfer resmi (jika Gemini aktif)
+      if (geminiAnalysis && geminiAnalysis.isTransferReceipt === false) {
+        console.warn(`[WEBHOOK IGNORED] Gambar dari ${senderPhone} ditolak oleh Gemini AI (Bukan bukti transfer/QRIS).`);
+        return res.status(200).json({
+          status: "ignored",
+          reason: "not_a_transfer_receipt",
+          message: "Gambar bukan bukti transfer pembayaran atau QRIS resmi. Moderasi dibatalkan.",
+        });
+      }
+
       // Deteksi Nilai Nominal dan Bulan
       const detectedBulan = (geminiAnalysis?.bulan && INDONESIAN_MONTHS.includes(geminiAnalysis.bulan))
         ? geminiAnalysis.bulan

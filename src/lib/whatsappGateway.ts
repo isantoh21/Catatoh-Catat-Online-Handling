@@ -192,6 +192,9 @@ export function isRealTransferReceipt(v: any): boolean {
   // 3. Wajib ada gambar bukti nyata
   if (!v.proof_image_url || v.proof_image_url.trim() === '') return false;
 
+  // 4. Wajib berasal dari siswa yang terdaftar di sekolah (tidak boleh anonim / tanpa siswa)
+  if (!v.student_id) return false;
+
   return true;
 }
 
@@ -209,11 +212,12 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
       .from('payment_verifications')
       .select(`
         *,
-        students (
+        students!inner (
           nama_lengkap,
           kelompok
         )
       `)
+      .not('student_id', 'is', null)
       .order('created_at', { ascending: false });
 
     if (activeUserId) {
@@ -222,17 +226,18 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
 
     let { data, error } = await query;
 
-    // Jika filter spesifik user_id kosong, fallback ambil semua verifikasi di sekolah ini
+    // Jika filter spesifik user_id kosong, fallback ambil semua verifikasi siswa di sekolah ini
     if ((!data || data.length === 0) && activeUserId) {
       const fallbackRes = await supabase
         .from('payment_verifications')
         .select(`
           *,
-          students (
+          students!inner (
             nama_lengkap,
             kelompok
           )
         `)
+        .not('student_id', 'is', null)
         .order('created_at', { ascending: false });
       if (fallbackRes.data && fallbackRes.data.length > 0) {
         data = fallbackRes.data;
