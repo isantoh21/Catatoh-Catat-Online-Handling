@@ -213,9 +213,6 @@ export function isRealTransferReceipt(v: any): boolean {
   // 3. Wajib ada gambar bukti nyata
   if (!v.proof_image_url || v.proof_image_url.trim() === '') return false;
 
-  // 4. Wajib berasal dari siswa yang terdaftar di sekolah (tidak boleh anonim / tanpa siswa)
-  if (!v.student_id) return false;
-
   return true;
 }
 
@@ -233,12 +230,11 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
       .from('payment_verifications')
       .select(`
         *,
-        students!inner (
+        students (
           nama_lengkap,
           kelompok
         )
       `)
-      .not('student_id', 'is', null)
       .order('created_at', { ascending: false });
 
     if (activeUserId) {
@@ -253,12 +249,11 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         .from('payment_verifications')
         .select(`
           *,
-          students!inner (
+          students (
             nama_lengkap,
             kelompok
           )
         `)
-        .not('student_id', 'is', null)
         .order('created_at', { ascending: false });
       if (fallbackRes.data && fallbackRes.data.length > 0) {
         data = fallbackRes.data;
@@ -269,7 +264,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     if (!error && data) {
       const mapped = data.map((item: any) => ({
         ...item,
-        student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
+        student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
       }));
       // Filter ketat: HANYA bukti struk transfer nyata yang lolos

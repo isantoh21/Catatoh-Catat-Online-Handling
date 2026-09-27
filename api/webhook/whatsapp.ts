@@ -266,22 +266,43 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
   "confidenceNotes": "..."
 }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            imagePart,
-            { text: prompt }
-          ]
-        }
-      ]
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              imagePart,
+              { text: prompt }
+            ]
+          }
+        ]
+      });
+    } catch (modelErr) {
+      console.warn("[GEMINI 2.5 FLASH FAILED, TRYING gemini-1.5-flash]", modelErr);
+      response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              imagePart,
+              { text: prompt }
+            ]
+          }
+        ]
+      });
+    }
 
     const text = response.text || "";
-    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleanJson);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn("[GEMINI VISION NO JSON FOUND]", text);
+      return null;
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
     return parsed as ReceiptAnalysisResult;
   } catch (error) {
     console.error("[GEMINI VISION ERROR]", error);
@@ -322,7 +343,7 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      const explicitUserId = (query.user_id || payload.user_id || "").toString();
+      const explicitUserId = (query.userId || query.user_id || payload.userId || payload.user_id || "").toString();
 
       // Ekstraksi Pengirim secara cerdas (mendukung format WAHA NOWEB, Baileys, LID, WEBJS, dll.)
       const senderPhone = extractSenderPhone(payload);
@@ -434,6 +455,22 @@ export default async function handler(req: any, res: any) {
         console.warn("[WEBHOOK LOOKUP STUDENTS ERROR]", lookupErr);
       }
 
+      // Jika targetUserId belum didapat, coba ekstrak dari session WAHA (contoh: user_400dd5042e144502)
+      if (!targetUserId && payload.session && typeof payload.session === 'string' && payload.session.startsWith('user_')) {
+        const cleanSessPrefix = payload.session.replace('user_', '');
+        try {
+          const { data: users } = await serverSupabase
+            .from("user_settings")
+            .select("user_id");
+          const matchedUser = users?.find((u: any) => 
+            (u.user_id || "").replace(/[^a-zA-Z0-9]/g, '').startsWith(cleanSessPrefix)
+          );
+          if (matchedUser?.user_id) {
+            targetUserId = matchedUser.user_id;
+          }
+        } catch (_) {}
+      }
+
       // Ambil default admin dari user_settings jika belum ada targetUserId
       if (!targetUserId) {
         try {
@@ -521,24 +558,10 @@ export default async function handler(req: any, res: any) {
         } catch (_) {}
       }
 
-      // FILTER KETAT 1: Pastikan hanya nomor HP siswa yang terdaftar yang masuk ke moderasi
+      // Jika nomor HP siswa belum terdaftar di database, tetap izinkan masuk ke antrean moderasi
+      // agar bendahara sekolah dapat meninjau dan memilih siswa secara manual di UI Moderasi.
       if (!matchedStudent) {
-        console.warn(`[WEBHOOK IGNORED] Pengirim ${senderPhone || 'tidak dikenal'} bukan nomor siswa yang terdaftar.`);
-        return res.status(200).json({
-          status: "ignored",
-          reason: "unregistered_student",
-          message: `Nomor WhatsApp ${senderPhone || 'tidak dikenal'} tidak terdaftar pada siswa sekolah mana pun. Hanya nomor siswa terdaftar yang diproses ke moderasi.`,
-        });
-      }
-
-      // FILTER KETAT 2: Pastikan gambar adalah bukti transfer resmi (jika Gemini aktif)
-      if (geminiAnalysis && geminiAnalysis.isTransferReceipt === false) {
-        console.warn(`[WEBHOOK IGNORED] Gambar dari ${senderPhone} ditolak oleh Gemini AI (Bukan bukti transfer/QRIS).`);
-        return res.status(200).json({
-          status: "ignored",
-          reason: "not_a_transfer_receipt",
-          message: "Gambar bukan bukti transfer pembayaran atau QRIS resmi. Moderasi dibatalkan.",
-        });
+        console.log(`[WEBHOOK INFO] Pengirim ${senderPhone || 'tidak dikenal'} belum terdaftar di nomor WhatsApp siswa. Bukti transfer tetap disimpan ke antrean moderasi dengan status belum dikaitkan.`);
       }
 
       // Deteksi Nilai Nominal dan Bulan
@@ -558,11 +581,35 @@ export default async function handler(req: any, res: any) {
         ? geminiAnalysis.nominal 
         : (matchedStudent?.nominal_spp || detectedNominal);
 
+      // Tentukan catatan verifikasi AI
+      let confidenceNotes = "";
+      if (geminiAnalysis) {
+        if (geminiAnalysis.isTransferReceipt === false) {
+          confidenceNotes = "Perlu dicek manual (AI mendeteksi kemungkinan bukan bukti transfer)";
+        } else {
+          confidenceNotes = geminiAnalysis.confidenceNotes || "Terverifikasi AI Vision";
+        }
+      } else if (geminiApiKey) {
+        confidenceNotes = "Gambar Diterima - Menunggu Verifikasi Manual";
+      } else {
+        confidenceNotes = "Menunggu Verifikasi Manual";
+      }
+
+      if (!matchedStudent) {
+        confidenceNotes = confidenceNotes
+          ? `${confidenceNotes} • Nomor belum terdaftar (Pilih siswa di dropdown)`
+          : "Nomor belum terdaftar (Pilih siswa di dropdown)";
+      }
+
+      const resolvedSenderName = matchedStudent?.nama_lengkap 
+        || senderName 
+        || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa");
+
       const verificationPayload = {
         user_id: targetUserId || null,
         student_id: matchedStudent?.id || null,
         sender_phone: senderPhone,
-        sender_name: matchedStudent?.nama_lengkap || senderName,
+        sender_name: resolvedSenderName,
         message_text: messageText,
         proof_image_url: proofImageUrl,
         bulan: detectedBulan,
@@ -572,7 +619,8 @@ export default async function handler(req: any, res: any) {
         waktu_transfer: detectedTime,
         bank_pengirim: geminiAnalysis?.bankPengirim || "Bank / E-Wallet",
         bank_tujuan: geminiAnalysis?.bankTujuan || undefined,
-        confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi AI Vision" : (geminiApiKey ? "Gambar Diterima - Menunggu Verifikasi Manual" : "Menunggu Verifikasi Manual (Kunci Gemini API belum diatur di Pengaturan)")),
+        nama_rekening_pengirim: geminiAnalysis?.namaPengirim || undefined,
+        confidence_notes: confidenceNotes,
         status: "pending",
       };
 
@@ -596,12 +644,14 @@ export default async function handler(req: any, res: any) {
 
       // Auto-reply via WAHA jika pesan masuk dari nomor valid
       if (senderPhone) {
-        const studentNameStr = matchedStudent ? `ananda ${matchedStudent.nama_lengkap}` : "ananda";
-        const nominalStr = finalNominal > 0 ? ` sebesar Rp ${finalNominal.toLocaleString("id-ID")}` : "";
-        const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        const studentNameStr = matchedStudent ? `ananda *${matchedStudent.nama_lengkap}*` : "ananda";
+        const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
+        const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${detectedBulan}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
 
-        // Kirim auto-reply langsung via WAHA VPS
+        // Kirim auto-reply langsung via WAHA VPS menggunakan sesi yang sesuai
         try {
+          const activeSession = payload.session 
+            || (targetUserId ? `user_${targetUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}` : 'default');
           const wahaBase = 'http://13.140.178.167:29001';
           const wahaKey = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
           await fetch(`${wahaBase}/api/sendText`, {
@@ -611,7 +661,7 @@ export default async function handler(req: any, res: any) {
               'X-Api-Key': wahaKey,
             },
             body: JSON.stringify({
-              session: 'default',
+              session: activeSession,
               chatId: `${senderPhone}@c.us`,
               text: replyMsg,
             }),

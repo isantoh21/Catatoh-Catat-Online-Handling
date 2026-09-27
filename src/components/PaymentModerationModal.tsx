@@ -86,6 +86,13 @@ export default function PaymentModerationModal({
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
 
+      // Validasi: pastikan siswa sudah dipilih sebelum disetujui
+      if (!item.student_id) {
+        alert('Silakan pilih nama siswa terlebih dahulu pada menu "Kaitkan Siswa" sebelum menyetujui pembayaran ini.');
+        setIsProcessingAction(false);
+        return;
+      }
+
       // 1. Simpan ke tabel payments menggunakan tanggal & jam transfer asli dari struk
       const targetStudent = students.find(s => s.id === item.student_id);
       const studentName = targetStudent?.nama_lengkap || item.student_name || 'Siswa';
