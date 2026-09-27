@@ -67,7 +67,60 @@ interface ReceiptAnalysisResult {
   confidenceNotes: string;
 }
 
-async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: string): Promise<ReceiptAnalysisResult | null> {
+// Download image securely from WAHA VPS or external URL and convert to Base64
+async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: string; mimeType: string; base64: string } | null> {
+  if (!rawUrl) return null;
+
+  if (rawUrl.startsWith("data:image/")) {
+    const match = rawUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (match) {
+      return { dataUri: rawUrl, mimeType: match[1], base64: match[2] };
+    }
+  }
+
+  let targetUrl = rawUrl;
+  const WAHA_PUBLIC = 'http://13.140.178.167:29001';
+  const WAHA_KEY = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+
+  // Replace internal docker localhost/127.0.0.1 with public VPS IP
+  if (targetUrl.includes('localhost') || targetUrl.includes('127.0.0.1') || targetUrl.startsWith('/api/files/')) {
+    targetUrl = targetUrl.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, WAHA_PUBLIC);
+    if (targetUrl.startsWith('/')) {
+      targetUrl = `${WAHA_PUBLIC}${targetUrl}`;
+    }
+  }
+
+  try {
+    const headers: Record<string, string> = {};
+    if (targetUrl.includes('13.140.178.167') || targetUrl.includes('/api/files/')) {
+      headers['X-Api-Key'] = WAHA_KEY;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const imgRes = await fetch(targetUrl, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (imgRes.ok) {
+      const buffer = await imgRes.arrayBuffer();
+      const mimeType = (imgRes.headers.get("content-type") || "image/jpeg").split(';')[0];
+      const base64Data = Buffer.from(buffer).toString("base64");
+      const dataUri = `data:${mimeType};base64,${base64Data}`;
+      return { dataUri, mimeType, base64: base64Data };
+    } else {
+      console.warn(`[IMAGE FETCH FAILED] HTTP ${imgRes.status} for ${targetUrl}`);
+    }
+  } catch (err) {
+    console.error(`[IMAGE FETCH ERROR] ${targetUrl}:`, err);
+  }
+
+  return null;
+}
+
+async function analyzeReceiptWithGemini(
+  imageInfo: { mimeType: string; base64: string }, 
+  messageCaption?: string
+): Promise<ReceiptAnalysisResult | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     return null;
@@ -83,40 +136,12 @@ async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: strin
       },
     });
 
-    let imagePart: any = null;
-
-    if (imageUrl.startsWith("data:image/")) {
-      const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-      if (match) {
-        imagePart = {
-          inlineData: {
-            mimeType: match[1],
-            data: match[2],
-          }
-        };
+    const imagePart = {
+      inlineData: {
+        mimeType: imageInfo.mimeType,
+        data: imageInfo.base64,
       }
-    } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const imgRes = await fetch(imageUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      if (imgRes.ok) {
-        const buffer = await imgRes.arrayBuffer();
-        const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
-        const base64Data = Buffer.from(buffer).toString("base64");
-        imagePart = {
-          inlineData: {
-            mimeType: mimeType.split(";")[0],
-            data: base64Data,
-          }
-        };
-      }
-    }
-
-    if (!imagePart) {
-      return null;
-    }
+    };
 
     const prompt = `Anda adalah sistem verifikasi keuangan sekolah khusus memeriksa bukti transfer bank / m-Banking / e-Wallet / struk ATM pembayaran SPP di Indonesia.
 Analisis gambar ini dengan SANGAT KETAT dan teliti.
@@ -139,21 +164,21 @@ TUGAS UTAMA:
    - "statusTransaksi": 'BERHASIL' / 'PENDING' / 'GAGAL'.
    - "confidenceNotes": ringkasan singkat hasil bacaan.
 
-Teks pesan pendamping: "${messageCaption || ""}"
+Teks pesan pengirim: "${messageCaption || ''}"
 
-Kembalikan HANYA JSON murni yang valid:
+Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
 {
-  "isTransferReceipt": boolean,
-  "nominal": number,
-  "tanggal": string,
-  "waktu": string,
-  "bulan": string,
-  "tahun": number,
-  "bankPengirim": string,
-  "bankTujuan": string,
-  "namaPengirim": string,
-  "statusTransaksi": string,
-  "confidenceNotes": string
+  "isTransferReceipt": true/false,
+  "nominal": 0,
+  "tanggal": "YYYY-MM-DD",
+  "waktu": "HH:mm",
+  "bulan": "NamaBulan",
+  "tahun": 2026,
+  "bankPengirim": "NamaBank",
+  "bankTujuan": "BankTujuan",
+  "namaPengirim": "NamaDiStruk",
+  "statusTransaksi": "BERHASIL",
+  "confidenceNotes": "..."
 }`;
 
     const response = await ai.models.generateContent({
@@ -162,79 +187,57 @@ Kembalikan HANYA JSON murni yang valid:
         {
           role: "user",
           parts: [
-            { text: prompt },
             imagePart,
+            { text: prompt }
           ]
         }
-      ],
-      config: {
-        responseMimeType: "application/json",
-      },
+      ]
     });
 
     const text = response.text || "";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleanJson) as ReceiptAnalysisResult;
-  } catch (err: any) {
-    console.error("[GEMINI VISION WEBHOOK ERROR]", err);
+    const parsed = JSON.parse(cleanJson);
+    return parsed as ReceiptAnalysisResult;
+  } catch (error) {
+    console.error("[GEMINI VISION ERROR]", error);
     return null;
   }
 }
 
 export default async function handler(req: any, res: any) {
-  // Setup CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-appkey, x-authkey');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-appkey, x-authkey");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  // Handle GET (Verification / Ping from Webhook Providers or Meta)
   if (req.method === 'GET') {
-    const query = req.query || {};
-
-    // Support Meta WhatsApp Cloud API Webhook Challenge
-    const mode = query['hub.mode'];
-    const token = query['hub.verify_token'];
-    const challenge = query['hub.challenge'];
-    if (mode === 'subscribe' && challenge) {
-      return res.status(200).send(challenge);
-    }
-
     return res.status(200).json({
-      status: 'ok',
-      service: 'Catatoh WhatsApp Universal Inbound Webhook',
-      endpoint: '/api/webhook/whatsapp',
-      environment: 'vercel-serverless',
-      methods_supported: ['POST', 'GET'],
-      universal_mode: true,
-      auto_matching: 'enabled',
+      status: "online",
+      service: "CATATOH SPP - Inbound WhatsApp Webhook (WAHA Compatible)",
       timestamp: new Date().toISOString(),
-      message: 'Universal Webhook Catatoh aktif dan siap menerima data pembayaran SPP.',
+      supportedProviders: ["WAHA", "Starsender", "Fonnte", "Wablas", "UltraMsg", "W-API", "Meta Cloud"]
     });
   }
 
-  // Handle POST (Incoming Webhook from WhatsApp Gateway)
   if (req.method === 'POST') {
     try {
       const payload = req.body || {};
       const query = req.query || {};
 
-      // Ekstraksi Token / Keys
-      const appkey = payload.appkey || query.appkey || req.headers["x-appkey"] || "";
-      const authkey = payload.authkey || query.authkey || req.headers["x-authkey"] || "";
-      const explicitUserId = (query.user_id || payload.user_id || "").toString();
-
       // Abaikan pesan keluar dari nomor bot/WAHA sendiri
-      if (payload.payload?.fromMe === true) {
+      if (payload.payload?.fromMe === true || payload.fromMe === true) {
         return res.status(200).json({
           status: "ignored",
           reason: "outgoing_message_from_self",
           message: "Pesan keluar dari akun sendiri diabaikan.",
         });
       }
+
+      const explicitUserId = (query.user_id || payload.user_id || "").toString();
 
       // Normalisasi Pengirim dari berbagai schema provider (WAHA, Starsender, Fonnte, Wablas, UltraMsg, W-API, Meta)
       const rawSender = payload.payload?.from
@@ -249,7 +252,7 @@ export default async function handler(req: any, res: any) {
         || "";
       const senderPhone = normalizePhoneDigits(rawSender.toString().replace('@c.us', ''));
 
-      // Ekstraksi Teks dan Gambar Bukti
+      // Ekstraksi Teks Caption
       const messageText = (
         payload.payload?.body
         || payload.payload?.caption
@@ -264,9 +267,11 @@ export default async function handler(req: any, res: any) {
         || ""
       ).toString();
 
-      const proofImageUrl = (
+      // Ekstraksi Gambar Bukti dari WAHA & Provider Lain
+      let rawProofUrl = (
         payload.payload?.media?.url
         || payload.payload?.url
+        || payload.media?.url
         || payload.file 
         || payload.url 
         || payload.media 
@@ -277,6 +282,21 @@ export default async function handler(req: any, res: any) {
         || payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.image?.url
         || ""
       ).toString();
+
+      const hasMedia = payload.payload?.hasMedia === true || payload.hasMedia === true || Boolean(rawProofUrl);
+
+      // Abaikan pesan teks murni tanpa lampiran gambar
+      if (!hasMedia && (!rawProofUrl || rawProofUrl.trim() === "")) {
+        return res.status(200).json({
+          status: "ignored",
+          reason: "no_image_attached",
+          message: "Pesan teks diterima tanpa lampiran bukti transfer. Moderasi tidak dipicu.",
+        });
+      }
+
+      // Download gambar dan ubah ke Base64 Data URI
+      const downloadedImage = await resolveAndDownloadImage(rawProofUrl);
+      const proofImageUrl = downloadedImage?.dataUri || rawProofUrl;
 
       const senderName = (
         payload.payload?._data?.notifyName
@@ -289,45 +309,16 @@ export default async function handler(req: any, res: any) {
         || "Wali Siswa"
       ).toString();
 
-      // =========================================================================
-      // ATURAN 1: ABAIKAN PESAN TANPA GAMBAR
-      // =========================================================================
-      if (!proofImageUrl || proofImageUrl.trim() === "") {
-        return res.status(200).json({
-          status: "ignored",
-          reason: "no_image_attached",
-          message: "Pesan teks diterima tanpa lampiran bukti transfer. Moderasi tidak dipicu.",
-        });
+      // Analisis Gambar dengan Gemini Vision (jika tersedia)
+      let geminiAnalysis: ReceiptAnalysisResult | null = null;
+      if (downloadedImage) {
+        geminiAnalysis = await analyzeReceiptWithGemini(
+          { mimeType: downloadedImage.mimeType, base64: downloadedImage.base64 },
+          messageText
+        );
       }
 
-      // =========================================================================
-      // ATURAN 2: ANALISIS DENGAN GEMINI VISION / FALLBACK KEYWORDS
-      // =========================================================================
-      const geminiAnalysis = await analyzeReceiptWithGemini(proofImageUrl, messageText);
-
-      if (geminiAnalysis) {
-        if (!geminiAnalysis.isTransferReceipt || geminiAnalysis.statusTransaksi === 'GAGAL') {
-          return res.status(200).json({
-            status: "ignored",
-            reason: "not_a_valid_transfer_receipt",
-            message: geminiAnalysis.statusTransaksi === 'GAGAL'
-              ? "Gambar struk transfer berstatus GAGAL. Moderasi SPP tidak dipicu."
-              : "Gambar terdeteksi bukan struk/bukti transfer bank atau e-wallet resmi. Moderasi tidak dipicu.",
-            detectedNotes: geminiAnalysis.confidenceNotes,
-          });
-        }
-      } else {
-        const lowerText = messageText.toLowerCase();
-        const hasPaymentKeyword = PAYMENT_KEYWORDS.some(kw => lowerText.includes(kw));
-        if (!hasPaymentKeyword) {
-          return res.status(200).json({
-            status: "ignored",
-            reason: "no_payment_intent",
-            message: "Gambar dan pesan tidak mengindikasikan bukti pembayaran transfer SPP.",
-          });
-        }
-      }
-
+      // Deteksi Nilai Nominal dan Bulan
       const detectedBulan = (geminiAnalysis?.bulan && INDONESIAN_MONTHS.includes(geminiAnalysis.bulan))
         ? geminiAnalysis.bulan
         : detectMonthFromText(messageText);
@@ -340,9 +331,7 @@ export default async function handler(req: any, res: any) {
       const detectedTime = geminiAnalysis?.waktu || new Date().toTimeString().slice(0, 5);
       const currentYear = geminiAnalysis?.tahun || new Date().getFullYear();
 
-      // =========================================================================
-      // ATURAN 3: UNIVERSAL STUDENT & USER_ID AUTO-MATCHING
-      // =========================================================================
+      // Universal Student & User_Id Auto-Matching
       let matchedStudent: any = null;
       let targetUserId = explicitUserId;
 
@@ -375,7 +364,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Jika targetUserId belum ditemukan, ambil default user admin dari user_settings
+      // Ambil default admin dari user_settings jika belum ada targetUserId
       if (!targetUserId) {
         try {
           const { data: defaultUser } = await serverSupabase
@@ -411,13 +400,11 @@ export default async function handler(req: any, res: any) {
         bank_pengirim: geminiAnalysis?.bankPengirim || "Bank / E-Wallet",
         bank_tujuan: geminiAnalysis?.bankTujuan || undefined,
         nama_rekening_pengirim: geminiAnalysis?.namaPengirim || senderName,
-        confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi AI Vision" : "Deteksi Otomatis"),
+        confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual (Gambar Diterima)"),
         status: "pending",
       };
 
-      // =========================================================================
-      // ATURAN 4: SIMPAN KE SUPABASE (PERMANEN DI CLOUD)
-      // =========================================================================
+      // Simpan ke Supabase (payment_verifications)
       let insertedId = null;
       try {
         const { data: insertedData, error: insertError } = await serverSupabase
@@ -435,47 +422,47 @@ export default async function handler(req: any, res: any) {
         console.error("[SUPABASE CONNECTION ERROR]", dbErr);
       }
 
-      // =========================================================================
-      // ATURAN 5: AUTO-REPLY WHATSAPP KE ORANG TUA
-      // =========================================================================
-      if (appkey && authkey && senderPhone) {
+      // Auto-reply via WAHA jika pesan masuk dari nomor valid
+      if (senderPhone) {
         const studentNameStr = matchedStudent ? `ananda ${matchedStudent.nama_lengkap}` : "ananda";
         const nominalStr = finalNominal > 0 ? ` sebesar Rp ${finalNominal.toLocaleString("id-ID")}` : "";
-        const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
 
+        // Kirim auto-reply langsung via WAHA VPS
         try {
-          const formData = new URLSearchParams();
-          formData.append("appkey", appkey);
-          formData.append("authkey", authkey);
-          formData.append("to", senderPhone);
-          formData.append("message", replyMsg);
-
-          await fetch("https://app.starsender.online/api/sendText", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: formData.toString(),
+          const wahaBase = 'http://13.140.178.167:29001';
+          const wahaKey = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+          await fetch(`${wahaBase}/api/sendText`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': wahaKey,
+            },
+            body: JSON.stringify({
+              session: 'default',
+              chatId: `${senderPhone}@c.us`,
+              text: replyMsg,
+            }),
           });
         } catch (replyErr) {
-          console.warn("[AUTO-REPLY WA FAILED]", replyErr);
+          console.warn("[WAHA AUTO-REPLY FAILED]", replyErr);
         }
       }
 
       return res.status(200).json({
         status: "success",
-        message: "Webhook diterima dan diproses oleh Vercel Serverless Function.",
-        verificationId: insertedId || "cached",
-        studentMatched: !!matchedStudent,
-        studentName: matchedStudent?.nama_lengkap || null,
-        targetUserId: targetUserId || null,
+        message: "Bukti transfer pembayaran berhasil diterima dan masuk moderasi.",
+        recordId: insertedId,
+        matchedStudent: matchedStudent ? matchedStudent.nama_lengkap : null,
         detectedNominal: finalNominal,
         detectedBulan: detectedBulan,
       });
 
-    } catch (err: any) {
-      console.error("[WEBHOOK HANDLER FATAL ERROR]", err);
+    } catch (error: any) {
+      console.error("[WEBHOOK PROCESS ERROR]", error);
       return res.status(500).json({
         status: "error",
-        message: err.message || "Gagal memproses webhook.",
+        message: error.message || "Internal Webhook Error",
       });
     }
   }
