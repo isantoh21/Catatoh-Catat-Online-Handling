@@ -63,21 +63,12 @@ export default function WebhookStatusBar({
 
         if (wahaRes.ok) {
           const wahaData = await wahaRes.json();
-          const isPrimaryOwner = activeUid === 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
-
-          // Proteksi ketat: nomor 6285347360359 HANYA untuk akun pertama
-          if (!isPrimaryOwner && wahaData.me?.id?.includes('6285347360359')) {
-            currentWahaStatus = 'STOPPED';
-            setWahaStatus('STOPPED');
-            setWahaAccount(null);
+          currentWahaStatus = wahaData.status || 'UNKNOWN';
+          setWahaStatus(currentWahaStatus);
+          if (wahaData.me) {
+            setWahaAccount(wahaData.me);
           } else {
-            currentWahaStatus = wahaData.status || 'UNKNOWN';
-            setWahaStatus(currentWahaStatus);
-            if (wahaData.me && (isPrimaryOwner || !wahaData.me?.id?.includes('6285347360359'))) {
-              setWahaAccount(wahaData.me);
-            } else {
-              setWahaAccount(null);
-            }
+            setWahaAccount(null);
           }
         } else {
           setWahaStatus('FAILED');

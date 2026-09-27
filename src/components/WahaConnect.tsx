@@ -41,7 +41,6 @@ interface WahaSessionResponse {
 }
 
 const DEFAULT_FUNCTION_URL = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy';
-const PRIMARY_OWNER_ID = 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
 
 export const WahaConnect: React.FC<WahaConnectProps> = ({
   functionUrl = DEFAULT_FUNCTION_URL,
@@ -212,16 +211,6 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
 
       const data: WahaSessionResponse = await res.json();
       if (!isMountedRef.current) return null;
-
-      // Proteksi kepemilikan nomor 6285347360359: Hanya untuk akun pertama
-      const isPrimaryOwner = uid === PRIMARY_OWNER_ID;
-      if (!isPrimaryOwner && data.me?.id?.includes('6285347360359')) {
-        setStatus('STOPPED');
-        setSessionData(null);
-        clearQrImage();
-        onStatusChange?.('STOPPED');
-        return 'STOPPED';
-      }
 
       const currentStatus = data.status || 'UNKNOWN';
       setStatus(currentStatus);

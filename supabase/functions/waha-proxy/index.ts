@@ -1,6 +1,6 @@
 // Supabase Edge Function: waha-proxy
 // Secure proxy between frontend/backend and self-hosted WAHA (WhatsApp HTTP API)
-// Mendukung isolasi multi-user: Nomor 6285347360359 dan session 'default' eksklusif untuk akun pertama
+// Mendukung isolasi multi-user secara transparan berbasis user ID
 
 declare const Deno: any;
 
@@ -9,10 +9,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
 };
-
-// Akun pertama pemilik sah nomor 6285347360359
-const PRIMARY_OWNER_ID = 'b68ebc60-867d-4ad8-8026-92a5a7f57b97';
-const PRIMARY_PHONE_PREFIX = '6285347360359';
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
@@ -55,25 +51,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Resolusi nama session berdasarkan kepemilikan akun
+    // Resolusi nama session unik per user agar setiap akun sekolah terisolasi penuh
     let sessionName = 'default';
     if (requestedUserId) {
-      if (requestedUserId === PRIMARY_OWNER_ID) {
-        sessionName = 'default';
-      } else {
-        const cleanUid = requestedUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
-        sessionName = requestedSession && requestedSession !== 'default' 
-          ? requestedSession 
-          : `user_${cleanUid}`;
-      }
+      const cleanUid = requestedUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+      sessionName = requestedSession && requestedSession !== 'default' 
+        ? requestedSession 
+        : `user_${cleanUid}`;
     } else if (requestedSession) {
       sessionName = requestedSession;
     } else {
-      // Jika request tanpa identitas user, jangan bocorkan akun utama ke user lain
       sessionName = 'unassigned';
     }
 
-    // Jika request unassigned untuk status/qr, kembalikan STOPPED agar akun lain tidak melihat nomor pemilik
+    // Jika request unassigned (tanpa userId atau session), jangan bocorkan sesi akun manapun
     if (sessionName === 'unassigned') {
       if (action === 'status') {
         return new Response(
@@ -98,16 +89,7 @@ Deno.serve(async (req: Request) => {
           headers: { 'X-Api-Key': WAHA_API_KEY },
         });
         if (res.ok) {
-          const data = await res.json();
-          // Perlindungan: jangan pernah kirimkan data nomor 6285347360359 ke akun selain PRIMARY_OWNER_ID
-          if (requestedUserId && requestedUserId !== PRIMARY_OWNER_ID && data.me?.id?.includes(PRIMARY_PHONE_PREFIX)) {
-            return {
-              name: sess,
-              status: 'STOPPED',
-              me: null,
-            };
-          }
-          return data;
+          return await res.json();
         }
       } catch (err) {
         console.warn(`Error fetching session ${sess}:`, err);
@@ -190,7 +172,7 @@ Deno.serve(async (req: Request) => {
               config: {
                 webhooks: [
                   {
-                    url: `https://catatoh.vercel.app/api/webhook/whatsapp?userId=${requestedUserId || PRIMARY_OWNER_ID}`,
+                    url: `https://catatoh.vercel.app/api/webhook/whatsapp?userId=${requestedUserId || ''}`,
                     events: ['message'],
                   },
                 ],
@@ -249,7 +231,7 @@ Deno.serve(async (req: Request) => {
       });
 
       if (!statusRes.ok) {
-        // Jika sesi belum dibuat di WAHA, kembalikan STOPPED
+        // Jika sesi belum diaktifkan di WAHA, kembalikan STOPPED
         return new Response(
           JSON.stringify({
             name: sessionName,
@@ -268,25 +250,6 @@ Deno.serve(async (req: Request) => {
       }
 
       const statusData = await statusRes.json().catch(() => ({}));
-      // Filter proteksi nomor pemilik pertama
-      if (requestedUserId && requestedUserId !== PRIMARY_OWNER_ID && statusData.me?.id?.includes(PRIMARY_PHONE_PREFIX)) {
-        return new Response(
-          JSON.stringify({
-            name: sessionName,
-            status: 'STOPPED',
-            me: null,
-            message: 'Nomor WhatsApp belum terhubung pada akun ini.'
-          }),
-          {
-            status: 200,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-      }
-
       return new Response(JSON.stringify(statusData), {
         status: 200,
         headers: {
@@ -417,14 +380,6 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Cegah akun lain menimpa session 'default' milik PRIMARY_OWNER_ID
-      if (sessionName === 'default' && requestedUserId && requestedUserId !== PRIMARY_OWNER_ID) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Anda tidak memiliki hak akses mengubah webhook sesi ini.' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
       const putRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}`, {
         method: 'PUT',
         headers: {
@@ -481,7 +436,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         error: 'Invalid action',
-        message: `Action "${action}" is not supported. Supported actions: start, restart, status, qr, stop, sendText, setWebhook, getWebhook.`
+        message: `Action "${action}" is not supported. Supported actions: start, restart, status, qr, stop, sendText, setWebhook, getWebhook, logout, reset.`
       }),
       {
         status: 400,
