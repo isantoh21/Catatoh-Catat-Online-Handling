@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppGatewaySettingsCard from './WhatsAppGatewaySettingsCard';
+import WahaConnect from './WahaConnect';
 
 export default function SettingsView({ 
   schoolName, 
@@ -386,6 +387,9 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
               </div>
             </div>
           </div>
+
+          {/* Koneksi WhatsApp WAHA & Proxy Supabase */}
+          <WahaConnect />
 
           {/* Integrasi WhatsApp Gateway & Webhook */}
           <WhatsAppGatewaySettingsCard />

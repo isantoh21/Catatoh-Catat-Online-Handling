@@ -11,7 +11,9 @@
     "clean": "rm -rf dist server.js dist/server.cjs",
     "lint": "tsc --noEmit",
     "build:electron": "vite build && electron-builder --win",
-    "build:exe": "vite build && electron-builder --win"
+    "build:exe": "vite build && electron-builder --win",
+    "supabase:secrets": "supabase secrets set --project-ref lzvrhtaewonmpsaiezai --env-file supabase/.env",
+    "supabase:deploy": "supabase functions deploy waha-proxy --project-ref lzvrhtaewonmpsaiezai --no-verify-jwt"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

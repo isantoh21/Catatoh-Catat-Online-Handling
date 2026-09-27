@@ -10,3 +10,6 @@ coverage/
 .env.local
 .env.*.local
 !.env.example
+supabase/.env
+supabase/.temp/
+
