@@ -573,8 +573,13 @@ export default async function handler(req: any, res: any) {
         ? geminiAnalysis.nominal
         : detectNominalFromText(messageText);
 
-      const detectedDate = geminiAnalysis?.tanggal || new Date().toISOString().split("T")[0];
-      const detectedTime = geminiAnalysis?.waktu || new Date().toTimeString().slice(0, 5);
+      // Validasi format tanggal dari Gemini (harus YYYY-MM-DD nyata, bukan placeholder)
+      const rawGeminiDate = geminiAnalysis?.tanggal || "";
+      const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(rawGeminiDate) && rawGeminiDate !== "YYYY-MM-DD";
+      const detectedDate = isValidDate ? rawGeminiDate : new Date().toISOString().split("T")[0];
+      const rawGeminiTime = geminiAnalysis?.waktu || "";
+      const isValidTime = /^\d{2}:\d{2}$/.test(rawGeminiTime) && rawGeminiTime !== "HH:mm";
+      const detectedTime = isValidTime ? rawGeminiTime : new Date().toTimeString().slice(0, 5);
       const currentYear = geminiAnalysis?.tahun || new Date().getFullYear();
 
       const finalNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0) 
