@@ -76,6 +76,43 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
   const pollTimerRef = useRef<number | null>(null);
   const prevBlobUrlRef = useRef<string | null>(null);
   const isMountedRef = useRef<boolean>(true);
+  const hasAutoRegisteredWebhookRef = useRef<boolean>(false);
+
+  // Auto-register inbound webhook silently when WhatsApp is connected
+  const registerWebhookSilently = useCallback(async (customUrl?: string) => {
+    try {
+      let targetUrl = customUrl || webhookUrl;
+      if (!targetUrl && typeof window !== 'undefined') {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        targetUrl = uid 
+          ? `${window.location.origin}/api/webhook/whatsapp?userId=${uid}`
+          : `${window.location.origin}/api/webhook/whatsapp`;
+        if (isMountedRef.current) {
+          setWebhookUrl(targetUrl);
+        }
+      }
+      if (!targetUrl) return;
+
+      const res = await fetch(`${functionUrl}?action=setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl.trim() }),
+      });
+
+      if (res.ok) {
+        console.log('[AUTO-WEBHOOK] Inbound webhook otomatis berhasil didaftarkan ke WAHA:', targetUrl);
+        if (isMountedRef.current) {
+          setWebhookSuccess(true);
+          setTimeout(() => {
+            if (isMountedRef.current) setWebhookSuccess(false);
+          }, 6000);
+        }
+      }
+    } catch (err) {
+      console.warn('[AUTO-WEBHOOK NOTICE]', err);
+    }
+  }, [functionUrl, webhookUrl]);
 
   // Auto set default webhook url based on current domain & user id, and load gemini key
   useEffect(() => {
@@ -164,9 +201,15 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
         clearQrImage();
       }
 
-      // If already connected (WORKING), stop polling
+      // If already connected (WORKING), stop polling & auto-register inbound webhook
       if (currentStatus === 'WORKING') {
         setIsPolling(false);
+        if (!hasAutoRegisteredWebhookRef.current) {
+          hasAutoRegisteredWebhookRef.current = true;
+          registerWebhookSilently();
+        }
+      } else if (currentStatus === 'SCAN_QR_CODE' || currentStatus === 'STARTING') {
+        hasAutoRegisteredWebhookRef.current = false;
       }
 
       return currentStatus;
@@ -176,13 +219,14 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       }
       return null;
     }
-  }, [functionUrl, onStatusChange]);
+  }, [functionUrl, onStatusChange, registerWebhookSilently]);
 
   // Handle Start / Restart Connection
   const handleStart = async (forceRestart = false) => {
     setIsStarting(true);
     setErrorMessage(null);
     clearQrImage();
+    hasAutoRegisteredWebhookRef.current = false;
     setStatus('STARTING');
 
     try {
@@ -448,6 +492,20 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Auto Inbound Webhook Status */}
+            <div className="bg-emerald-500/10 border border-emerald-300/70 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="font-bold text-emerald-950 block">Inbound Webhook Terhubung Otomatis</span>
+                  <span className="text-[11px] text-emerald-800 font-mono break-all">{webhookUrl}</span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white shrink-0 self-start sm:self-center">
+                Auto-Sync Aktif
+              </span>
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
