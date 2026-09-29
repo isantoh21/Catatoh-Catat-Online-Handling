@@ -27,12 +27,12 @@ import {
   ScanFace,
   CreditCard,
   School,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Copy
 } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import DefaultLogo from './DefaultLogo';
 import { supabase } from '../lib/supabaseClient';
-import { setTargetUserPremium } from '../lib/premiumService';
 
 interface UseCaseSlide {
   id: string;
@@ -137,6 +137,21 @@ export default function LoginView({
   const [selectedTier, setSelectedTier] = useState<'free' | 'premium'>('free');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
+  // Modal konfirmasi pembayaran & instruksi WhatsApp setelah registrasi Premium
+  const [registeredPremiumPending, setRegisteredPremiumPending] = useState<{
+    email: string;
+    user?: any;
+    billingCycle: 'monthly' | 'yearly';
+    city?: string;
+  } | null>(null);
+  const [copiedBank, setCopiedBank] = useState<string | null>(null);
+
+  const handleCopy = (text: string, type: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedBank(type);
+    setTimeout(() => setCopiedBank(null), 2500);
+  };
+
   // Slider State
   const [activeSlide, setActiveSlide] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
@@ -178,11 +193,6 @@ export default function LoginView({
         }
       } else if (mode === 'register') {
         const isPrem = selectedTier === 'premium';
-        const plan = isPrem ? billingCycle : 'free';
-        const durationDays = billingCycle === 'yearly' ? 365 : 30;
-        const expiresAt = isPrem 
-          ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString() 
-          : null;
 
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -191,36 +201,33 @@ export default function LoginView({
             emailRedirectTo: window.location.origin,
             data: {
               city: city,
-              tier: selectedTier,
-              subscription_plan: plan,
-              subscription_expires_at: expiresAt,
-              subscription_status: isPrem ? 'active' : 'free'
+              tier: 'free', // Semua pendaftaran baru selalu berstatus Akun Biasa/Free terlebih dahulu
+              subscription_plan: 'free',
+              subscription_expires_at: null,
+              subscription_status: 'free',
+              requested_tier: selectedTier,
+              requested_premium_plan: isPrem ? billingCycle : null
             }
           }
         });
 
         if (error) {
           setError(error.message || 'Pendaftaran gagal: ' + error.message);
+        } else if (isPrem) {
+          // Pengguna memilih Premium: selalu arahkan untuk bayar & hubungi Admin terlebih dahulu
+          setRegisteredPremiumPending({
+            email,
+            user: data.session?.user,
+            billingCycle,
+            city
+          });
         } else if (data.session) {
-          // Jika akun premium, inisialisasi status premium di database
-          if (isPrem && data.session.user) {
-            try {
-              await setTargetUserPremium(
-                data.session.user.id, 
-                email, 
-                true, 
-                billingCycle, 
-                expiresAt || undefined
-              );
-            } catch (_) {}
-          }
-
-          setMessage(`Pendaftaran akun ${isPrem ? 'PREMIUM ⭐' : 'Free'} berhasil! Otomatis masuk ke dashboard...`);
+          setMessage('Pendaftaran akun Standar berhasil! Otomatis masuk ke dashboard...');
           setTimeout(() => {
             if (onLogin) onLogin(data.session.user);
           }, 900);
         } else {
-          setMessage(`Pendaftaran akun ${isPrem ? 'PREMIUM ⭐' : 'Free'} berhasil! Silakan masuk dengan email & kata sandi Anda.`);
+          setMessage('Pendaftaran akun Standar berhasil! Silakan masuk dengan email & kata sandi Anda.');
           setMode('login');
         }
       } else if (mode === 'forgot') {
@@ -626,8 +633,8 @@ export default function LoginView({
                           </button>
                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">
-                        *Akun Premium langsung aktif dengan masa langganan {billingCycle === 'yearly' ? '1 Tahun' : '1 Bulan'}. Pembayaran perpanjangan dapat diselesaikan via transfer/admin.
+                      <p className="text-[10px] text-amber-400/90 leading-relaxed">
+                        *Akun akan terdaftar sebagai akun Standar terlebih dahulu. Setelah mendaftar, silakan lakukan pembayaran dan hubungi Admin via WhatsApp untuk pengaktifan status Premium.
                       </p>
                     </div>
                   )}
@@ -737,7 +744,7 @@ export default function LoginView({
                   ) : mode === 'register' ? (
                     <>
                       {selectedTier === 'premium' ? <Crown className="w-4 h-4 text-slate-950" /> : <UserPlus className="w-4 h-4" />}
-                      <span>Daftarkan Akun ({selectedTier === 'premium' ? `Premium ⭐ ${billingCycle === 'yearly' ? 'Tahunan' : 'Bulanan'}` : 'Free'})</span>
+                      <span>{selectedTier === 'premium' ? `Daftar (Pilih Premium ⭐ ${billingCycle === 'yearly' ? 'Tahunan' : 'Bulanan'})` : 'Daftarkan Akun Standar (Free)'}</span>
                       <ChevronRight className="w-4 h-4 ml-auto" />
                     </>
                   ) : (
@@ -780,6 +787,117 @@ export default function LoginView({
           </div>
         </div>
       </div>
+
+      {/* MODAL KONFIRMASI PEMBAYARAN & INSTRUKSI WHATSAPP SETELAH DAFTAR PREMIUN */}
+      {registeredPremiumPending && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-[999] animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl shadow-amber-950/50 flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+            
+            {/* Header */}
+            <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-950 via-amber-950/40 to-slate-900 border-b border-amber-900/40 relative">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/30 shrink-0">
+                  <Crown className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-white">
+                      Pendaftaran Berhasil!
+                    </h3>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                      Menunggu Pembayaran
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Akun Anda saat ini terdaftar sebagai <strong className="text-white">Akun Standar (Free)</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto">
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs leading-relaxed flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Anda memilih paket <strong>PREMIUM ({registeredPremiumPending.billingCycle === 'yearly' ? 'Tahunan - Rp 250.000 / Tahun' : 'Bulanan - Rp 30.000 / Bulan'})</strong>. Untuk mengaktifkan fitur scan wajah, gateway WhatsApp, dan kapasitas siswa tanpa batas, silakan selesaikan pembayaran dan konfirmasi ke Admin via WhatsApp agar status akun diubah menjadi Premium.
+                </span>
+              </div>
+
+              {/* Rekening Pembayaran */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                  Rekening Resmi Pembayaran CATATOH:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold">BANK BCA</p>
+                      <p className="font-mono font-bold text-white text-sm">8930491823</p>
+                      <p className="text-[10px] text-slate-500">a.n CATATOH INDONESIA</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy('8930491823', 'BCA')}
+                      className="p-2 text-indigo-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      title="Salin No. Rekening"
+                    >
+                      {copiedBank === 'BCA' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-bold">BANK MANDIRI</p>
+                      <p className="font-mono font-bold text-white text-sm">1370019283741</p>
+                      <p className="text-[10px] text-slate-500">a.n CATATOH INDONESIA</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy('1370019283741', 'MANDIRI')}
+                      className="p-2 text-indigo-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      title="Salin No. Rekening"
+                    >
+                      {copiedBank === 'MANDIRI' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tombol Hubungi Admin via WhatsApp */}
+              <a
+                href={`https://wa.me/6281234567890?text=${encodeURIComponent(`Halo Admin CATATOH, saya baru saja mendaftar akun sekolah di CATATOH:\n- Email Akun: ${registeredPremiumPending.email}\n- Kota: ${registeredPremiumPending.city || '-'}\n- Paket Dipilih: PREMIUM (${registeredPremiumPending.billingCycle === 'yearly' ? 'Tahunan - Rp 250.000' : 'Bulanan - Rp 30.000'})\n- Tanggal Pendaftaran: ${new Date().toLocaleDateString('id-ID')}\n\nSaya ingin konfirmasi pembayaran agar status akun saya dapat diubah menjadi PREMIUM oleh Admin. Terima kasih! 🙏`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4 fill-white text-transparent" />
+                <span>Hubungi Admin via WhatsApp Sekarang</span>
+              </a>
+
+              {/* Tombol Lanjut ke Dashboard */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (registeredPremiumPending.user && onLogin) {
+                    onLogin(registeredPremiumPending.user);
+                  } else {
+                    setRegisteredPremiumPending(null);
+                    setMode('login');
+                    setMessage('Akun Anda telah terdaftar sebagai Akun Standar. Silakan masuk dengan email & kata sandi Anda.');
+                  }
+                }}
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border border-slate-700 transition-colors cursor-pointer"
+              >
+                <span>{registeredPremiumPending.user ? 'Lanjut Masuk Dashboard (Akun Standar)' : 'Tutup & Masuk Halaman Login'}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
