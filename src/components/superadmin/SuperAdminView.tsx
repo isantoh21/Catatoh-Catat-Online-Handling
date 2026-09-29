@@ -199,8 +199,8 @@ export default function SuperAdminView() {
   const handleToggleUserPremium = async (user: any) => {
     const newStatus = !user.is_premium;
     const confirmMsg = newStatus 
-      ? `Aktifkan paket PREMIUM untuk akun "${user.email || user.id}"?\n\nPengguna akan langsung mendapatkan akses ke:\n- Absensi Scan Wajah Siswa\n- Presensi Scan Wajah Guru\n- WhatsApp Gateway & Bot Notifikasi`
-      : `Cabut paket PREMIUM dari akun "${user.email || user.id}"?\n\nPengguna akan kembali ke paket Standar/Free dan fitur scan wajah & WhatsApp Gateway akan terkunci.`;
+      ? `Aktifkan paket PREMIUM untuk akun "${user.email || user.id}"?\n\nPengguna akan langsung mendapatkan akses ke:\n- Kapasitas Siswa Tanpa Batas (Standar maks. 100 siswa)\n- Absensi Scan Wajah Siswa\n- Presensi Scan Wajah Guru\n- WhatsApp Gateway & Bot Notifikasi\n- Moderasi Bukti Bayar WhatsApp`
+      : `Cabut paket PREMIUM dari akun "${user.email || user.id}"?\n\nPengguna akan kembali ke paket Standar/Free (maksimal 100 siswa, scan wajah, WhatsApp Gateway, dan Moderasi Bukti Bayar akan terkunci).`;
     
     if (!window.confirm(confirmMsg)) return;
 

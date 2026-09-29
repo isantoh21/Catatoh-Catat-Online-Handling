@@ -608,6 +608,14 @@ export default function DashboardView() {
     return matchKelompok && matchSearch;
   });
 
+  const handleOpenModerasiModal = () => {
+    if (!isPremium) {
+      setPremiumLockFeature('Moderasi Bukti Bayar WhatsApp (Verifikasi Struk Otomatis)');
+      return;
+    }
+    setIsModerationModalOpen(true);
+  };
+
   // Buka modal reminder dan inisialisasi checklist default
   // Buka modal reminder dan inisialisasi checklist default (hanya nomor valid yang dicentang otomatis)
   const handleOpenReminderModal = (bulanToUse?: string) => {
@@ -952,18 +960,22 @@ export default function DashboardView() {
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
           <button 
-            onClick={() => setIsModerationModalOpen(true)}
+            onClick={handleOpenModerasiModal}
             id="btnModerasiBuktiWa"
             className="h-10 w-10 relative rounded-xl flex items-center justify-center transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer"
-            title="Moderasi Bukti Transfer WA (Chat)"
+            title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Moderasi Bukti Transfer WA)" : "Moderasi Bukti Transfer WA (Chat)"}
             aria-label="Moderasi Bukti Transfer WA"
           >
             <MessageSquare className="w-5 h-5 text-amber-300 shrink-0" />
-            {pendingVerificationsCount > 0 && (
+            {!isPremium ? (
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs ring-1 ring-white">
+                ★
+              </span>
+            ) : pendingVerificationsCount > 0 ? (
               <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold bg-amber-400 text-indigo-950 flex items-center justify-center shadow border-2 border-white animate-pulse">
                 {pendingVerificationsCount}
               </span>
-            )}
+            ) : null}
           </button>
 
           <button 

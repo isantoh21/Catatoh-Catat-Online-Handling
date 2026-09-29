@@ -72,6 +72,10 @@ export default function PremiumLockModal({
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Moderasi Bukti Bayar WhatsApp (Verifikasi Struk Otomatis)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 <span>Kirim Reminder SPP Massal 1-Klik</span>
               </div>
             </div>

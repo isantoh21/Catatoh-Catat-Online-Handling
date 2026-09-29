@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, XCircle, Clock, Search, Filter, MessageSquare, 
   ExternalLink, ZoomIn, RefreshCw, AlertCircle, Sparkles, Send,
-  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2
+  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2, Crown
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
 import { PaymentVerification } from '../types/whatsapp';
+import { usePremiumStatus } from '../lib/premiumService';
 import { 
   getPaymentVerifications, 
   sendWhatsAppMessage, 
@@ -58,13 +59,14 @@ export default function PaymentModerationModal({
   const [simNominal, setSimNominal] = useState('100000');
   const [simMessage, setSimMessage] = useState('Assalamualaikum bendahara, ini bukti transfer SPP ananda.');
 
+  const { isPremium, loading: premiumLoading } = usePremiumStatus();
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isPremium) {
       loadData();
     }
-  }, [isOpen]);
+  }, [isOpen, isPremium]);
 
   const loadData = async () => {
     setLoading(true);
@@ -492,6 +494,47 @@ export default function PaymentModerationModal({
   });
 
   const pendingCount = verifications.filter(v => v.status === 'pending' && Boolean(v.student_id)).length;
+
+  if (!isOpen) return null;
+
+  if (!isPremium && !premiumLoading) {
+    return (
+      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+        <div className="bg-slate-900 border border-amber-500/30 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/30 text-slate-950">
+            <Crown className="w-8 h-8" />
+          </div>
+          <span className="px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase bg-amber-400/20 text-amber-300 border border-amber-400/30 mb-3 inline-block">
+            FITUR EKSKLUSIF PREMIUM ⭐
+          </span>
+          <h3 className="text-xl font-black text-white mb-2">
+            Moderasi Bukti Bayar WhatsApp
+          </h3>
+          <p className="text-xs text-slate-300 leading-relaxed mb-6">
+            Fitur verifikasi foto struk transfer otomatis via Inbound Webhook WhatsApp ini hanya tersedia untuk pengguna <strong>Akun Premium</strong>.
+          </p>
+
+          <div className="space-y-2.5">
+            <a
+              href="https://threads.net/@isantoh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span>Hubungi Superadmin untuk Aktivasi</span>
+            </a>
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Tutup / Kembali
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-200">
