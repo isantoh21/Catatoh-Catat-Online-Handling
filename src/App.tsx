@@ -11,7 +11,7 @@ import ActivityLogsView from './components/ActivityLogsView';
 import LoginView from './components/LoginView';
 import DefaultLogo from './components/DefaultLogo';
 import MandatoryProfileModal from './components/MandatoryProfileModal';
-import { BookOpen, Users, LayoutDashboard, FileText, MessageCircle, Settings, LogOut, Database, Wifi, WifiOff, Receipt, FolderPlus, Menu, X, MapPin, CheckCircle2, History, KeyRound, Lock, Sparkles } from 'lucide-react';
+import { BookOpen, Users, LayoutDashboard, FileText, MessageCircle, Settings, LogOut, Database, Wifi, WifiOff, Receipt, FolderPlus, Menu, X, MapPin, CheckCircle2, History, KeyRound, Lock, Sparkles, Crown, Clock } from 'lucide-react';
 import { INDONESIAN_CITIES } from './data/cities';
 import SettingsView from './components/SettingsView';
 import GuideView from './components/GuideView';
@@ -22,6 +22,7 @@ import AttendancePortal from './components/AttendancePortal';
 import StudentAttendancePortal from './components/students/StudentAttendancePortal';
 import ParentSppCardView from './components/ParentSppCardView';
 import WebhookStatusBar from './components/WebhookStatusBar';
+import { usePremiumStatus } from './lib/premiumService';
 
 export default function App() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function App() {
   
   const [userEmail, setUserEmail] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const { isPremium, details: premiumDetails } = usePremiumStatus(userEmail, currentUser?.id);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -625,12 +627,35 @@ export default function App() {
             
             <div className="p-6 mt-auto">
               {userEmail && (
-                <div className="mb-3 px-3 py-2 bg-indigo-950/50 rounded-xl border border-indigo-800/50 flex items-center justify-between gap-2">
-                  <div className="overflow-hidden">
-                    <p className="text-[10px] uppercase tracking-wider font-semibold text-indigo-300">Akun Aktif</p>
-                    <p className="text-xs font-bold text-white truncate" title={userEmail}>{userEmail}</p>
+                <div className="mb-3 p-3 bg-indigo-950/70 rounded-2xl border border-indigo-800/60 flex flex-col gap-1.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase tracking-wider font-bold text-indigo-300">Akun Sekolah</p>
+                    {isPremium ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[9px] font-black uppercase">
+                        <Crown className="w-2.5 h-2.5" />
+                        PREMIUM
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-800/80 text-indigo-200 text-[9px] font-semibold border border-indigo-700/50">
+                        Standar (Free)
+                      </span>
+                    )}
                   </div>
-                  
+                  <p className="text-xs font-bold text-white truncate font-mono" title={userEmail}>{userEmail}</p>
+                  <div className="text-[10px] text-indigo-200/80 pt-1.5 border-t border-indigo-900/60 flex items-center justify-between">
+                    <span>Masa Aktif:</span>
+                    <span className="font-bold text-amber-300 font-mono">
+                      {isPremium ? (
+                        premiumDetails?.expiresAt ? (
+                          `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        ) : (
+                          'VIP Lifetime'
+                        )
+                      ) : (
+                        'Maks. 100 Siswa'
+                      )}
+                    </span>
+                  </div>
                 </div>
               )}
               <button 
@@ -690,6 +715,44 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Indicator Status Paket & Masa Aktif User */}
+            <button
+              onClick={() => navigate('/pengaturan')}
+              title={
+                isPremium
+                  ? premiumDetails?.expiresAt
+                    ? `Paket Premium Aktif s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID')} (${premiumDetails.daysRemaining} hari lagi). Klik untuk kelola.`
+                    : 'Paket VIP Lifetime Aktif (Permanen). Klik untuk kelola.'
+                  : 'Paket Standar / Free (Maksimal 100 Siswa). Klik untuk upgrade ke Premium.'
+              }
+              className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                isPremium
+                  ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/20 to-amber-500/30 border-amber-500/40 text-amber-900 hover:border-amber-500/70 shadow-xs'
+                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              <Crown className={`w-3.5 h-3.5 ${isPremium ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
+              {isPremium ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-amber-950">PREMIUM</span>
+                  <span className="hidden sm:inline text-[11px] font-semibold text-amber-800 font-mono">
+                    {premiumDetails?.expiresAt ? (
+                      `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} (${premiumDetails.daysRemaining}h)`
+                    ) : (
+                      'VIP Lifetime'
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-700">Standar (Free)</span>
+                  <span className="hidden sm:inline text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 rounded-full font-bold">
+                    Upgrade
+                  </span>
+                </div>
+              )}
+            </button>
+
             <WebhookStatusBar 
               mode="topbar" 
               currentUserId={currentUser?.id} 
