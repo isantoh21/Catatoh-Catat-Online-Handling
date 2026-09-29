@@ -630,15 +630,21 @@ export default function StudentsView() {
               <button 
                 onClick={fetchStudents}
                 disabled={loading}
-                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold items-center justify-center gap-2 transition-colors shadow-sm hidden sm:flex disabled:opacity-50 cursor-pointer"
+                id="btnSyncStudents"
+                className="h-9 w-9 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg flex items-center justify-center transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                title="Sinkronisasi Data Siswa"
+                aria-label="Sinkronisasi Data Siswa"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Sync
+                <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
               </button>
               <button 
                 onClick={downloadTemplate}
-                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold items-center justify-center gap-2 transition-colors shadow-sm hidden sm:flex cursor-pointer"
+                id="btnDownloadTemplateCsv"
+                className="h-9 w-9 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                title="Download Template CSV"
+                aria-label="Download Template CSV"
               >
-                <Download className="w-4 h-4" /> Template CSV
+                <Download className="w-4 h-4 text-slate-600" />
               </button>
               <input 
                 type="file" 
@@ -650,17 +656,26 @@ export default function StudentsView() {
 
               <button 
                 onClick={handleCheckDuplicates}
-                className="px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
+                id="btnCheckDuplicateStudents"
+                className="h-9 w-9 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                title="Cek Data Siswa Dobel / Duplikat"
+                aria-label="Cek Data Siswa Dobel"
               >
-                <AlertTriangle className="w-4 h-4" /> Cek Data Dobel
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
               </button>
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting}
-                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-70 cursor-pointer"
+                id="btnImportCsvStudents"
+                className="h-9 w-9 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg flex items-center justify-center transition-colors shadow-sm disabled:opacity-70 cursor-pointer"
+                title={isImporting ? "Sedang Mengimport CSV..." : "Import Siswa dari CSV"}
+                aria-label="Import CSV"
               >
-                <Upload className="w-4 h-4" /> 
-                {isImporting ? 'Mengimport...' : 'Import CSV'}
+                {isImporting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />
+                ) : (
+                  <Upload className="w-4 h-4 text-slate-600" />
+                )}
               </button>
               <button 
                 onClick={() => setIsModalOpen(true)} 
