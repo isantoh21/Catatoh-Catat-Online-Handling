@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles } from 'lucide-react';
+import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles, Crop } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import WahaConnect from './WahaConnect';
+import ImageCropModal from './ImageCropModal';
 
 export default function SettingsView({ 
   schoolName, 
@@ -34,6 +35,8 @@ export default function SettingsView({
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
 
   const [showSetup, setShowSetup] = useState(false);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string>('');
 
   useEffect(() => {
     setLocalName(schoolName);
@@ -54,17 +57,30 @@ export default function SettingsView({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 102400) {
-        alert('Maaf, ukuran logo maksimal adalah 100KB. Silakan pilih gambar yang lebih kecil.');
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Ukuran file foto maksimal adalah 10MB.');
         e.target.value = '';
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setLocalLogo(reader.result as string);
+        setImageToCrop(reader.result as string);
+        setIsCropModalOpen(true);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleOpenAdjustCurrent = () => {
+    if (localLogo) {
+      setImageToCrop(localLogo);
+      setIsCropModalOpen(true);
+    }
+  };
+
+  const handleCroppedSave = (croppedDataUrl: string) => {
+    setLocalLogo(croppedDataUrl);
   };
 
   const confirmSave = () => {
@@ -241,17 +257,32 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                       accept="image/*" 
                       className="hidden" 
                     />
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold transition-colors shadow-sm"
-                    >
-                      Pilih Gambar
-                    </button>
-                    <p className="text-xs text-slate-500">Format: JPG, PNG, GIF. Maksimal 100KB.</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold transition-colors shadow-sm cursor-pointer"
+                      >
+                        Pilih Gambar
+                      </button>
+                      {localLogo && (
+                        <button 
+                          type="button"
+                          onClick={handleOpenAdjustCurrent}
+                          className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                          title="Atur ulang posisi, zoom, dan rotasi foto"
+                        >
+                          <Crop className="w-4 h-4" />
+                          <span>Atur Posisi Foto</span>
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Dapat digeser & diatur agar pas di bingkai.</p>
                     {localLogo && (
                       <button 
+                        type="button"
                         onClick={() => setLocalLogo('')}
-                        className="text-xs text-rose-500 font-semibold hover:text-rose-600 transition-colors"
+                        className="text-xs text-rose-500 font-semibold hover:text-rose-600 transition-colors cursor-pointer"
                       >
                         Hapus Logo
                       </button>
@@ -474,6 +505,15 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
           </div>
         </div>
       )}
+
+      {/* Interactive Photo Crop & Position Adjuster Modal */}
+      <ImageCropModal 
+        isOpen={isCropModalOpen}
+        imageSrc={imageToCrop}
+        onClose={() => setIsCropModalOpen(false)}
+        onSave={handleCroppedSave}
+        title="Atur & Pangkas Foto Profil / Logo"
+      />
     </div>
   );
 }
