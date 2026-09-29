@@ -24,11 +24,10 @@ import {
   Crown,
   Check,
   XCircle,
-  AlertTriangle,
-  Clock,
   ScanFace,
   CreditCard,
-  Copy
+  School,
+  FileSpreadsheet
 } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import DefaultLogo from './DefaultLogo';
@@ -40,8 +39,6 @@ interface UseCaseSlide {
   badge: string;
   title: string;
   icon: React.ReactNode;
-  accentColor: string;
-  badgeBg: string;
   useCase: string;
   problem: string;
   solution: string;
@@ -51,15 +48,24 @@ interface UseCaseSlide {
 
 const USE_CASE_SLIDES: UseCaseSlide[] = [
   {
+    id: 'overview',
+    badge: 'Overview • Apa Itu CATATOH?',
+    title: 'Platform All-in-One Digitalisasi Administrasi Sekolah',
+    icon: <Sparkles className="w-5 h-5 text-indigo-400" />,
+    useCase: 'CATATOH (Catat Online Handling) adalah sistem manajemen sekolah modern yang mengintegrasikan pencatatan SPP, absensi biometrik wajah siswa & guru, hingga notifikasi WhatsApp otomatis dalam satu ekosistem cloud yang mudah digunakan oleh seluruh staf sekolah.',
+    problem: 'Sebelum CATATOH: Pembukuan SPP tersebar di banyak lembar Excel yang sering selisih, antrean absensi manual berisiko titip absen, dan bendahara harus menagih wali murid satu per satu via chat pribadi yang memalukan & menyita waktu.',
+    solution: 'Dengan CATATOH: Otomatisasi 90% pekerjaan rutin sekolah! Menghubungkan tata usaha, guru, dan orang tua secara real-time, akurat, dan transparan untuk semua jenjang (PAUD/TK, SD, SMP, SMA/SMK, Pesantren & Bimbel).',
+    impactMetric: 'All-in-One',
+    impactDesc: 'Ekosistem sekolah terpadu'
+  },
+  {
     id: 'face-attendance',
     badge: 'Presensi Biometrik Wajah',
     title: 'Absensi Siswa & Guru Berbasis AI Tanpa Sentuh',
-    icon: <ScanFace className="w-6 h-6 text-purple-400" />,
-    accentColor: 'from-purple-500 to-indigo-600',
-    badgeBg: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    icon: <ScanFace className="w-5 h-5 text-indigo-400" />,
     useCase: 'Tablet ditempatkan di gerbang / meja piket sekolah. Siswa & guru cukup berdiri 1 detik di depan kamera untuk verifikasi kehadiran otomatis.',
-    problem: 'Antrean panjang setiap pagi, marak titip absen antar staf/teman, buku absensi kertas rentan hilang/rusak, dan rekap manual menyita puluhan jam kerja setiap akhir bulan.',
-    solution: 'AI Face Recognition memvalidasi biometrik wajah dalam 1 detik anti-curang, terikat radius GPS sekolah, dan rekap kehadiran bulanan otomatis siap cetak PDF.',
+    problem: 'Sebelum CATATOH: Antrean panjang setiap pagi, marak titip absen antar staf/teman, buku absensi kertas rentan hilang/rusak, dan rekap manual menyita puluhan jam kerja setiap akhir bulan.',
+    solution: 'Dengan CATATOH: AI Face Recognition memvalidasi biometrik wajah dalam 1 detik anti-curang, terikat radius GPS sekolah, dan rekap kehadiran bulanan otomatis siap cetak PDF.',
     impactMetric: '1 Detik',
     impactDesc: 'Kecepatan scan wajah akurat'
   },
@@ -67,12 +73,10 @@ const USE_CASE_SLIDES: UseCaseSlide[] = [
     id: 'wa-gateway',
     badge: 'WhatsApp Gateway Otomatis',
     title: 'Reminder SPP Massal Sekali Klik dengan Anti-Ban',
-    icon: <MessageCircle className="w-6 h-6 text-emerald-400" />,
-    accentColor: 'from-emerald-500 to-teal-600',
-    badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    icon: <MessageCircle className="w-5 h-5 text-emerald-400" />,
     useCase: 'Tiap tanggal 5, bendahara menekan 1 tombol. Ratusan wali murid menerima pesan tagihan personal lengkap dengan nama anak, nominal, dan tautan kartu SPP.',
-    problem: 'Guru merasa canggung/malu menagih SPP manual, mengetik ratusan chat satu per satu sangat melelahkan, dan nomor sekolah berisiko diblokir WhatsApp karena copy-paste massal.',
-    solution: 'Server mengirimkan pesan resmi otomatis dengan jeda acak dinamis (Anti-Banned Protection) menyerupai ketikan manusia asli, melipatgandakan kepatuhan bayar wali murid.',
+    problem: 'Sebelum CATATOH: Guru canggung/malu menagih SPP manual, mengetik ratusan chat satu per satu sangat melelahkan, dan nomor sekolah berisiko diblokir WhatsApp karena copy-paste massal.',
+    solution: 'Dengan CATATOH: Server mengirimkan pesan resmi otomatis dengan jeda acak dinamis (Anti-Banned Protection) menyerupai ketikan manusia asli, melipatgandakan kepatuhan bayar wali murid.',
     impactMetric: '85%+',
     impactDesc: 'Kenaikan pelunasan tepat waktu'
   },
@@ -80,12 +84,10 @@ const USE_CASE_SLIDES: UseCaseSlide[] = [
     id: 'ai-ocr',
     badge: 'AI Vision OCR (Gemini)',
     title: 'Verifikasi Struk Transfer Bank Tanpa Pusing',
-    icon: <Bot className="w-6 h-6 text-cyan-400" />,
-    accentColor: 'from-cyan-500 to-blue-600',
-    badgeBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    icon: <Bot className="w-5 h-5 text-indigo-400" />,
     useCase: 'Orang tua mengirim foto struk transfer m-Banking ke WhatsApp sekolah. AI langsung membaca nominal, tanggal, dan nama bank, lalu mencocokkannya ke siswa.',
-    problem: 'Chat WhatsApp sekolah penuh ratusan foto bukti transfer yang tercecer, rawan lolos struk editan/palsu, dan bendahara sering salah catat nama siswa yang mirip.',
-    solution: 'Ekstraksi AI Vision otomatis mengenali angka transfer dengan presisi tinggi. Bendahara cukup klik "Verifikasi", status siswa langsung lunas & konfirmasi WA otomatis terkirim.',
+    problem: 'Sebelum CATATOH: Chat WhatsApp sekolah penuh ratusan foto bukti transfer yang tercecer, rawan lolos struk editan/palsu, dan bendahara sering salah catat nama siswa yang mirip.',
+    solution: 'Dengan CATATOH: Ekstraksi AI Vision otomatis mengenali angka transfer dengan presisi tinggi. Bendahara cukup klik "Verifikasi", status siswa langsung lunas & konfirmasi WA otomatis terkirim.',
     impactMetric: '100%',
     impactDesc: 'Bebas salah catat bukti transfer'
   },
@@ -93,12 +95,10 @@ const USE_CASE_SLIDES: UseCaseSlide[] = [
     id: 'parent-portal',
     badge: 'Kartu SPP Online Mandiri',
     title: 'Transparansi Keuangan Real-Time untuk Wali Murid',
-    icon: <Receipt className="w-6 h-6 text-amber-400" />,
-    accentColor: 'from-amber-500 to-orange-600',
-    badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    icon: <Receipt className="w-5 h-5 text-indigo-400" />,
     useCase: 'Wali murid dapat membuka tautan kartu SPP digital dari smartphone kapan saja untuk memantau status pembayaran 1 tahun ajaran tanpa perlu login akun.',
-    problem: 'Kartu SPP fisik kertas sering robek, hilang di tas anak, atau terselip di rumah. Orang tua terus-menerus menelepon tata usaha menanyakan apakah sudah lunas.',
-    solution: 'Tautan mandiri transparan 24 jam memudahkan orang tua mengecek status bayar secara mandiri, sekaligus mencetak kuitansi resmi PDF standar sekolah.',
+    problem: 'Sebelum CATATOH: Kartu SPP fisik kertas sering robek, hilang di tas anak, atau terselip di rumah. Orang tua terus-menerus menelepon tata usaha menanyakan apakah sudah lunas.',
+    solution: 'Dengan CATATOH: Tautan mandiri transparan 24 jam memudahkan orang tua mengecek status bayar secara mandiri, sekaligus mencetak kuitansi resmi PDF standar sekolah.',
     impactMetric: '90%',
     impactDesc: 'Penurunan panggilan tanya SPP'
   },
@@ -106,12 +106,10 @@ const USE_CASE_SLIDES: UseCaseSlide[] = [
     id: 'finance-multi',
     badge: 'Keuangan & Multi-Kelompok',
     title: 'Sentralisasi Arus Kas & Data Siswa Tanpa Batas',
-    icon: <Wallet className="w-6 h-6 text-rose-400" />,
-    accentColor: 'from-rose-500 to-pink-600',
-    badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+    icon: <Wallet className="w-5 h-5 text-indigo-400" />,
     useCase: 'Kepala sekolah dan bendahara mengontrol pos SPP, uang gedung, tabungan siswa, dan kas operasional dalam satu dashboard yang tersinkronisasi.',
-    problem: 'Pencatatan tersebar di puluhan lembar file Excel terpisah yang sering korup, versinya berbeda-beda antar guru, dan laporan audit tahunan memakan waktu berminggu-minggu.',
-    solution: 'Database terpusat multi-tenant dengan filter kelas instan, rekap saldo otomatis, dan pencatatan yang siap diaudit yayasan/dinas kapan saja.',
+    problem: 'Sebelum CATATOH: Pencatatan tersebar di puluhan lembar file Excel terpisah yang sering korup, versinya berbeda-beda antar guru, dan laporan audit tahunan memakan waktu berminggu-minggu.',
+    solution: 'Dengan CATATOH: Database terpusat multi-tenant dengan filter kelas instan, rekap saldo otomatis, dan pencatatan yang siap diaudit yayasan/dinas kapan saja.',
     impactMetric: 'Unlimited',
     impactDesc: 'Kapasitas data di paket Premium'
   }
@@ -251,12 +249,11 @@ export default function LoginView({
       <div 
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="flex flex-col justify-between bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white p-6 sm:p-10 lg:p-12 w-full lg:w-7/12 relative overflow-hidden order-2 lg:order-1 border-t lg:border-t-0 lg:border-r border-indigo-900/40"
+        className="flex flex-col justify-between bg-slate-950 text-white p-6 sm:p-10 lg:p-12 w-full lg:w-7/12 relative overflow-hidden order-2 lg:order-1 border-t lg:border-t-0 lg:border-r border-slate-800"
       >
-        {/* Ambient Gradient Glows */}
-        <div className="absolute top-0 right-0 -mt-24 -mr-24 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-24 -ml-24 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/2 left-1/3 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Subtle Ambient Glow matching main theme */}
+        <div className="absolute top-0 right-0 -mt-24 -mr-24 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-24 -ml-24 w-96 h-96 bg-slate-800/40 rounded-full blur-3xl pointer-events-none" />
 
         {/* Content Container */}
         <div className="relative z-10 max-w-2xl mx-auto lg:mx-0 w-full flex flex-col justify-between h-full space-y-6">
@@ -265,11 +262,11 @@ export default function LoginView({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3.5">
               {schoolLogo ? (
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-950/50 p-1.5 border border-white/20">
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-black/40 p-1.5 border border-white/20">
                   <img src={schoolLogo} alt="Logo" className="w-full h-full object-contain" />
                 </div>
               ) : (
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-950/50">
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-black/40">
                   <DefaultLogo />
                 </div>
               )}
@@ -278,33 +275,33 @@ export default function LoginView({
                   <h2 className="text-2xl font-black tracking-tight text-white">
                     {schoolName || 'CATATOH'}
                   </h2>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-indigo-300 uppercase tracking-widest">
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 bg-indigo-500/20 border border-indigo-400/30 rounded-full text-indigo-300 uppercase tracking-widest">
                     v2.0 Plus
                   </span>
                 </div>
-                <p className="text-xs text-indigo-300/80 font-medium tracking-wide">
+                <p className="text-xs text-slate-400 font-medium tracking-wide">
                   Catat Online Handling • Smart School OS
                 </p>
               </div>
             </div>
 
             {/* Slider Navigation Arrows */}
-            <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 p-1 rounded-xl backdrop-blur-sm">
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1 rounded-xl shadow-xs">
               <button
                 type="button"
                 onClick={handlePrevSlide}
-                className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 title="Slide sebelumnya"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-[11px] font-mono font-bold px-2 text-indigo-300">
+              <span className="text-[11px] font-mono font-bold px-2 text-indigo-400">
                 {activeSlide + 1} / {USE_CASE_SLIDES.length}
               </span>
               <button
                 type="button"
                 onClick={handleNextSlide}
-                className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 title="Slide selanjutnya"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -321,8 +318,8 @@ export default function LoginView({
                 onClick={() => setActiveSlide(idx)}
                 className={`px-3 py-1.5 rounded-full font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   idx === activeSlide
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/40 border border-indigo-400/40'
-                    : 'bg-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/10 border border-white/5'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-500'
+                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                 }`}
               >
                 <span>{slide.badge}</span>
@@ -331,24 +328,25 @@ export default function LoginView({
           </div>
 
           {/* Active Slide Card Showcase */}
-          <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.04] border border-white/[0.09] backdrop-blur-xl shadow-2xl relative overflow-hidden transition-all duration-300">
+          <div className="p-6 sm:p-7 rounded-3xl bg-slate-900/70 border border-slate-800 shadow-xl relative overflow-hidden transition-all duration-300 backdrop-blur-md">
+            
             {/* Top Badge & Metric */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-white/10 border border-white/15 shadow-inner">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0 shadow-inner">
                   {currentSlide.icon}
                 </div>
                 <div>
-                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${currentSlide.badgeBg}`}>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border bg-indigo-500/15 text-indigo-300 border-indigo-500/30 inline-block">
                     {currentSlide.badge}
                   </span>
-                  <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+                  <h3 className="text-base sm:text-lg font-black text-white mt-1 leading-snug">
                     {currentSlide.title}
                   </h3>
                 </div>
               </div>
 
-              <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-center flex flex-col items-center justify-center shrink-0">
+              <div className="px-4 py-2 rounded-2xl bg-slate-950/80 border border-slate-800 text-center flex flex-col items-center justify-center shrink-0">
                 <span className="text-xl font-black text-emerald-400 block leading-tight">
                   {currentSlide.impactMetric}
                 </span>
@@ -359,12 +357,12 @@ export default function LoginView({
             </div>
 
             {/* Real Use Case in Action */}
-            <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 mb-4 text-xs">
-              <span className="font-black text-indigo-300 uppercase tracking-wider block text-[10px] mb-1 flex items-center gap-1.5">
+            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/90 mb-4 text-xs">
+              <span className="font-black text-indigo-400 uppercase tracking-wider block text-[10px] mb-1.5 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                 Praktek Nyata di Sekolah:
               </span>
-              <p className="text-indigo-100/90 leading-relaxed font-normal">
+              <p className="text-slate-200 leading-relaxed font-normal">
                 {currentSlide.useCase}
               </p>
             </div>
@@ -373,19 +371,19 @@ export default function LoginView({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               
               {/* Problem Column */}
-              <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/20 text-xs">
-                <div className="flex items-center gap-1.5 text-rose-300 font-bold mb-1.5">
-                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>Masalah Tanpa Ini:</span>
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-rose-900/30 text-xs">
+                <div className="flex items-center gap-1.5 text-rose-400 font-bold mb-1.5">
+                  <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>Sebelum Menggunakan CATATOH:</span>
                 </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
+                <p className="text-slate-400 text-[11px] leading-relaxed">
                   {currentSlide.problem}
                 </p>
               </div>
 
               {/* Solution Column */}
-              <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/20 text-xs">
-                <div className="flex items-center gap-1.5 text-emerald-300 font-bold mb-1.5">
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-emerald-900/30 text-xs">
+                <div className="flex items-center gap-1.5 text-emerald-400 font-bold mb-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Solusi CATATOH:</span>
                 </div>
@@ -397,14 +395,14 @@ export default function LoginView({
             </div>
 
             {/* Slide Progress Dots */}
-            <div className="flex items-center justify-center gap-2 mt-5 pt-4 border-t border-white/5">
+            <div className="flex items-center justify-center gap-2 mt-5 pt-4 border-t border-slate-800">
               {USE_CASE_SLIDES.map((_, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => setActiveSlide(idx)}
                   className={`h-2 rounded-full transition-all cursor-pointer ${
-                    idx === activeSlide ? 'w-8 bg-indigo-400' : 'w-2 bg-white/20 hover:bg-white/40'
+                    idx === activeSlide ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-800 hover:bg-slate-700'
                   }`}
                   aria-label={`Ke slide ${idx + 1}`}
                 />
@@ -413,9 +411,9 @@ export default function LoginView({
           </div>
 
           {/* Bottom Security Assurance */}
-          <div className="pt-4 border-t border-indigo-900/30 text-xs text-indigo-300/60 flex flex-wrap items-center justify-between gap-3">
-            <span>&copy; {new Date().getFullYear()} {schoolName || 'CATATOH'} • Inovasi Administrasi Sekolah</span>
-            <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
+          <div className="pt-4 border-t border-slate-800 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-3">
+            <span>&copy; {new Date().getFullYear()} {schoolName || 'CATATOH'} • Smart School Management System</span>
+            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               Terenkripsi & Multi-Tenant Terisolasi
             </span>
@@ -754,7 +752,7 @@ export default function LoginView({
           </div>
           
           {/* Help & Support Card */}
-          <div className="mt-5 p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 text-center animate-in fade-in duration-500">
+          <div className="mt-5 p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-center animate-in fade-in duration-500">
             <p className="text-xs text-slate-400">
               Butuh konsultasi paket atau integrasi WhatsApp sekolah?
             </p>
