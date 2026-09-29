@@ -10,7 +10,6 @@ import ReportsView from './components/ReportsView';
 import ActivityLogsView from './components/ActivityLogsView';
 import LoginView from './components/LoginView';
 import DefaultLogo from './components/DefaultLogo';
-import WelcomeAnimation from './components/WelcomeAnimation';
 import MandatoryProfileModal from './components/MandatoryProfileModal';
 import { BookOpen, Users, LayoutDashboard, FileText, MessageCircle, Settings, LogOut, Database, Wifi, WifiOff, Receipt, FolderPlus, Menu, X, MapPin, CheckCircle2, History, KeyRound, Lock, Sparkles } from 'lucide-react';
 import { INDONESIAN_CITIES } from './data/cities';
@@ -53,11 +52,6 @@ export default function App() {
   const [resetPasswordError, setResetPasswordError] = useState('');
   const [resetPasswordSuccess, setResetPasswordSuccess] = useState('');
   const [showEmailConfirmedModal, setShowEmailConfirmedModal] = useState(false);
-
-  // Welcome login animation states
-  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false);
-  const [welcomeAdminName, setWelcomeAdminName] = useState('');
-  const [welcomeSchoolName, setWelcomeSchoolName] = useState('');
 
   const fetchUserSettings = async (userId: string) => {
     try {
@@ -112,22 +106,6 @@ export default function App() {
       setShowMandatoryProfileModal(false);
       return true;
     }
-  };
-
-  const triggerWelcome = (user: any, loadedSchool?: string) => {
-    if (!user) return;
-    const rawEmail = user.email || '';
-    const rawName = user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.admin_name || rawEmail.split('@')[0] || 'Admin';
-    const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-    
-    let sName = loadedSchool || localStorage.getItem('schoolName_' + user.id) || schoolName;
-    if (!sName || sName === 'Aplikasi Pencatatan SPP Gratis' || sName === 'CATATOH') {
-      sName = user.user_metadata?.school_name || 'Portal CATATOH Sekolah';
-    }
-
-    setWelcomeAdminName(formattedName);
-    setWelcomeSchoolName(sName);
-    setShowWelcomeAnimation(true);
   };
 
   useEffect(() => {
@@ -193,16 +171,7 @@ export default function App() {
       if (session?.user) {
         fetchUserSettings(session.user.id).then((loadedSchool) => {
           const isComplete = checkProfileRequirements(session.user, loadedSchool);
-          if (_event === 'SIGNED_IN') {
-            const token = session.access_token;
-            if (sessionStorage.getItem('last_welcomed_token') !== token) {
-              sessionStorage.setItem('last_welcomed_token', token);
-              if (isComplete) {
-                triggerWelcome(session.user, loadedSchool);
-              }
-            }
-          }
-        });
+          });
       } else {
         setSchoolName('CATATOH');
         setSchoolLogo('');
@@ -278,7 +247,6 @@ export default function App() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setCurrentUser(session.user);
-      triggerWelcome(session.user, updated.schoolName);
     }
   };
 
@@ -329,20 +297,14 @@ export default function App() {
     if (activeUser) {
       setCurrentUser(activeUser);
       const { data } = await supabase.auth.getSession();
-      if (data.session?.access_token) {
-        sessionStorage.setItem('last_welcomed_token', data.session.access_token);
-      }
       fetchUserSettings(activeUser.id).then((loadedSchool) => {
         const isComplete = checkProfileRequirements(activeUser, loadedSchool);
-        if (isComplete) {
-          triggerWelcome(activeUser, loadedSchool);
-        }
+        
       });
     }
   };
 
   const handleLogout = async () => {
-    sessionStorage.removeItem('last_welcomed_token');
     setShowMandatoryProfileModal(false);
     setCurrentUser(null);
     await supabase.auth.signOut();
@@ -527,13 +489,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 font-sans overflow-hidden text-slate-800">
-      <WelcomeAnimation
-        isOpen={showWelcomeAnimation}
-        onClose={() => setShowWelcomeAnimation(false)}
-        adminName={welcomeAdminName}
-        schoolName={welcomeSchoolName}
-        duration={4500}
-      />
 
       {renderAuthModals()}
 
@@ -691,19 +646,7 @@ export default function App() {
                     <p className="text-[10px] uppercase tracking-wider font-semibold text-indigo-300">Akun Aktif</p>
                     <p className="text-xs font-bold text-white truncate" title={userEmail}>{userEmail}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      supabase.auth.getSession().then(({ data: { session } }) => {
-                        if (session?.user) {
-                          triggerWelcome(session.user, schoolName);
-                        }
-                      });
-                    }}
-                    title="Lihat Animasi Sambutan"
-                    className="p-1.5 bg-indigo-900/60 hover:bg-amber-400 hover:text-indigo-950 text-amber-300 rounded-lg transition-colors shrink-0 cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                  </button>
+                  
                 </div>
               )}
               <button 
@@ -799,18 +742,7 @@ export default function App() {
                   setSchoolName={setSchoolName} 
                   schoolLogo={schoolLogo} 
                   setSchoolLogo={setSchoolLogo}
-                  onTestWelcome={() => {
-                    supabase.auth.getSession().then(({ data: { session } }) => {
-                      if (session?.user) {
-                        triggerWelcome(session.user, schoolName);
-                      } else {
-                        setWelcomeAdminName('Admin');
-                        setWelcomeSchoolName(schoolName || 'Sekolah');
-                        setShowWelcomeAnimation(true);
-                      }
-                    });
-                  }}
-                />
+                                  />
               } 
             />
             <Route path="/guru" element={<TeachersView />} />

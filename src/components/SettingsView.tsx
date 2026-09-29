@@ -8,14 +8,12 @@ export default function SettingsView({
   schoolName, 
   setSchoolName, 
   schoolLogo, 
-  setSchoolLogo,
-  onTestWelcome
+  setSchoolLogo
 }: { 
   schoolName: string; 
   setSchoolName: (v: string) => void;
   schoolLogo: string;
   setSchoolLogo: (v: string) => void;
-  onTestWelcome?: () => void;
 }) {
   const [localName, setLocalName] = useState(schoolName);
   const [localLogo, setLocalLogo] = useState(schoolLogo);
@@ -308,17 +306,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                   <Save className="w-4 h-4" /> {isSavingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
 
-                {onTestWelcome && (
-                  <button 
-                    type="button"
-                    onClick={onTestWelcome}
-                    className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-sm font-bold transition-colors shadow-xs flex items-center gap-2"
-                    title="Lihat contoh animasi sambutan login"
-                  >
-                    <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span>Tes Animasi Sambutan</span>
-                  </button>
-                )}
+
                 
                 {isSaved && (
                   <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 animate-in fade-in duration-300">
