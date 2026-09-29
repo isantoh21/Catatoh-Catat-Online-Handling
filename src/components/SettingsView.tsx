@@ -176,8 +176,8 @@ export default function SettingsView({
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-1">Sesuaikan identitas sekolah Anda</p>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 md:p-10">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-6 md:p-8 lg:p-10">
+        <div className="max-w-7xl mx-auto space-y-6">
           {showSetup && (
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-6">
               <h3 className="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2">
@@ -203,7 +203,10 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
             </div>
           )}
           
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            {/* Kolom Kiri: Identitas Sekolah, Domisili Kota & Keamanan */}
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-8 space-y-8">
               
               {/* Logo Section */}
@@ -377,8 +380,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
             </div>
           </div>
 
-          {/* Koneksi WhatsApp WAHA & Proxy Supabase */}
-          <WahaConnect currentUserId={currentUserId} />
+          
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-8">
@@ -430,6 +432,13 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+
+        {/* Kolom Kanan: Integrasi & Koneksi WhatsApp WAHA */}
+            <div className="space-y-6">
+              <WahaConnect currentUserId={currentUserId} />
             </div>
           </div>
         </div>
