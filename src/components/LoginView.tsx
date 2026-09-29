@@ -830,44 +830,36 @@ export default function LoginView({
                   <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
                   Rekening Resmi Pembayaran CATATOH:
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold">BANK BCA</p>
-                      <p className="font-mono font-bold text-white text-sm">8930491823</p>
-                      <p className="text-[10px] text-slate-500">a.n CATATOH INDONESIA</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy('8930491823', 'BCA')}
-                      className="p-2 text-indigo-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                      title="Salin No. Rekening"
-                    >
-                      {copiedBank === 'BCA' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">BANK BCA</p>
+                    <p className="font-mono font-bold text-white text-base tracking-wider">7805556218</p>
+                    <p className="text-[11px] text-slate-400 font-medium">a.n Muhammad Ikhsan</p>
                   </div>
-
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold">BANK MANDIRI</p>
-                      <p className="font-mono font-bold text-white text-sm">1370019283741</p>
-                      <p className="text-[10px] text-slate-500">a.n CATATOH INDONESIA</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy('1370019283741', 'MANDIRI')}
-                      className="p-2 text-indigo-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                      title="Salin No. Rekening"
-                    >
-                      {copiedBank === 'MANDIRI' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('7805556218', 'BCA')}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-indigo-400 hover:text-indigo-300 border border-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="Salin No. Rekening"
+                  >
+                    {copiedBank === 'BCA' ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-emerald-400">Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        <span>Salin</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
               {/* Tombol Hubungi Admin via WhatsApp */}
               <a
-                href={`https://wa.me/6281234567890?text=${encodeURIComponent(`Halo Admin CATATOH, saya baru saja mendaftar akun sekolah di CATATOH:\n- Email Akun: ${registeredPremiumPending.email}\n- Kota: ${registeredPremiumPending.city || '-'}\n- Paket Dipilih: PREMIUM (${registeredPremiumPending.billingCycle === 'yearly' ? 'Tahunan - Rp 250.000' : 'Bulanan - Rp 30.000'})\n- Tanggal Pendaftaran: ${new Date().toLocaleDateString('id-ID')}\n\nSaya ingin konfirmasi pembayaran agar status akun saya dapat diubah menjadi PREMIUM oleh Admin. Terima kasih! 🙏`)}`}
+                href={`https://wa.me/6281234567890?text=${encodeURIComponent(`Halo Admin CATATOH, saya baru saja mendaftar akun sekolah di CATATOH:\n- Email Akun: ${registeredPremiumPending.email}\n- Kota: ${registeredPremiumPending.city || '-'}\n- Paket Dipilih: PREMIUM (${registeredPremiumPending.billingCycle === 'yearly' ? 'Tahunan - Rp 250.000' : 'Bulanan - Rp 30.000'})\n- Rekening Tujuan: BCA 7805556218 a.n Muhammad Ikhsan\n- Tanggal Pendaftaran: ${new Date().toLocaleDateString('id-ID')}\n\nSaya ingin konfirmasi pembayaran agar status akun saya dapat diubah menjadi PREMIUM oleh Admin. Terima kasih! 🙏`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
