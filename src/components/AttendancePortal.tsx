@@ -3,11 +3,29 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import TeacherKioskView from './teachers/TeacherKioskView';
 import { verifyKioskToken } from '../lib/kioskAuth';
+import { checkIsUserPremium } from '../lib/premiumService';
+import { Crown, Sparkles } from 'lucide-react';
 
 export default function AttendancePortal() {
   const { userId } = useParams();
   const [schoolSettings, setSchoolSettings] = useState<{ name: string; logo: string } | null>(null);
   const [attendanceSettings, setAttendanceSettings] = useState<any>(null);
+  const [isSchoolPremium, setIsSchoolPremium] = useState<boolean | null>(null);
+
+  // Check premium status of the target school
+  useEffect(() => {
+    let isMounted = true;
+    if (userId) {
+      checkIsUserPremium(null, userId).then(res => {
+        if (isMounted) setIsSchoolPremium(res);
+      });
+    } else {
+      setIsSchoolPremium(true);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
 
   // Fetch school branding and attendance rules
   useEffect(() => {
@@ -73,6 +91,26 @@ export default function AttendancePortal() {
   // If invalid or missing, defaults safely to standard 'scan' mode
   const detectedMode = verifyKioskToken(authToken, userId);
   const isManage = detectedMode === 'manage';
+
+  if (isSchoolPremium === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 font-sans text-white">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-slate-900 border border-amber-500/30 text-center space-y-4 shadow-2xl">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <Crown className="w-8 h-8 animate-bounce" />
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-black uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Fitur Khusus Akun Premium ⭐</span>
+          </div>
+          <h2 className="text-xl font-bold">Kiosk Presensi Wajah Guru Terkunci</h2>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Layanan Kiosk Presensi Wajah Guru untuk instansi ini memerlukan akun berstatus <b>Premium</b>. Silakan hubungi administrator Superadmin untuk mengaktifkan akun Anda.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TeacherKioskView

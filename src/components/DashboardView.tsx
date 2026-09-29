@@ -5,12 +5,14 @@ import {
   Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, 
   CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, 
   Building2, Copy, MessageSquare, Play, Pause, AlertTriangle, AlertCircle, XCircle, 
-  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert
+  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert, Crown
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal from './PaymentModerationModal';
 import { getPaymentVerifications, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
+import { usePremiumStatus } from '../lib/premiumService';
+import PremiumLockModal from './PremiumLockModal';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -19,6 +21,8 @@ const BULAN_OPTIONS = [
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
 
 export default function DashboardView() {
+  const { isPremium } = usePremiumStatus();
+  const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -607,6 +611,10 @@ export default function DashboardView() {
   // Buka modal reminder dan inisialisasi checklist default
   // Buka modal reminder dan inisialisasi checklist default (hanya nomor valid yang dicentang otomatis)
   const handleOpenReminderModal = (bulanToUse?: string) => {
+    if (!isPremium) {
+      setPremiumLockFeature('WhatsApp Gateway (Reminder Otomatis)');
+      return;
+    }
     const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
     setReminderBulan(target);
     const unpayed = students.filter(s => 
@@ -653,6 +661,10 @@ export default function DashboardView() {
 
   // Kirim satuan langsung via WhatsApp Gateway
   const handleKirimSingleWA = async (student: any) => {
+    if (!isPremium) {
+      setPremiumLockFeature('WhatsApp Gateway (Pengiriman Otomatis)');
+      return;
+    }
     const val = validateWhatsAppNumber(student.nomor_whatsapp);
     if (!val.valid) {
       setStudentSendStatuses(prev => ({
@@ -760,6 +772,10 @@ export default function DashboardView() {
 
   // Eksekusi pengiriman batch / massal via WhatsApp dengan interval acak anti-banned
   const handleStartBatchSend = async () => {
+    if (!isPremium) {
+      setPremiumLockFeature('WhatsApp Gateway (Pengiriman Massal)');
+      return;
+    }
     const targetStudents = reminderFilteredStudents.filter(s => selectedReminderIds.includes(s.id));
     if (targetStudents.length === 0) {
       alert('Silakan pilih minimal 1 siswa dengan mencentang kotak di daftar.');
@@ -953,11 +969,16 @@ export default function DashboardView() {
           <button 
             onClick={() => handleOpenReminderModal()}
             id="btnKirimReminderWa"
-            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer"
-            title="Kirim Reminder SPP via WhatsApp"
+            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer relative"
+            title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Kirim Reminder SPP via WhatsApp)" : "Kirim Reminder SPP via WhatsApp"}
             aria-label="Kirim Reminder SPP via WhatsApp"
           >
             <MessageCircle className="w-5 h-5 shrink-0" />
+            {!isPremium && (
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs ring-1 ring-white">
+                ★
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -2144,6 +2165,13 @@ Terima kasih atas perhatian dan kerja samanya.`}
           fetchData();
           refreshPendingCount();
         }}
+      />
+
+      {/* MODAL KUNCI PREMIUM */}
+      <PremiumLockModal
+        isOpen={!!premiumLockFeature}
+        onClose={() => setPremiumLockFeature(null)}
+        featureName={premiumLockFeature || 'Fitur WhatsApp Gateway'}
       />
 
     </div>

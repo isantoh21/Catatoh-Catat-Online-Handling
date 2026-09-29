@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles, Crop } from 'lucide-react';
+import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles, Crop, Crown } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
+import { usePremiumStatus } from '../lib/premiumService';
 
 export default function SettingsView({ 
   schoolName, 
@@ -16,6 +17,7 @@ export default function SettingsView({
   schoolLogo: string;
   setSchoolLogo: (v: string) => void;
 }) {
+  const { isPremium } = usePremiumStatus();
   const [localName, setLocalName] = useState(schoolName);
   const [localLogo, setLocalLogo] = useState(schoolLogo);
   const [isSaved, setIsSaved] = useState(false);
@@ -557,12 +559,56 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
         </div>
 
         {/* Kolom Kanan: Integrasi & Koneksi WhatsApp Gateway */}
-            <div className="space-y-6">
-              <WhatsAppConnect currentUserId={currentUserId} />
+        <div className="space-y-6">
+          {isPremium ? (
+            <WhatsAppConnect currentUserId={currentUserId} />
+          ) : (
+            <div className="bg-gradient-to-br from-slate-900 via-zinc-900 to-slate-950 border border-amber-500/30 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+              
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black uppercase tracking-wider">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Fitur Khusus Akun Premium ⭐</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-400">Terkunci</span>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                    <span>WhatsApp Gateway & Bot Otomatis</span>
+                  </h3>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    Koneksi gateway WhatsApp, pengiriman bukti bayar instan, bot pesan otomatis, dan reminder jatuh tempo tagihan SPP ke nomor wali murid merupakan fasilitas eksklusif untuk pengguna akun <b>Premium</b>.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5 text-xs text-slate-300">
+                  <div className="font-bold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    Keunggulan WhatsApp Gateway Premium:
+                  </div>
+                  <ul className="space-y-1.5 list-disc list-inside text-slate-300">
+                    <li>Koneksi Multi-Device QR Code tanpa biaya server tambahan</li>
+                    <li>Kirim otomatis slip pembayaran berformat resmi ke nomor wali murid</li>
+                    <li>Broadcast reminder SPP massal dengan tombol 1-klik</li>
+                    <li>Inbound Webhook respons otomatis saat wali murid bertanya</li>
+                  </ul>
+                </div>
+
+                <div className="pt-2">
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs text-center font-medium leading-relaxed">
+                    Ingin mengaktifkan WhatsApp Gateway untuk sekolah Anda? Silakan hubungi <b>Superadmin</b> untuk meng-upgrade status akun Anda menjadi Premium.
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
+    </div>
+  </div>
 
       {showSaveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">

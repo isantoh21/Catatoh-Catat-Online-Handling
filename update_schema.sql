@@ -108,3 +108,78 @@ WITH CHECK (true);
 CREATE INDEX IF NOT EXISTS idx_payment_verifications_user_id ON payment_verifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_verifications_status ON payment_verifications(status);
 CREATE INDEX IF NOT EXISTS idx_payment_verifications_phone ON payment_verifications(sender_phone);
+
+-- =========================================================================
+-- FITUR AKUN PREMIUM & PENGELOLAAN PASSWORD SUPERADMIN
+-- =========================================================================
+
+-- 1. Tambah kolom is_premium pada tabel user_settings
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
+
+-- 2. Tambah kolom premium_emails pada global_settings
+ALTER TABLE IF EXISTS public.global_settings ADD COLUMN IF NOT EXISTS premium_emails TEXT[] DEFAULT ARRAY['beti1508@gmail.com'];
+ALTER TABLE IF EXISTS public.global_settings ADD COLUMN IF NOT EXISTS premium_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[];
+
+-- 3. Set beti1508@gmail.com sebagai default premium
+UPDATE public.global_settings 
+SET premium_emails = ARRAY['beti1508@gmail.com'] 
+WHERE id = 'default' AND (premium_emails IS NULL OR NOT ('beti1508@gmail.com' = ANY(premium_emails)));
+
+-- 4. RPC Superadmin untuk mengubah password pengguna secara langsung
+CREATE OR REPLACE FUNCTION change_user_password_by_admin(
+  target_user_id UUID,
+  new_plain_password TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Update auth.users password menggunakan bcrypt
+  UPDATE auth.users
+  SET encrypted_password = crypt(new_plain_password, gen_salt('bf')),
+      updated_at = NOW()
+  WHERE id = target_user_id;
+
+  RETURN jsonb_build_object('success', true, 'message', 'Password berhasil diperbarui.');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;
+
+-- 5. Update get_all_users() agar menyertakan status is_premium
+DROP FUNCTION IF EXISTS get_all_users();
+CREATE OR REPLACE FUNCTION get_all_users()
+RETURNS TABLE (
+  id UUID,
+  email VARCHAR,
+  created_at TIMESTAMPTZ,
+  school_name TEXT,
+  city_name TEXT,
+  admin_name TEXT,
+  last_sign_in_at TIMESTAMPTZ,
+  email_confirmed_at TIMESTAMPTZ,
+  is_premium BOOLEAN
+)
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    au.id, 
+    au.email::VARCHAR, 
+    au.created_at, 
+    COALESCE(us.school_name, 'Belum Diatur') as school_name,
+    COALESCE(au.raw_user_meta_data->>'city', 'Belum Diatur') as city_name,
+    COALESCE(au.raw_user_meta_data->>'full_name', 'Belum Diatur') as admin_name,
+    au.last_sign_in_at,
+    COALESCE(au.email_confirmed_at, au.confirmed_at) as email_confirmed_at,
+    COALESCE(us.is_premium, false) as is_premium
+  FROM auth.users au
+  LEFT JOIN public.user_settings us ON au.id = us.user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, X, Copy, Users, Settings, Database, Activity, Search, Edit2, Trash2, Power, AlertCircle, Save, CheckCircle2, RefreshCw, Mail, Link as LinkIcon, Clock, HelpCircle } from 'lucide-react';
+import { ShieldAlert, X, Copy, Users, Settings, Database, Activity, Search, Edit2, Trash2, Power, AlertCircle, Save, CheckCircle2, RefreshCw, Mail, Link as LinkIcon, Clock, HelpCircle, Crown, KeyRound, Lock, Sparkles } from 'lucide-react';
 import { supabase, superAdminSupabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
+import { DEFAULT_PREMIUM_EMAILS, setTargetUserPremium } from '../../lib/premiumService';
 
 export default function SuperAdminView() {
   const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'logs' | 'database'>('users');
@@ -13,7 +14,7 @@ export default function SuperAdminView() {
   const [searchAdmin, setSearchAdmin] = useState('');
   const [searchSchool, setSearchSchool] = useState('');
   const [searchCity, setSearchCity] = useState('');
-  const [searchStatus, setSearchStatus] = useState<'all' | 'confirmed' | 'unconfirmed'>('all');
+  const [searchStatus, setSearchStatus] = useState<'all' | 'confirmed' | 'unconfirmed' | 'premium' | 'standar'>('all');
   const [pendingAction, setPendingAction] = useState<{
     type: 'resend_confirmation' | 'send_magic_link' | 'start_edit' | 'save_edit';
     user: any;
@@ -31,6 +32,11 @@ export default function SuperAdminView() {
   const [globalMessage, setGlobalMessage] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   
+  // Premium & Password Modal States
+  const [premiumTogglingId, setPremiumTogglingId] = useState<string | null>(null);
+  const [passwordModalUser, setPasswordModalUser] = useState<any | null>(null);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   
   // User Actions state
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -139,9 +145,39 @@ export default function SuperAdminView() {
     setLoading(true);
     try {
       if (activeTab === 'users') {
-        const { data, error } = await superAdminSupabase.rpc('get_all_users');
+        const { data: usersData, error } = await superAdminSupabase.rpc('get_all_users');
         if (error) console.error('RPC Error:', error);
-        if (data) setUsers(data);
+
+        // Fetch global settings to determine premium status
+        let premiumEmails: string[] = [...DEFAULT_PREMIUM_EMAILS];
+        let premiumIds: string[] = [];
+        try {
+          const { data: globalData } = await superAdminSupabase
+            .from('global_settings')
+            .select('premium_emails, premium_user_ids')
+            .eq('id', 'default')
+            .maybeSingle();
+
+          if (globalData) {
+            if (Array.isArray(globalData.premium_emails)) {
+              premiumEmails = Array.from(new Set([...premiumEmails, ...globalData.premium_emails.map((e: string) => String(e).toLowerCase().trim())]));
+            }
+            if (Array.isArray(globalData.premium_user_ids)) {
+              premiumIds = globalData.premium_user_ids;
+            }
+          }
+        } catch (_) {}
+
+        const enriched = (usersData || []).map((u: any) => {
+          const emailLower = (u.email || '').toLowerCase().trim();
+          const isPrem = DEFAULT_PREMIUM_EMAILS.includes(emailLower) ||
+                         premiumEmails.includes(emailLower) ||
+                         premiumIds.includes(u.id) ||
+                         u.is_premium === true;
+          return { ...u, is_premium: isPrem };
+        });
+
+        setUsers(enriched);
       } else if (activeTab === 'logs') {
         const { data } = await superAdminSupabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(100);
         if (data) setLogs(data);
@@ -157,6 +193,78 @@ export default function SuperAdminView() {
       console.error("Error fetching admin data:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleUserPremium = async (user: any) => {
+    const newStatus = !user.is_premium;
+    const confirmMsg = newStatus 
+      ? `Aktifkan paket PREMIUM untuk akun "${user.email || user.id}"?\n\nPengguna akan langsung mendapatkan akses ke:\n- Absensi Scan Wajah Siswa\n- Presensi Scan Wajah Guru\n- WhatsApp Gateway & Bot Notifikasi`
+      : `Cabut paket PREMIUM dari akun "${user.email || user.id}"?\n\nPengguna akan kembali ke paket Standar/Free dan fitur scan wajah & WhatsApp Gateway akan terkunci.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setPremiumTogglingId(user.id);
+    try {
+      const res = await setTargetUserPremium(user.id, user.email, newStatus);
+      if (res.success) {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_premium: newStatus } : u));
+        alert(res.message);
+      } else {
+        alert('Gagal: ' + res.message);
+      }
+    } catch (err: any) {
+      alert('Gagal mengubah status: ' + err.message);
+    } finally {
+      setPremiumTogglingId(null);
+    }
+  };
+
+  const handleSaveNewPassword = async () => {
+    if (!passwordModalUser) return;
+    if (newAdminPassword.length < 6) {
+      alert('Password baru minimal 6 karakter.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      // 1. Coba panggil RPC direct update jika tersedia
+      const { data: rpcRes, error: rpcError } = await superAdminSupabase.rpc('change_user_password_by_admin', {
+        target_user_id: passwordModalUser.id,
+        new_plain_password: newAdminPassword
+      });
+
+      if (!rpcError && (rpcRes?.success !== false)) {
+        alert(`Password untuk ${passwordModalUser.email} berhasil diperbarui langsung! Pengguna sekarang dapat login dengan password baru tersebut.`);
+        setPasswordModalUser(null);
+        setNewAdminPassword('');
+        return;
+      }
+
+      // 2. Jika RPC belum terpasang di database Supabase, kirim link reset password
+      const { error: resetError } = await superAdminSupabase.auth.resetPasswordForEmail(passwordModalUser.email);
+      if (resetError) throw resetError;
+
+      alert(`Permintaan berhasil diproses! Link pembuatan password baru telah dikirimkan ke email ${passwordModalUser.email}. Untuk mengaktifkan ganti password langsung tanpa email, jalankan script SQL change_user_password_by_admin di Supabase Editor.`);
+      setPasswordModalUser(null);
+      setNewAdminPassword('');
+    } catch (err: any) {
+      console.error('Password change error:', err);
+      alert('Gagal memproses password: ' + (err.message || 'Error tidak diketahui'));
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleSendPasswordResetEmail = async (email: string) => {
+    if (!email) return;
+    try {
+      const { error } = await superAdminSupabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      alert(`Link reset password resmi telah dikirim ke ${email}! Pengguna dapat membuka email untuk memasukkan password baru.`);
+    } catch (err: any) {
+      alert(`Gagal mengirim email reset: ${err.message}`);
     }
   };
 
@@ -749,18 +857,24 @@ export default function SuperAdminView() {
                             <option value="all">Semua Status</option>
                             <option value="confirmed">Terkonfirmasi</option>
                             <option value="unconfirmed">Belum Konfirmasi</option>
+                            <option value="premium">Khusus Premium ⭐</option>
+                            <option value="standar">Khusus Standar (Free)</option>
                           </select>
+                        </th>
+                        <th className="px-4 py-4 whitespace-nowrap min-w-[160px]">
+                          <div className="mb-2">Paket Akun</div>
+                          <span className="text-[10px] text-indigo-400/70 font-normal">Free vs Premium ⭐</span>
                         </th>
                         <th className="px-4 py-4 whitespace-nowrap">Tgl Daftar</th>
                         <th className="px-4 py-4 whitespace-nowrap">Terakhir Login</th>
-                        <th className="px-4 py-4 text-right whitespace-nowrap min-w-[150px]">Aksi</th>
+                        <th className="px-4 py-4 text-right whitespace-nowrap min-w-[160px]">Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading ? (
-                        <tr><td colSpan={9} className="text-center py-8 text-slate-400"><RefreshCw className="w-6 h-6 animate-spin mx-auto" /></td></tr>
+                        <tr><td colSpan={10} className="text-center py-8 text-slate-400"><RefreshCw className="w-6 h-6 animate-spin mx-auto" /></td></tr>
                       ) : users.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center py-8 text-slate-400">Tidak ada data pengguna.</td></tr>
+                        <tr><td colSpan={10} className="text-center py-8 text-slate-400">Tidak ada data pengguna.</td></tr>
                       ) : (
                         currentUsers.map((user, index) => {
                           const rowNumber = startIndex + index + 1;
@@ -840,6 +954,39 @@ export default function SuperAdminView() {
                                 </button>
                               )}
                             </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                {user.is_premium ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black rounded-full shadow-xs">
+                                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                    PREMIUM ⭐
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-slate-400 border border-slate-800 text-xs font-medium rounded-full">
+                                    Standar
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleUserPremium(user)}
+                                  disabled={premiumTogglingId === user.id}
+                                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                                    user.is_premium
+                                      ? 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60'
+                                      : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                                  }`}
+                                  title={user.is_premium ? "Cabut status Premium dari akun ini" : "Aktifkan status Premium untuk akun ini"}
+                                >
+                                  {premiumTogglingId === user.id ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : user.is_premium ? (
+                                    'Cabut'
+                                  ) : (
+                                    '+ Premium'
+                                  )}
+                                </button>
+                              </div>
+                            </td>
                             <td className="px-4 py-4 text-slate-400 whitespace-nowrap">
                               {new Date(user.created_at || Date.now()).toLocaleString('id-ID')}
                             </td>
@@ -896,6 +1043,16 @@ export default function SuperAdminView() {
                                       </>
                                     );
                                   })()}
+                                  <button 
+                                    onClick={() => {
+                                      setPasswordModalUser(user);
+                                      setNewAdminPassword('');
+                                    }} 
+                                    title="Kelola & Ubah Password Akun" 
+                                    className="p-1.5 text-slate-500 hover:text-amber-400 hover:bg-amber-900/30 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <KeyRound className="w-4 h-4" />
+                                  </button>
                                   <button onClick={() => setPendingAction({ type: 'start_edit', user })} title="Edit Profil" className="p-1.5 text-slate-500 hover:text-indigo-400 hover:bg-indigo-900/30 rounded-lg transition-colors">
                                     <Edit2 className="w-4 h-4" />
                                   </button>
@@ -1104,8 +1261,11 @@ export default function SuperAdminView() {
                 Agar sistem dapat membaca <strong>Status Verifikasi Email</strong> (Terkonfirmasi / Belum Konfirmasi) serta profil pengguna secara lengkap langsung dari tabel autentikasi Supabase, jalankan kode SQL di bawah ini di menu <strong>SQL Editor</strong> pada Dashboard Supabase Anda:
               </p>
               <div className="relative group">
-                <pre className="bg-black p-4 rounded-xl text-xs text-emerald-400 overflow-x-auto border border-slate-800 leading-relaxed font-mono">{`DROP FUNCTION IF EXISTS get_all_users();
+                <pre className="bg-black p-4 rounded-xl text-xs text-emerald-400 overflow-x-auto border border-slate-800 leading-relaxed font-mono">{`-- 1. Tambah kolom is_premium jika belum ada
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
 
+-- 2. Fungsi Ambil Data Seluruh Pengguna
+DROP FUNCTION IF EXISTS get_all_users();
 CREATE OR REPLACE FUNCTION get_all_users()
 RETURNS TABLE (
   id UUID,
@@ -1115,7 +1275,8 @@ RETURNS TABLE (
   city_name TEXT,
   admin_name TEXT,
   last_sign_in_at TIMESTAMPTZ,
-  email_confirmed_at TIMESTAMPTZ
+  email_confirmed_at TIMESTAMPTZ,
+  is_premium BOOLEAN
 )
 SECURITY DEFINER
 AS $$
@@ -1129,16 +1290,44 @@ BEGIN
     COALESCE(au.raw_user_meta_data->>'city', 'Belum Diatur') as city_name,
     COALESCE(au.raw_user_meta_data->>'full_name', 'Belum Diatur') as admin_name,
     au.last_sign_in_at,
-    COALESCE(au.email_confirmed_at, au.confirmed_at) as email_confirmed_at
+    COALESCE(au.email_confirmed_at, au.confirmed_at) as email_confirmed_at,
+    COALESCE(us.is_premium, false) as is_premium
   FROM auth.users au
   LEFT JOIN public.user_settings us ON au.id = us.user_id;
 END;
-$$ LANGUAGE plpgsql;`}
+$$ LANGUAGE plpgsql;
+
+-- 3. Fungsi Ubah Password Langsung oleh Superadmin
+CREATE OR REPLACE FUNCTION change_user_password_by_admin(
+  target_user_id UUID,
+  new_plain_password TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE auth.users
+  SET encrypted_password = crypt(new_plain_password, gen_salt('bf')),
+      updated_at = NOW()
+  WHERE id = target_user_id;
+
+  RETURN jsonb_build_object('success', true, 'message', 'Password berhasil diperbarui.');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;`}
                 </pre>
                 <button 
                   onClick={() => {
-                    navigator.clipboard.writeText(`DROP FUNCTION IF EXISTS get_all_users();
+                    navigator.clipboard.writeText(`-- 1. Tambah kolom is_premium jika belum ada
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
 
+-- 2. Fungsi Ambil Data Seluruh Pengguna
+DROP FUNCTION IF EXISTS get_all_users();
 CREATE OR REPLACE FUNCTION get_all_users()
 RETURNS TABLE (
   id UUID,
@@ -1148,7 +1337,8 @@ RETURNS TABLE (
   city_name TEXT,
   admin_name TEXT,
   last_sign_in_at TIMESTAMPTZ,
-  email_confirmed_at TIMESTAMPTZ
+  email_confirmed_at TIMESTAMPTZ,
+  is_premium BOOLEAN
 )
 SECURITY DEFINER
 AS $$
@@ -1162,14 +1352,39 @@ BEGIN
     COALESCE(au.raw_user_meta_data->>'city', 'Belum Diatur') as city_name,
     COALESCE(au.raw_user_meta_data->>'full_name', 'Belum Diatur') as admin_name,
     au.last_sign_in_at,
-    COALESCE(au.email_confirmed_at, au.confirmed_at) as email_confirmed_at
+    COALESCE(au.email_confirmed_at, au.confirmed_at) as email_confirmed_at,
+    COALESCE(us.is_premium, false) as is_premium
   FROM auth.users au
   LEFT JOIN public.user_settings us ON au.id = us.user_id;
 END;
-$$ LANGUAGE plpgsql;`);
+$$ LANGUAGE plpgsql;
+
+-- 3. Fungsi Ubah Password Langsung oleh Superadmin
+CREATE OR REPLACE FUNCTION change_user_password_by_admin(
+  target_user_id UUID,
+  new_plain_password TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE auth.users
+  SET encrypted_password = crypt(new_plain_password, gen_salt('bf')),
+      updated_at = NOW()
+  WHERE id = target_user_id;
+
+  RETURN jsonb_build_object('success', true, 'message', 'Password berhasil diperbarui.');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;`);
                     alert('Kode SQL berhasil disalin ke clipboard!');
                   }}
-                  className="absolute top-2 right-2 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-sans font-medium"
+                  className="absolute top-2 right-2 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-sans font-medium cursor-pointer"
                   title="Salin Kode SQL"
                 >
                   <Copy className="w-3.5 h-3.5" /> Salin
@@ -1178,6 +1393,82 @@ $$ LANGUAGE plpgsql;`);
               <p className="text-xs text-slate-400">
                 Setelah kode di atas berhasil dijalankan di Supabase SQL Editor, klik tombol refresh/muat ulang tabel pengguna untuk melihat status email terkini.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Management Modal */}
+      {passwordModalUser && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-slate-900 border border-indigo-900/60 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 text-white">
+            <div className="flex items-start justify-between border-b border-indigo-900/40 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <KeyRound className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-indigo-50">Kelola Password Pengguna</h3>
+                  <p className="text-xs text-slate-400 font-mono">{passwordModalUser.email || passwordModalUser.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPasswordModalUser(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Penjelasan Keamanan Enkripsi Password (Pertanyaan User) */}
+            <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-800/40 space-y-2 text-xs text-indigo-200 leading-relaxed">
+              <div className="flex items-center gap-2 font-bold text-amber-300">
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span>Mengapa Password Lama Tidak Bisa Diintip?</span>
+              </div>
+              <p className="text-slate-300">
+                Sistem autentikasi Supabase menyimpan seluruh password menggunakan enkripsi satu arah (<b>bcrypt hashing</b>). Secara kriptografi, hash ini <b>tidak dapat di-dekripsi menjadi teks asli (plaintext) oleh siapa pun</b>, termasuk developer dan Superadmin demi standar keamanan data.
+              </p>
+              <p className="text-emerald-300 font-medium">
+                Solusi: Anda dapat <b>langsung menetapkan password baru</b> untuk pengguna ini di bawah, atau mengirimkan tautan reset resmi ke email mereka.
+              </p>
+            </div>
+
+            {/* Form Ganti Password Baru Langsung */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Tetapkan Password Baru:
+              </label>
+              <input
+                type="text"
+                value={newAdminPassword}
+                onChange={(e) => setNewAdminPassword(e.target.value)}
+                placeholder="Ketik password baru (min. 6 karakter)..."
+                className="w-full px-4 py-2.5 bg-black border border-indigo-900/60 rounded-xl text-sm text-indigo-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+              />
+              <p className="text-[11px] text-slate-400">
+                Pengguna akan langsung dapat login menggunakan password yang Anda ketikkan di atas.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2 border-t border-indigo-900/40">
+              <button
+                type="button"
+                onClick={() => handleSendPasswordResetEmail(passwordModalUser.email)}
+                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Mail className="w-4 h-4 text-indigo-400" />
+                <span>Kirim Link Reset Email</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNewPassword}
+                disabled={isUpdatingPassword || newAdminPassword.length < 6}
+                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-600/30"
+              >
+                {isUpdatingPassword ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Simpan Password Baru</span>
+              </button>
             </div>
           </div>
         </div>

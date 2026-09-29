@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { generateKioskToken } from '../../lib/kioskAuth';
+import { usePremiumStatus } from '../../lib/premiumService';
+import PremiumLockModal from '../PremiumLockModal';
 import { 
   User, 
   Trash2, 
@@ -23,6 +25,7 @@ import {
   Plus,
   Loader2,
   Bookmark,
+  Crown,
   Check,
   HelpCircle
 } from 'lucide-react';
@@ -130,8 +133,15 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
     setLoading(false);
   };
 
+  const { isPremium } = usePremiumStatus();
+  const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
+
   // 1. Kiosk Murni Absensi (Untuk Tablet/Stand di Lobi)
   const handleOpenAttendanceKiosk = async () => {
+    if (!isPremium) {
+      setPremiumLockFeature('Stand Presensi Wajah Guru');
+      return;
+    }
     const uid = await getAuthenticatedUserId();
     if (!uid) {
       showError('Sesi Anda belum terdeteksi. Silakan muat ulang halaman.');
@@ -142,6 +152,10 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
   };
 
   const handleCopyAttendanceLink = async () => {
+    if (!isPremium) {
+      setPremiumLockFeature('Stand Presensi Wajah Guru');
+      return;
+    }
     const uid = await getAuthenticatedUserId();
     if (!uid) {
       showError('Sesi Anda belum terdeteksi. Silakan muat ulang halaman.');
@@ -155,6 +169,10 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
 
   // 2. Kiosk Kelola Wajah (Pendaftaran & Reset)
   const handleOpenManageKiosk = async () => {
+    if (!isPremium) {
+      setPremiumLockFeature('Kiosk Registrasi & Reset Wajah Guru');
+      return;
+    }
     const uid = await getAuthenticatedUserId();
     if (!uid) {
       showError('Sesi Anda belum terdeteksi. Silakan muat ulang halaman.');
@@ -165,6 +183,10 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
   };
 
   const handleCopyManageLink = async () => {
+    if (!isPremium) {
+      setPremiumLockFeature('Kiosk Registrasi & Reset Wajah Guru');
+      return;
+    }
     const uid = await getAuthenticatedUserId();
     if (!uid) {
       showError('Sesi Anda belum terdeteksi. Silakan muat ulang halaman.');
@@ -178,6 +200,10 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
 
   // 3. Add to Browser Home Guide Trigger
   const handleOpenBrowserHomeGuide = async (type: 'attendance' | 'manage') => {
+    if (!isPremium) {
+      setPremiumLockFeature(type === 'attendance' ? 'Stand Presensi Wajah Guru' : 'Kiosk Registrasi Wajah Guru');
+      return;
+    }
     const uid = await getAuthenticatedUserId();
     if (!uid) {
       showError('Sesi Anda belum terdeteksi. Silakan muat ulang halaman.');
@@ -376,7 +402,15 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Kiosk Murni Absensi (Stand Lobi)</span>
               </div>
-              <span className="text-[11px] text-zinc-400 font-mono">Terkunci & Aman</span>
+              <div className="flex items-center gap-2">
+                {!isPremium && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black">
+                    <Crown className="w-3 h-3 text-amber-400" />
+                    PREMIUM
+                  </span>
+                )}
+                <span className="text-[11px] text-zinc-400 font-mono">Terkunci & Aman</span>
+              </div>
             </div>
 
             <h3 className="text-lg font-black tracking-tight text-white mb-1.5">
@@ -424,7 +458,15 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                 <span>Mode Kelola Wajah (Operator/Admin)</span>
               </div>
-              <span className="text-[11px] text-amber-400/90 font-mono">Daftar & Reset</span>
+              <div className="flex items-center gap-2">
+                {!isPremium && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black">
+                    <Crown className="w-3 h-3 text-amber-400" />
+                    PREMIUM
+                  </span>
+                )}
+                <span className="text-[11px] text-amber-400/90 font-mono">Daftar & Reset</span>
+              </div>
             </div>
 
             <h3 className="text-lg font-black tracking-tight text-white mb-1.5">
@@ -1047,6 +1089,13 @@ export default function TeacherList({ onNavigateToSettings }: TeacherListProps) 
           </div>
         </div>
       )}
+
+      {/* MODAL KUNCI PREMIUM */}
+      <PremiumLockModal
+        isOpen={!!premiumLockFeature}
+        onClose={() => setPremiumLockFeature(null)}
+        featureName={premiumLockFeature || 'Fitur Presensi Wajah Guru'}
+      />
     </div>
   );
 }

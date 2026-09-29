@@ -5,7 +5,7 @@ import {
   Plus, X, Upload, Edit2, Trash2, Download, RefreshCw, Search, AlertTriangle, 
   CheckCircle2, GraduationCap, RotateCcw, Camera, UserCheck, Copy, Share2, 
   ExternalLink, Globe, Monitor, ScanFace, Sparkles, ShieldCheck, Smartphone, 
-  Laptop, Bookmark, Info, MessageCircle, FileText, Users
+  Laptop, Bookmark, Info, MessageCircle, FileText, Users, Crown
 } from 'lucide-react';
 import { logActivity } from '../lib/activityLogger';
 import { generateKioskToken } from '../lib/kioskAuth';
@@ -14,8 +14,12 @@ import ConfirmModal from './ConfirmModal';
 import StudentFaceRegistration from './students/StudentFaceRegistration';
 import StudentAttendanceKiosk from './students/StudentAttendanceKiosk';
 import StudentAttendanceReports from './students/StudentAttendanceReports';
+import { usePremiumStatus } from '../lib/premiumService';
+import PremiumLockModal from './PremiumLockModal';
 
 export default function StudentsView() {
+  const { isPremium } = usePremiumStatus();
+  const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'students' | 'reports'>('students');
   const [students, setStudents] = useState<any[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -107,6 +111,10 @@ export default function StudentsView() {
   };
 
   const handleShareWhatsApp = (type: 'attendance' | 'registration') => {
+    if (!isPremium) {
+      setPremiumLockFeature(type === 'attendance' ? 'Stand Absensi Wajah Siswa' : 'Kiosk Pendaftaran Wajah Siswa');
+      return;
+    }
     const isAtt = type === 'attendance';
     const url = isAtt ? getAttendanceKioskUrl() : getRegistrationKioskUrl();
     if (!url) return;
@@ -119,6 +127,10 @@ export default function StudentsView() {
   };
 
   const handleCopyLink = async (url: string, type: 'attendance' | 'registration') => {
+    if (!isPremium) {
+      setPremiumLockFeature(type === 'attendance' ? 'Stand Absensi Wajah Siswa' : 'Kiosk Pendaftaran Wajah Siswa');
+      return;
+    }
     if (!url) return;
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -147,6 +159,10 @@ export default function StudentsView() {
   };
 
   const handleOpenBrowserHomeGuide = (type: 'attendance' | 'registration') => {
+    if (!isPremium) {
+      setPremiumLockFeature(type === 'attendance' ? 'Stand Absensi Wajah Siswa' : 'Kiosk Pendaftaran Wajah Siswa');
+      return;
+    }
     if (type === 'attendance') {
       setBrowserHomeModal({
         url: getAttendanceKioskUrl(),
@@ -584,37 +600,65 @@ export default function StudentsView() {
       </div>
 
       {mainTab === 'reports' ? (
-        <StudentAttendanceReports onNavigateToKiosk={() => setIsAttendanceKioskOpen(true)} />
+        <StudentAttendanceReports onNavigateToKiosk={() => {
+          if (!isPremium) {
+            setPremiumLockFeature('Stand Presensi Wajah Siswa');
+            return;
+          }
+          setIsAttendanceKioskOpen(true);
+        }} />
       ) : (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Tombol Kiosk Stand Absen & Pendaftaran Wajah (Icon Only) */}
             <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-xs">
               <button
-                onClick={() => setShowAttendanceKioskCard(prev => !prev)}
+                onClick={() => {
+                  if (!isPremium) {
+                    setPremiumLockFeature('Stand Presensi Wajah Siswa');
+                    return;
+                  }
+                  setShowAttendanceKioskCard(prev => !prev);
+                }}
                 id="btnToggleKioskAttendance"
                 className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all cursor-pointer relative ${
                   showAttendanceKioskCard
                     ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/50'
                     : 'bg-white text-emerald-600 hover:bg-emerald-50 border border-slate-200'
                 }`}
-                title={showAttendanceKioskCard ? "Sembunyikan Kartu Stand Absensi Siswa" : "Buka Kartu Stand Absensi Wajah Siswa"}
+                title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Stand Absensi Siswa)" : (showAttendanceKioskCard ? "Sembunyikan Kartu Stand Absensi Siswa" : "Buka Kartu Stand Absensi Wajah Siswa")}
                 aria-label="Kiosk Stand Absensi Siswa"
               >
                 <Monitor className={`w-4 h-4 ${showAttendanceKioskCard ? 'text-white' : 'text-emerald-600'}`} />
+                {!isPremium && (
+                  <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs">
+                    ★
+                  </span>
+                )}
               </button>
               <button
-                onClick={() => setShowRegistrationKioskCard(prev => !prev)}
+                onClick={() => {
+                  if (!isPremium) {
+                    setPremiumLockFeature('Pendaftaran & Reset Wajah Siswa');
+                    return;
+                  }
+                  setShowRegistrationKioskCard(prev => !prev);
+                }}
                 id="btnToggleKioskRegistration"
                 className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all cursor-pointer relative ${
                   showRegistrationKioskCard
                     ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-400/50'
                     : 'bg-white text-indigo-600 hover:bg-indigo-50 border border-slate-200'
                 }`}
-                title={showRegistrationKioskCard ? "Sembunyikan Kartu Pendaftaran Wajah Siswa" : "Buka Kartu Pendaftaran Wajah Siswa"}
+                title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Pendaftaran Wajah Siswa)" : (showRegistrationKioskCard ? "Sembunyikan Kartu Pendaftaran Wajah Siswa" : "Buka Kartu Pendaftaran Wajah Siswa")}
                 aria-label="Kiosk Pendaftaran Wajah Siswa"
               >
                 <ScanFace className={`w-4 h-4 ${showRegistrationKioskCard ? 'text-white' : 'text-indigo-600'}`} />
+                {!isPremium && (
+                  <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs">
+                    ★
+                  </span>
+                )}
               </button>
             </div>
 
@@ -1422,6 +1466,13 @@ export default function StudentsView() {
           </div>
         </div>
       )}
+
+      {/* MODAL KUNCI PREMIUM */}
+      <PremiumLockModal
+        isOpen={!!premiumLockFeature}
+        onClose={() => setPremiumLockFeature(null)}
+        featureName={premiumLockFeature || 'Fitur Presensi Wajah Siswa'}
+      />
     </div>
   );
 }
