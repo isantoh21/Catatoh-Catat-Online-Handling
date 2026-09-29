@@ -182,12 +182,14 @@ export default function SuperAdminView() {
         // Fetch global settings to determine premium status
         let premiumEmails: string[] = [...DEFAULT_PREMIUM_EMAILS];
         let premiumIds: string[] = [];
+        let revokedIds: string[] = [];
+        let revokedEmails: string[] = [];
         let premiumSubs: Record<string, any> = {};
 
         try {
           const { data: globalData } = await superAdminSupabase
             .from('global_settings')
-            .select('premium_emails, premium_user_ids, premium_subscriptions')
+            .select('premium_emails, premium_user_ids, revoked_user_ids, revoked_emails, premium_subscriptions')
             .eq('id', 'default')
             .maybeSingle();
 
@@ -196,7 +198,13 @@ export default function SuperAdminView() {
               premiumEmails = Array.from(new Set([...premiumEmails, ...globalData.premium_emails.map((e: string) => String(e).toLowerCase().trim())]));
             }
             if (Array.isArray(globalData.premium_user_ids)) {
-              premiumIds = globalData.premium_user_ids;
+              premiumIds = globalData.premium_user_ids.map((id: string) => String(id).trim());
+            }
+            if (Array.isArray(globalData.revoked_user_ids)) {
+              revokedIds = globalData.revoked_user_ids.map((id: string) => String(id).trim());
+            }
+            if (Array.isArray(globalData.revoked_emails)) {
+              revokedEmails = globalData.revoked_emails.map((e: string) => String(e).toLowerCase().trim());
             }
             if (globalData.premium_subscriptions && typeof globalData.premium_subscriptions === 'object') {
               premiumSubs = globalData.premium_subscriptions;
@@ -208,13 +216,22 @@ export default function SuperAdminView() {
 
         const enriched = rawUsers.map((u: any) => {
           const emailLower = (u.email || '').toLowerCase().trim();
-          const isPrem = DEFAULT_PREMIUM_EMAILS.includes(emailLower) ||
-                         premiumEmails.includes(emailLower) ||
-                         premiumIds.includes(u.id) ||
-                         u.is_premium === true;
-          const subInfo = premiumSubs[u.id] || premiumSubs[emailLower];
-          const expiresAt = subInfo?.expires_at || u.subscription_expires_at || null;
-          const plan = subInfo?.plan || u.subscription_plan || (isPrem ? 'monthly' : 'free');
+          const userIdStr = String(u.id || '').trim();
+
+          // PRIORITASKAN CEK STATUS PENCABUTAN (REVOKED)
+          const isRevoked = (userIdStr && revokedIds.includes(userIdStr)) || 
+                            (emailLower && revokedEmails.includes(emailLower));
+
+          let isPrem = false;
+          if (!isRevoked) {
+            isPrem = (userIdStr && premiumIds.includes(userIdStr)) ||
+                     (emailLower && premiumEmails.includes(emailLower)) ||
+                     u.is_premium === true;
+          }
+
+          const subInfo = premiumSubs[userIdStr] || premiumSubs[emailLower];
+          const expiresAt = isRevoked ? null : (subInfo?.expires_at || u.subscription_expires_at || null);
+          const plan = isRevoked ? 'free' : (subInfo?.plan || u.subscription_plan || (isPrem ? 'monthly' : 'free'));
           return { 
             ...u, 
             is_premium: isPrem,
@@ -254,8 +271,14 @@ export default function SuperAdminView() {
     try {
       const res = await setTargetUserPremium(user.id, user.email, newStatus);
       if (res.success) {
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_premium: newStatus } : u));
+        setUsers(prev => prev.map(u => 
+          (String(u.id) === String(user.id) || (u.email && u.email.toLowerCase() === user.email?.toLowerCase())) 
+            ? { ...u, is_premium: newStatus, subscription_plan: newStatus ? 'monthly' : 'free', subscription_expires_at: newStatus ? u.subscription_expires_at : null } 
+            : u
+        ));
         alert(res.message);
+        // Refresh directly from data source so the state is verified from backend
+        await fetchData();
       } else {
         alert('Gagal: ' + res.message);
       }
@@ -1430,7 +1453,43 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;`}
+GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;
+
+-- 4. Fungsi Ubah Status Premium Langsung oleh Superadmin
+CREATE OR REPLACE FUNCTION set_user_premium_by_admin(
+  target_user_id UUID,
+  new_is_premium BOOLEAN,
+  new_plan TEXT DEFAULT 'monthly',
+  new_expires_at TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+BEGIN
+  INSERT INTO public.user_settings (user_id, is_premium, subscription_plan, subscription_expires_at, subscription_status, updated_at)
+  VALUES (
+    target_user_id, 
+    new_is_premium, 
+    CASE WHEN new_is_premium THEN new_plan ELSE 'free' END, 
+    new_expires_at, 
+    CASE WHEN new_is_premium THEN 'active' ELSE 'free' END, 
+    NOW()
+  )
+  ON CONFLICT (user_id) DO UPDATE
+  SET is_premium = new_is_premium,
+      subscription_plan = CASE WHEN new_is_premium THEN new_plan ELSE 'free' END,
+      subscription_expires_at = new_expires_at,
+      subscription_status = CASE WHEN new_is_premium THEN 'active' ELSE 'free' END,
+      updated_at = NOW();
+
+  RETURN jsonb_build_object('success', true, 'message', 'Status premium berhasil diperbarui.');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$;
+
+GRANT EXECUTE ON FUNCTION set_user_premium_by_admin(UUID, BOOLEAN, TEXT, TIMESTAMPTZ) TO authenticated, service_role;`}
                 </pre>
                 <button 
                   onClick={() => {
@@ -1492,7 +1551,43 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;`);
+GRANT EXECUTE ON FUNCTION change_user_password_by_admin(UUID, TEXT) TO authenticated, service_role;
+
+-- 4. Fungsi Ubah Status Premium Langsung oleh Superadmin
+CREATE OR REPLACE FUNCTION set_user_premium_by_admin(
+  target_user_id UUID,
+  new_is_premium BOOLEAN,
+  new_plan TEXT DEFAULT 'monthly',
+  new_expires_at TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+BEGIN
+  INSERT INTO public.user_settings (user_id, is_premium, subscription_plan, subscription_expires_at, subscription_status, updated_at)
+  VALUES (
+    target_user_id, 
+    new_is_premium, 
+    CASE WHEN new_is_premium THEN new_plan ELSE 'free' END, 
+    new_expires_at, 
+    CASE WHEN new_is_premium THEN 'active' ELSE 'free' END, 
+    NOW()
+  )
+  ON CONFLICT (user_id) DO UPDATE
+  SET is_premium = new_is_premium,
+      subscription_plan = CASE WHEN new_is_premium THEN new_plan ELSE 'free' END,
+      subscription_expires_at = new_expires_at,
+      subscription_status = CASE WHEN new_is_premium THEN 'active' ELSE 'free' END,
+      updated_at = NOW();
+
+  RETURN jsonb_build_object('success', true, 'message', 'Status premium berhasil diperbarui.');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$;
+
+GRANT EXECUTE ON FUNCTION set_user_premium_by_admin(UUID, BOOLEAN, TEXT, TIMESTAMPTZ) TO authenticated, service_role;`);
                     alert('Kode SQL berhasil disalin ke clipboard!');
                   }}
                   className="absolute top-2 right-2 p-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-sans font-medium cursor-pointer"
