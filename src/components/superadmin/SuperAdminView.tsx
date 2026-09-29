@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, X, Copy, Users, Settings, Database, Activity, Search, Edit2, Trash2, Power, AlertCircle, Save, CheckCircle2, RefreshCw, Mail, Link as LinkIcon, Clock, HelpCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase, superAdminSupabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 export default function SuperAdminView() {
@@ -79,8 +79,9 @@ export default function SuperAdminView() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/';
+    await superAdminSupabase.auth.signOut();
+    setIsAuthorized(false);
+    window.location.reload();
   };
 
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -98,13 +99,34 @@ export default function SuperAdminView() {
 
   const checkAuth = async () => {
     setAuthChecking(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.email === 'isantoh21@gmail.com') {
-      setIsAuthorized(true);
-    } else if (session?.user) {
-      setAuthError('Akun ini tidak memiliki akses Super Admin.');
+    try {
+      // 1. Cek sesi terisolasi superadmin terlebih dahulu
+      let { data: { session } } = await superAdminSupabase.auth.getSession();
+
+      // 2. Jika belum ada di klien terisolasi, periksa apakah ada sesi isantoh21@gmail.com di storage lama (migrasi otomatis)
+      if (!session || session?.user?.email !== 'isantoh21@gmail.com') {
+        const { data: mainData } = await supabase.auth.getSession();
+        if (mainData?.session?.user?.email === 'isantoh21@gmail.com') {
+          await superAdminSupabase.auth.setSession({
+            access_token: mainData.session.access_token,
+            refresh_token: mainData.session.refresh_token,
+          });
+          session = mainData.session;
+          // Bersihkan sesi isantoh21@gmail.com dari aplikasi utama agar tidak ikut login di sana
+          await supabase.auth.signOut({ scope: 'local' });
+        }
+      }
+
+      if (session?.user?.email === 'isantoh21@gmail.com') {
+        setIsAuthorized(true);
+      } else if (session?.user) {
+        setAuthError('Akun ini tidak memiliki akses Super Admin.');
+      }
+    } catch (e) {
+      console.warn('Super admin check auth error:', e);
+    } finally {
+      setAuthChecking(false);
     }
-    setAuthChecking(false);
   };
 
   useEffect(() => {
@@ -117,14 +139,14 @@ export default function SuperAdminView() {
     setLoading(true);
     try {
       if (activeTab === 'users') {
-        const { data, error } = await supabase.rpc('get_all_users');
+        const { data, error } = await superAdminSupabase.rpc('get_all_users');
         if (error) console.error('RPC Error:', error);
         if (data) setUsers(data);
       } else if (activeTab === 'logs') {
-        const { data } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(100);
+        const { data } = await superAdminSupabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(100);
         if (data) setLogs(data);
       } else if (activeTab === 'settings') {
-        const { data } = await supabase.from('global_settings').select('*').eq('id', 'default').single();
+        const { data } = await superAdminSupabase.from('global_settings').select('*').eq('id', 'default').single();
         if (data) {
           setMaintenanceMode(data.maintenance_mode);
           setAllowRegistration(data.allow_registration);
@@ -151,7 +173,7 @@ export default function SuperAdminView() {
     }
 
     if (isRegistering) {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await superAdminSupabase.auth.signUp({
         email: loginEmail,
         password: loginPassword,
       });
@@ -163,7 +185,7 @@ export default function SuperAdminView() {
         setIsRegistering(false);
       }
     } else {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await superAdminSupabase.auth.signInWithPassword({
         email: loginEmail,
         password: loginPassword,
       });
@@ -172,6 +194,13 @@ export default function SuperAdminView() {
         setAuthError(error.message);
       } else if (data.user?.email === 'isantoh21@gmail.com') {
         setIsAuthorized(true);
+        // Pastikan akun Super Admin tidak ikut login di aplikasi utama sekolah
+        try {
+          const mainData = await supabase.auth.getSession();
+          if (mainData?.data?.session?.user?.email === 'isantoh21@gmail.com') {
+            await supabase.auth.signOut({ scope: 'local' });
+          }
+        } catch (_) {}
       } else {
         setAuthError('Akses ditolak.');
       }
@@ -179,8 +208,6 @@ export default function SuperAdminView() {
     setIsLoggingIn(false);
   };
 
-  
-  
   const handleSendMagicLink = async (email: string) => {
     if (!email) return;
     const currentWait = actionCooldowns[`magic_${email}`];
@@ -190,7 +217,7 @@ export default function SuperAdminView() {
     }
     setIsProcessingAction(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      const { error } = await superAdminSupabase.auth.signInWithOtp({ email });
       if (error) throw error;
       setActionCooldowns(prev => ({ ...prev, [`magic_${email}`]: 60 }));
       alert(`Link login (Magic Link) telah berhasil dikirim ke ${email}`);
@@ -219,7 +246,7 @@ export default function SuperAdminView() {
     }
     setIsProcessingAction(true);
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email });
+      const { error } = await superAdminSupabase.auth.resend({ type: 'signup', email });
       if (error) throw error;
       setActionCooldowns(prev => ({ ...prev, [`confirm_${email}`]: 60 }));
       alert(`Email konfirmasi telah dikirim ulang ke ${email}`);
@@ -249,7 +276,7 @@ export default function SuperAdminView() {
   const handleSaveUserEdit = async (userId: string) => {
     setIsProcessingAction(true);
     try {
-      const { error } = await supabase.rpc('update_user_profile_by_admin', { 
+      const { error } = await superAdminSupabase.rpc('update_user_profile_by_admin', { 
         target_user_id: userId, 
         new_school_name: editSchoolName,
         new_city_name: editCityName,
@@ -270,7 +297,7 @@ export default function SuperAdminView() {
     if (!userToDelete) return;
     setIsProcessingAction(true);
     try {
-      const { error } = await supabase.rpc('delete_user_by_admin', { 
+      const { error } = await superAdminSupabase.rpc('delete_user_by_admin', { 
         target_user_id: userToDelete.id 
       });
       if (error) throw error;
@@ -292,7 +319,7 @@ export default function SuperAdminView() {
     setShowConfirmModal(false);
     setSaveStatus('saving');
     try {
-      const { error } = await supabase.from('global_settings').upsert({
+      const { error } = await superAdminSupabase.from('global_settings').upsert({
         id: 'default',
         maintenance_mode: maintenanceMode,
         allow_registration: allowRegistration,
