@@ -37,6 +37,7 @@ export default function SettingsView({
   const [showSetup, setShowSetup] = useState(false);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string>('');
+  const [photoMessage, setPhotoMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     setLocalName(schoolName);
@@ -79,8 +80,50 @@ export default function SettingsView({
     }
   };
 
-  const handleCroppedSave = (croppedDataUrl: string) => {
+  const handleCroppedSave = async (croppedDataUrl: string) => {
     setLocalLogo(croppedDataUrl);
+    setSchoolLogo(croppedDataUrl); // Instantly update admin panel header & sidebar
+    
+    // Automatically persist to localStorage and Supabase
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        localStorage.setItem('schoolLogo_' + session.user.id, croppedDataUrl);
+        localStorage.setItem('cached_logo_' + session.user.id, croppedDataUrl);
+        
+        await supabase.from('user_settings').upsert({
+          user_id: session.user.id,
+          school_name: localName,
+          school_logo: croppedDataUrl
+        }, { onConflict: 'user_id' });
+      }
+      setPhotoMessage({ type: 'success', text: 'Foto logo berhasil diperbarui dan disimpan!' });
+      setTimeout(() => setPhotoMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error auto-saving cropped photo:', err);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setLocalLogo('');
+    setSchoolLogo('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        localStorage.removeItem('schoolLogo_' + session.user.id);
+        localStorage.removeItem('cached_logo_' + session.user.id);
+        
+        await supabase.from('user_settings').upsert({
+          user_id: session.user.id,
+          school_name: localName,
+          school_logo: ''
+        }, { onConflict: 'user_id' });
+      }
+      setPhotoMessage({ type: 'success', text: 'Foto logo berhasil dihapus!' });
+      setTimeout(() => setPhotoMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error removing logo:', err);
+    }
   };
 
   const confirmSave = () => {
@@ -278,10 +321,18 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                       )}
                     </div>
                     <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Dapat digeser & diatur agar pas di bingkai.</p>
+                    {photoMessage.text && (
+                      <div className={`p-2.5 rounded-xl text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
+                        photoMessage.type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}>
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>{photoMessage.text}</span>
+                      </div>
+                    )}
                     {localLogo && (
                       <button 
                         type="button"
-                        onClick={() => setLocalLogo('')}
+                        onClick={handleRemoveLogo}
                         className="text-xs text-rose-500 font-semibold hover:text-rose-600 transition-colors cursor-pointer"
                       >
                         Hapus Logo
