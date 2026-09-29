@@ -143,16 +143,51 @@ export default function SuperAdminView() {
     setLoading(true);
     try {
       if (activeTab === 'users') {
-        const { data: usersData, error } = await superAdminSupabase.rpc('get_all_users');
-        if (error) console.error('RPC Error:', error);
+        let rawUsers: any[] = [];
+        try {
+          const { data: usersData, error: rpcError } = await superAdminSupabase.rpc('get_all_users');
+          if (rpcError) {
+            console.warn('RPC get_all_users not available or returned error:', rpcError);
+          } else if (Array.isArray(usersData) && usersData.length > 0) {
+            rawUsers = usersData;
+          }
+        } catch (rpcErr) {
+          console.warn('RPC call exception:', rpcErr);
+        }
+
+        // Fallback: If RPC returned empty, attempt to read directly from user_settings
+        if (rawUsers.length === 0) {
+          try {
+            const { data: settingsData } = await superAdminSupabase
+              .from('user_settings')
+              .select('*');
+            if (Array.isArray(settingsData) && settingsData.length > 0) {
+              rawUsers = settingsData.map((s: any) => ({
+                id: s.user_id || s.id,
+                email: s.admin_email || s.email || null,
+                school_name: s.school_name || 'Belum Diatur',
+                city_name: s.city || s.city_name || 'Belum Diatur',
+                admin_name: s.admin_name || 'Belum Diatur',
+                created_at: s.created_at || new Date().toISOString(),
+                last_sign_in_at: null,
+                email_confirmed_at: s.email_confirmed_at || null,
+                is_premium: s.is_premium || false
+              }));
+            }
+          } catch (fallbackErr) {
+            console.warn('Fallback user_settings error:', fallbackErr);
+          }
+        }
 
         // Fetch global settings to determine premium status
         let premiumEmails: string[] = [...DEFAULT_PREMIUM_EMAILS];
         let premiumIds: string[] = [];
+        let premiumSubs: Record<string, any> = {};
+
         try {
           const { data: globalData } = await superAdminSupabase
             .from('global_settings')
-            .select('premium_emails, premium_user_ids')
+            .select('premium_emails, premium_user_ids, premium_subscriptions')
             .eq('id', 'default')
             .maybeSingle();
 
@@ -163,15 +198,15 @@ export default function SuperAdminView() {
             if (Array.isArray(globalData.premium_user_ids)) {
               premiumIds = globalData.premium_user_ids;
             }
+            if (globalData.premium_subscriptions && typeof globalData.premium_subscriptions === 'object') {
+              premiumSubs = globalData.premium_subscriptions;
+            }
           }
-        } catch (_) {}
-
-        let premiumSubs: Record<string, any> = {};
-        if (globalData?.premium_subscriptions && typeof globalData.premium_subscriptions === 'object') {
-          premiumSubs = globalData.premium_subscriptions;
+        } catch (settingsErr) {
+          console.warn('Global settings fetch warning:', settingsErr);
         }
 
-        const enriched = (usersData || []).map((u: any) => {
+        const enriched = rawUsers.map((u: any) => {
           const emailLower = (u.email || '').toLowerCase().trim();
           const isPrem = DEFAULT_PREMIUM_EMAILS.includes(emailLower) ||
                          premiumEmails.includes(emailLower) ||
@@ -493,9 +528,22 @@ export default function SuperAdminView() {
       statusMatch = !!u?.email_confirmed_at;
     } else if (searchStatus === 'unconfirmed') {
       statusMatch = !u?.email_confirmed_at;
+    } else if (searchStatus === 'premium') {
+      statusMatch = !!u?.is_premium;
+    } else if (searchStatus === 'standar') {
+      statusMatch = !u?.is_premium;
     }
 
-    return emailMatch && adminMatch && schoolMatch && cityMatch && statusMatch;
+    let queryMatch = true;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      queryMatch = ((u?.email || u?.id) || '').toLowerCase().includes(q) ||
+                   ((u?.admin_name) || '').toLowerCase().includes(q) ||
+                   ((u?.school_name) || '').toLowerCase().includes(q) ||
+                   ((u?.city_name) || '').toLowerCase().includes(q);
+    }
+
+    return emailMatch && adminMatch && schoolMatch && cityMatch && statusMatch && queryMatch;
   });
 
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
@@ -819,15 +867,26 @@ export default function SuperAdminView() {
                   <h2 className="text-2xl font-bold text-slate-800">Manajemen Pengguna</h2>
                   <p className="text-sm text-slate-500">Kelola semua akun tenant, status premium, dan profil sekolah.</p>
                 </div>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari user ID..."
-                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64 font-sans placeholder-slate-400 shadow-xs"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 md:w-64">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Cari email, sekolah, kota..."
+                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans placeholder-slate-400 shadow-xs"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchData}
+                    disabled={loading}
+                    title="Muat Ulang Data Pengguna"
+                    className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+                  </button>
                 </div>
               </div>
 
@@ -897,7 +956,25 @@ export default function SuperAdminView() {
                       {loading ? (
                         <tr><td colSpan={10} className="text-center py-8 text-slate-400"><RefreshCw className="w-6 h-6 animate-spin mx-auto" /></td></tr>
                       ) : users.length === 0 ? (
-                        <tr><td colSpan={10} className="text-center py-8 text-slate-400">Tidak ada data pengguna.</td></tr>
+                        <tr>
+                          <td colSpan={10} className="text-center py-12 text-slate-500">
+                            <div className="flex flex-col items-center justify-center gap-3">
+                              <Users className="w-10 h-10 text-slate-300" />
+                              <p className="font-semibold text-slate-700">Tidak ada data pengguna ditemukan.</p>
+                              <p className="text-xs text-slate-400 max-w-md">
+                                Jika akun auth Supabase belum terhubung ke fungsi database, klik tombol di bawah untuk melihat instruksi SQL sinkronisasi.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setShowSqlFix(true)}
+                                className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                              >
+                                <Database className="w-4 h-4 text-indigo-600" />
+                                <span>Instruksi SQL Sinkronisasi Database</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : (
                         currentUsers.map((user, index) => {
                           const rowNumber = startIndex + index + 1;
