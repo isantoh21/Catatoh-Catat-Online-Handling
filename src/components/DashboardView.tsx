@@ -935,35 +935,6 @@ export default function DashboardView() {
           </p>
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-          {/* Tombol Copy Link Cek Kartu SPP Orang Tua + Share Detail */}
-          <div className="inline-flex items-stretch rounded-xl shadow-sm">
-            <button 
-              onClick={handleCopyParentLink}
-              id="btnCopyKartuSppOrtu"
-              className={`h-10 w-10 flex items-center justify-center rounded-l-xl transition-all border border-r-0 cursor-pointer ${
-                copiedParentLink 
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-2 ring-emerald-400/20' 
-                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border-amber-300'
-              }`}
-              title={copiedParentLink ? 'Link Kartu SPP Berhasil Disalin!' : `Salin link kartu SPP orang tua (${getSchoolParentUrl()})`}
-              aria-label="Salin link kartu SPP orang tua"
-            >
-              {copiedParentLink ? (
-                <Check className="w-5 h-5 text-emerald-600 shrink-0" />
-              ) : (
-                <Link2 className="w-5 h-5 text-amber-700 shrink-0" />
-              )}
-            </button>
-            <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="h-10 px-2.5 bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-r-xl transition-colors cursor-pointer flex items-center justify-center"
-              title="Lihat Detail Link & Format Pengumuman WA"
-              aria-label="Format Pengumuman WA"
-            >
-              <Share2 className="w-4 h-4 text-amber-800" />
-            </button>
-          </div>
-
           <button 
             onClick={() => setIsModerationModalOpen(true)}
             id="btnModerasiBuktiWa"
