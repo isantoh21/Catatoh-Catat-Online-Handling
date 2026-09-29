@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert, X, Copy, Users, Settings, Database, Activity, Search, Edit2, Trash2, Power, AlertCircle, Save, CheckCircle2, RefreshCw, Mail, Link as LinkIcon, Clock, HelpCircle, Crown, KeyRound, Lock, Sparkles } from 'lucide-react';
 import { supabase, superAdminSupabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { DEFAULT_PREMIUM_EMAILS, setTargetUserPremium } from '../../lib/premiumService';
+import { DEFAULT_PREMIUM_EMAILS, setTargetUserPremium, renewUserSubscription } from '../../lib/premiumService';
 
 export default function SuperAdminView() {
   const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'logs' | 'database'>('users');
@@ -166,13 +166,26 @@ export default function SuperAdminView() {
           }
         } catch (_) {}
 
+        let premiumSubs: Record<string, any> = {};
+        if (globalData?.premium_subscriptions && typeof globalData.premium_subscriptions === 'object') {
+          premiumSubs = globalData.premium_subscriptions;
+        }
+
         const enriched = (usersData || []).map((u: any) => {
           const emailLower = (u.email || '').toLowerCase().trim();
           const isPrem = DEFAULT_PREMIUM_EMAILS.includes(emailLower) ||
                          premiumEmails.includes(emailLower) ||
                          premiumIds.includes(u.id) ||
                          u.is_premium === true;
-          return { ...u, is_premium: isPrem };
+          const subInfo = premiumSubs[u.id] || premiumSubs[emailLower];
+          const expiresAt = subInfo?.expires_at || u.subscription_expires_at || null;
+          const plan = subInfo?.plan || u.subscription_plan || (isPrem ? 'monthly' : 'free');
+          return { 
+            ...u, 
+            is_premium: isPrem,
+            subscription_plan: plan,
+            subscription_expires_at: expiresAt 
+          };
         });
 
         setUsers(enriched);
@@ -213,6 +226,31 @@ export default function SuperAdminView() {
       }
     } catch (err: any) {
       alert('Gagal mengubah status: ' + err.message);
+    } finally {
+      setPremiumTogglingId(null);
+    }
+  };
+
+  const handleRenewUser = async (user: any, plan: 'monthly' | 'yearly') => {
+    const planName = plan === 'yearly' ? 'Tahunan (+1 Tahun / 365 Hari)' : 'Bulanan (+1 Bulan / 30 Hari)';
+    if (!window.confirm(`Perpanjang masa aktif akun "${user.email || user.id}" sebanyak ${planName}?`)) return;
+
+    setPremiumTogglingId(user.id);
+    try {
+      const res = await renewUserSubscription(user.id, user.email, plan);
+      if (res.success) {
+        setUsers(prev => prev.map(u => u.id === user.id ? { 
+          ...u, 
+          is_premium: true, 
+          subscription_plan: plan,
+          subscription_expires_at: res.newExpiresAt 
+        } : u));
+        alert(res.message);
+      } else {
+        alert('Gagal: ' + res.message);
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
     } finally {
       setPremiumTogglingId(null);
     }
@@ -946,36 +984,70 @@ export default function SuperAdminView() {
                               )}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                {user.is_premium ? (
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black rounded-full shadow-xs">
-                                    <Crown className="w-3.5 h-3.5 text-amber-400" />
-                                    PREMIUM ⭐
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-slate-400 border border-slate-800 text-xs font-medium rounded-full">
-                                    Standar
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleUserPremium(user)}
-                                  disabled={premiumTogglingId === user.id}
-                                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                                    user.is_premium
-                                      ? 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60'
-                                      : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
-                                  }`}
-                                  title={user.is_premium ? "Cabut status Premium dari akun ini" : "Aktifkan status Premium untuk akun ini"}
-                                >
-                                  {premiumTogglingId === user.id ? (
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
-                                  ) : user.is_premium ? (
-                                    'Cabut'
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                  {user.is_premium ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black rounded-full shadow-xs">
+                                      <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                      PREMIUM ⭐
+                                    </span>
                                   ) : (
-                                    '+ Premium'
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-900 text-slate-400 border border-slate-800 text-xs font-medium rounded-full">
+                                      Standar
+                                    </span>
                                   )}
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleUserPremium(user)}
+                                    disabled={premiumTogglingId === user.id}
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                      user.is_premium
+                                        ? 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60'
+                                        : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                                    }`}
+                                    title={user.is_premium ? "Cabut status Premium dari akun ini" : "Aktifkan status Premium untuk akun ini"}
+                                  >
+                                    {premiumTogglingId === user.id ? (
+                                      <RefreshCw className="w-3 h-3 animate-spin" />
+                                    ) : user.is_premium ? (
+                                      'Cabut'
+                                    ) : (
+                                      '+ Premium'
+                                    )}
+                                  </button>
+                                </div>
+
+                                {user.is_premium && (
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                    <span className="text-slate-400 font-mono">
+                                      {DEFAULT_PREMIUM_EMAILS.includes((user.email || '').toLowerCase().trim())
+                                        ? 'VIP Lifetime'
+                                        : user.subscription_expires_at
+                                        ? `${user.subscription_plan === 'yearly' ? 'Tahunan' : 'Bulanan'} (s/d ${new Date(user.subscription_expires_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })})`
+                                        : `${user.subscription_plan === 'yearly' ? 'Tahunan' : 'Bulanan'}`}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenewUser(user, 'monthly')}
+                                        disabled={premiumTogglingId === user.id}
+                                        className="px-1.5 py-0.5 bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 rounded font-bold transition-colors cursor-pointer"
+                                        title="Perpanjang langganan 1 Bulan (+30 Hari)"
+                                      >
+                                        +1 Bln
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenewUser(user, 'yearly')}
+                                        disabled={premiumTogglingId === user.id}
+                                        className="px-1.5 py-0.5 bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-700/50 rounded font-bold transition-colors cursor-pointer"
+                                        title="Perpanjang langganan 1 Tahun (+365 Hari)"
+                                      >
+                                        +1 Thn
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-4 text-slate-400 whitespace-nowrap">

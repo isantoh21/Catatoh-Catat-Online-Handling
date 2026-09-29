@@ -5,6 +5,7 @@ import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
 import { usePremiumStatus } from '../lib/premiumService';
+import RenewPremiumModal from './RenewPremiumModal';
 
 export default function SettingsView({ 
   schoolName, 
@@ -17,7 +18,9 @@ export default function SettingsView({
   schoolLogo: string;
   setSchoolLogo: (v: string) => void;
 }) {
-  const { isPremium } = usePremiumStatus();
+  const { isPremium, details: subDetails } = usePremiumStatus();
+  const [userEmail, setUserEmail] = useState('');
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [localName, setLocalName] = useState(schoolName);
   const [localLogo, setLocalLogo] = useState(schoolLogo);
   const [isSaved, setIsSaved] = useState(false);
@@ -302,6 +305,68 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
             </div>
           )}
           
+          {/* Subscription & Renewal Status Card */}
+          <div className={`p-6 rounded-3xl border shadow-sm transition-all mb-8 ${
+            isPremium
+              ? 'bg-gradient-to-r from-amber-500/10 via-indigo-500/5 to-slate-50 border-amber-400/40 text-slate-800'
+              : 'bg-white border-slate-200 text-slate-800'
+          }`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black shadow-md shrink-0 ${
+                  isPremium 
+                    ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 shadow-amber-500/30'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  <Crown className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">
+                      {isPremium ? 'Status Akun: PREMIUM ⭐' : 'Status Akun: FREE / REGULER'}
+                    </h3>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                      isPremium ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      {isPremium ? (subDetails?.plan === 'yearly' ? 'Tahunan (Rp 250rb/thn)' : 'Bulanan (Rp 30rb/bln)') : 'Maksimal 100 Siswa'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    {isPremium ? (
+                      subDetails?.expiresAt ? (
+                        <>
+                          Masa aktif berlaku hingga: <strong className="text-slate-800 font-bold">{new Date(subDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</strong> 
+                          {subDetails.daysRemaining !== null && (
+                            <span className={`ml-1.5 font-bold ${subDetails.isExpiringSoon ? 'text-rose-600' : 'text-emerald-700'}`}>
+                              ({subDetails.daysRemaining > 0 ? `Sisa ${subDetails.daysRemaining} hari` : 'Masa aktif berakhir'})
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        'Akun VIP Lifetime Aktif (Bebas Biaya Perpanjangan)'
+                      )
+                    ) : (
+                      'Tingkatkan ke Premium untuk presensi wajah siswa & guru, broadcast reminder WhatsApp otomatis, dan kapasitas siswa tanpa batas.'
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsRenewModalOpen(true)}
+                className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer shrink-0 ${
+                  isPremium
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/20'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                }`}
+              >
+                <Crown className="w-4 h-4" />
+                <span>{isPremium ? 'Perpanjang Langganan (+1 Bln / +1 Thn)' : 'Upgrade ke Premium ⭐ (Mulai 30rb)'}</span>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             {/* Kolom Kiri: Identitas Sekolah, Domisili Kota & Keamanan */}
             <div className="space-y-6">
@@ -648,6 +713,19 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
         onClose={() => setIsCropModalOpen(false)}
         onSave={handleCroppedSave}
         title="Atur & Pangkas Foto Profil / Logo"
+      />
+
+      {/* Subscription & Renewal Modal */}
+      <RenewPremiumModal
+        isOpen={isRenewModalOpen}
+        onClose={() => setIsRenewModalOpen(false)}
+        userEmail={userEmail}
+        userId={currentUserId}
+        currentPlan={subDetails?.plan}
+        currentExpiresAt={subDetails?.expiresAt}
+        onRenewSuccess={() => {
+          setTimeout(() => window.location.reload(), 1500);
+        }}
       />
     </div>
   );

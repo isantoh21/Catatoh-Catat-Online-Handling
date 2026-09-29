@@ -1,10 +1,9 @@
 import { supabase } from './supabaseClient';
 import { WhatsAppGatewayConfig, PaymentVerification } from '../types/whatsapp';
+import { getProtectedUniversalGeminiKey, secureStorage } from './securityCipher';
 
-// Base64 encoded universal Gemini API key
-const UNIVERSAL_GEMINI_KEY = typeof atob !== 'undefined'
-  ? atob('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=')
-  : (typeof Buffer !== 'undefined' ? Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8') : '');
+// Protected encrypted universal Gemini API key
+const UNIVERSAL_GEMINI_KEY = getProtectedUniversalGeminiKey();
 
 export const DEFAULT_GATEWAY_CONFIG: WhatsAppGatewayConfig = {
   apiUrl: 'https://app.starsender.online/api/sendText',
@@ -60,20 +59,16 @@ export async function getWhatsAppGatewayConfig(userId?: string): Promise<WhatsAp
     }
   }
 
-  // 3. Fallback ke LocalStorage
-  const localSaved = localStorage.getItem(getStorageKey(activeUserId));
+  // 3. Fallback ke LocalStorage (terenkripsi)
+  const localSaved = secureStorage.getItem(getStorageKey(activeUserId))
+    || (localStorage.getItem(getStorageKey(activeUserId)) ? JSON.parse(localStorage.getItem(getStorageKey(activeUserId)) || '{}') : null);
   if (localSaved) {
-    try {
-      const parsed = JSON.parse(localSaved);
-      return {
-        ...DEFAULT_GATEWAY_CONFIG,
-        ...parsed,
-        geminiApiKey: parsed.geminiApiKey || UNIVERSAL_GEMINI_KEY,
-        schoolUserId: activeUserId
-      };
-    } catch (e) {
-      console.error(e);
-    }
+    return {
+      ...DEFAULT_GATEWAY_CONFIG,
+      ...localSaved,
+      geminiApiKey: localSaved.geminiApiKey || UNIVERSAL_GEMINI_KEY,
+      schoolUserId: activeUserId
+    };
   }
 
   return { ...DEFAULT_GATEWAY_CONFIG, schoolUserId: activeUserId };
@@ -96,8 +91,9 @@ export async function saveWhatsAppGatewayConfig(
     schoolUserId: activeUserId
   };
 
-  // Simpan ke LocalStorage agar instan
-  localStorage.setItem(getStorageKey(activeUserId), JSON.stringify(mergedConfig));
+  // Simpan ke LocalStorage dalam format terenkripsi agar aman dari inspect element
+  secureStorage.setItem(getStorageKey(activeUserId), mergedConfig);
+  try { localStorage.removeItem(getStorageKey(activeUserId)); } catch (_) {}
 
   if (!activeUserId) {
     return { success: true };
