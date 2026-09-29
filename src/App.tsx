@@ -126,15 +126,6 @@ export default function App() {
       clearTimeout(initTimer);
       const session = data?.session;
 
-      // Isolasi Akun: Jika akun adalah Super Admin, jangan login-kan ke aplikasi utama sekolah
-      if (session?.user?.email === 'isantoh21@gmail.com') {
-        await supabase.auth.signOut({ scope: 'local' });
-        setIsLoggedIn(false);
-        setUserEmail('');
-        setCurrentUser(null);
-        setIsInitializing(false);
-        return;
-      }
 
       setIsLoggedIn(!!session);
       setUserEmail(session?.user?.email || '');
@@ -152,13 +143,6 @@ export default function App() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      // Isolasi Akun: Jika superadmin login, jangan masukkan ke aplikasi utama sekolah
-      if (session?.user?.email === 'isantoh21@gmail.com') {
-        setIsLoggedIn(false);
-        setUserEmail('');
-        setCurrentUser(null);
-        return;
-      }
 
       setIsLoggedIn(!!session);
       setUserEmail(session?.user?.email || '');

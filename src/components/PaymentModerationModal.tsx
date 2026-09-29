@@ -525,7 +525,11 @@ export default function PaymentModerationModal({
               <span>Hubungi Superadmin untuk Aktivasi</span>
             </a>
             <button
-              onClick={onClose}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
               Tutup / Kembali

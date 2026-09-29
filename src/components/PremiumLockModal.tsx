@@ -1,5 +1,5 @@
 import React from 'react';
-import { Crown, Sparkles, X, CheckCircle2, ShieldCheck, ArrowRight, MessageCircle } from 'lucide-react';
+import { Crown, Sparkles, X, ShieldCheck, ArrowRight, MessageCircle } from 'lucide-react';
 
 interface PremiumLockModalProps {
   isOpen: boolean;
@@ -17,15 +17,26 @@ export default function PremiumLockModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-amber-500/30 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 text-white relative">
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-slate-900 border border-amber-500/30 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 text-white relative"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Ambient Top Glow */}
         <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-amber-500/20 via-indigo-600/10 to-transparent pointer-events-none" />
 
         {/* Close Button */}
         <button
-          onClick={onClose}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition-colors z-10 cursor-pointer"
+          aria-label="Tutup Modal"
         >
           <X className="w-5 h-5" />
         </button>
@@ -95,7 +106,11 @@ export default function PremiumLockModal({
             </a>
 
             <button
-              onClick={onClose}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
               Tutup / Kembali

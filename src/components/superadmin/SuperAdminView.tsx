@@ -118,8 +118,6 @@ export default function SuperAdminView() {
             refresh_token: mainData.session.refresh_token,
           });
           session = mainData.session;
-          // Bersihkan sesi isantoh21@gmail.com dari aplikasi utama agar tidak ikut login di sana
-          await supabase.auth.signOut({ scope: 'local' });
         }
       }
 
@@ -302,13 +300,6 @@ export default function SuperAdminView() {
         setAuthError(error.message);
       } else if (data.user?.email === 'isantoh21@gmail.com') {
         setIsAuthorized(true);
-        // Pastikan akun Super Admin tidak ikut login di aplikasi utama sekolah
-        try {
-          const mainData = await supabase.auth.getSession();
-          if (mainData?.data?.session?.user?.email === 'isantoh21@gmail.com') {
-            await supabase.auth.signOut({ scope: 'local' });
-          }
-        } catch (_) {}
       } else {
         setAuthError('Akses ditolak.');
       }
