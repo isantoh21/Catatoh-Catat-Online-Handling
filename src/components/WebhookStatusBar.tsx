@@ -63,12 +63,17 @@ export default function WebhookStatusBar({
 
         if (wahaRes.ok) {
           const wahaData = await wahaRes.json();
-          currentWahaStatus = wahaData.status || 'UNKNOWN';
-          setWahaStatus(currentWahaStatus);
-          if (wahaData.me) {
-            setWahaAccount(wahaData.me);
-          } else {
+          if (wahaData.name === 'default') {
+            setWahaStatus('STOPPED');
             setWahaAccount(null);
+          } else {
+            currentWahaStatus = wahaData.status || 'UNKNOWN';
+            setWahaStatus(currentWahaStatus);
+            if (wahaData.me) {
+              setWahaAccount(wahaData.me);
+            } else {
+              setWahaAccount(null);
+            }
           }
         } else {
           setWahaStatus('FAILED');

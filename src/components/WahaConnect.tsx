@@ -190,9 +190,11 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
         }
       }
 
-      const statusUrl = uid
-        ? `${functionUrl}?action=status&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=status`;
+      if (!uid) {
+        return null;
+      }
+
+      const statusUrl = `${functionUrl}?action=status&userId=${encodeURIComponent(uid)}`;
 
       const res = await fetch(statusUrl, {
         method: 'GET',
@@ -212,6 +214,14 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       const data: WahaSessionResponse = await res.json();
       if (!isMountedRef.current) return null;
 
+      // Proteksi sesi: Jika WAHA mengembalikan sesi 'default' (milik website lain), jangan tampilkan
+      if (data.name === 'default') {
+        setStatus('STOPPED');
+        setSessionData(null);
+        clearQrImage();
+        return 'STOPPED';
+      }
+
       const currentStatus = data.status || 'UNKNOWN';
       setStatus(currentStatus);
       setSessionData(data);
@@ -222,9 +232,7 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
       // If status is SCAN_QR_CODE, fetch latest QR image
       if (currentStatus === 'SCAN_QR_CODE') {
         try {
-          const qrUrl = uid
-            ? `${functionUrl}?action=qr&userId=${encodeURIComponent(uid)}&_t=${Date.now()}`
-            : `${functionUrl}?action=qr&_t=${Date.now()}`;
+          const qrUrl = `${functionUrl}?action=qr&userId=${encodeURIComponent(uid)}&_t=${Date.now()}`;
           const qrRes = await fetch(qrUrl);
           if (qrRes.ok) {
             const blob = await qrRes.blob();
@@ -276,10 +284,12 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
         uid = session?.user?.id || '';
       }
 
+      if (!uid) {
+        throw new Error('Sesi pengguna tidak valid. Silakan muat ulang halaman.');
+      }
+
       const actionName = (forceRestart || status === 'FAILED') ? 'restart' : 'start';
-      const startUrl = uid
-        ? `${functionUrl}?action=${actionName}&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=${actionName}`;
+      const startUrl = `${functionUrl}?action=${actionName}&userId=${encodeURIComponent(uid)}`;
 
       const res = await fetch(startUrl, {
         method: 'POST',
@@ -322,17 +332,29 @@ export const WahaConnect: React.FC<WahaConnectProps> = ({
         uid = session?.user?.id || '';
       }
 
-      const logoutUrl = uid
-        ? `${functionUrl}?action=logout&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=logout`;
+      if (!uid) {
+        throw new Error('Sesi pengguna tidak valid. Silakan muat ulang halaman.');
+      }
 
-      await fetch(logoutUrl, { method: 'POST' });
+      const logoutUrl = `${functionUrl}?action=logout&userId=${encodeURIComponent(uid)}`;
+
+      const res = await fetch(logoutUrl, { method: 'POST' });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || errJson?.error || `Gagal memutuskan sesi (HTTP ${res.status})`);
+      }
+
+      // Bersihkan data sesi lokal segera agar tampilan tidak nyangkut
+      setSessionData(null);
+      clearQrImage();
+      setStatus('STOPPED');
+
       setIsPolling(true);
-      setTimeout(() => {
-        checkStatus();
-      }, 1200);
+      await checkStatus();
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Gagal memutuskan sesi');
+      if (isMountedRef.current) {
+        setErrorMessage(err?.message || 'Gagal memutuskan sesi');
+      }
     } finally {
       if (isMountedRef.current) {
         setIsStarting(false);

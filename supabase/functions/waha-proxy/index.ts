@@ -52,24 +52,25 @@ Deno.serve(async (req: Request) => {
     }
 
     // Resolusi nama session unik per user agar setiap akun sekolah terisolasi penuh
-    let sessionName = 'default';
+    let sessionName = 'unassigned';
     if (requestedUserId) {
       const cleanUid = requestedUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
       sessionName = requestedSession && requestedSession !== 'default' 
         ? requestedSession 
         : `user_${cleanUid}`;
-    } else if (requestedSession) {
+    } else if (requestedSession && requestedSession !== 'default') {
       sessionName = requestedSession;
     } else {
       sessionName = 'unassigned';
     }
 
-    // Jika request unassigned (tanpa userId atau session), jangan bocorkan sesi akun manapun
-    if (sessionName === 'unassigned') {
+    // Proteksi: Sesi 'default' adalah sesi milik website lain di server WAHA.
+    // Catatoh hanya boleh menggunakan sesi per-user yang terisolasi (user_<uid>).
+    if (sessionName === 'default' || sessionName === 'unassigned') {
       if (action === 'status') {
         return new Response(
           JSON.stringify({
-            name: 'unassigned',
+            name: sessionName,
             status: 'STOPPED',
             me: null,
             message: 'Silakan login dan hubungkan WhatsApp untuk akun Anda.'
@@ -78,7 +79,19 @@ Deno.serve(async (req: Request) => {
         );
       }
       if (action === 'qr') {
-        return new Response('User belum terautentikasi', { status: 401, headers: corsHeaders });
+        return new Response('User belum terautentikasi atau sesi tidak valid', { status: 401, headers: corsHeaders });
+      }
+      if (action === 'logout' || action === 'reset' || action === 'stop') {
+        return new Response(
+          JSON.stringify({ success: true, message: 'Tidak ada sesi WhatsApp aktif yang terhubung.' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (action === 'sendText' || action === 'setWebhook') {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Sesi default tidak dapat digunakan di Catatoh. Gunakan sesi user Anda.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
 
@@ -104,9 +117,23 @@ Deno.serve(async (req: Request) => {
           method: 'POST',
           headers: { 'X-Api-Key': WAHA_API_KEY },
         });
-        const logoutData = await logoutRes.text();
-        return new Response(logoutData, {
-          status: logoutRes.status,
+
+        if (logoutRes.ok || logoutRes.status === 404) {
+          const logoutData = await logoutRes.text().catch(() => '{}');
+          return new Response(logoutData || JSON.stringify({ success: true, message: 'Sesi WhatsApp berhasil diputuskan.' }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Fallback jika logout gagal: coba panggil stop
+        const stopRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/stop`, {
+          method: 'POST',
+          headers: { 'X-Api-Key': WAHA_API_KEY },
+        });
+        const stopData = await stopRes.text().catch(() => '{}');
+        return new Response(stopData || JSON.stringify({ success: true, message: 'Sesi WhatsApp dihentikan.' }), {
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       } catch (err: any) {
