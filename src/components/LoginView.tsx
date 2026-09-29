@@ -348,11 +348,11 @@ export default function LoginView({
                 </div>
               </div>
 
-              <div className="px-3.5 py-2 rounded-2xl bg-white/5 border border-white/10 text-right">
-                <span className="text-xl font-black text-emerald-400 block leading-none">
+              <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-center flex flex-col items-center justify-center shrink-0">
+                <span className="text-xl font-black text-emerald-400 block leading-tight">
                   {currentSlide.impactMetric}
                 </span>
-                <span className="text-[10px] font-bold text-slate-400">
+                <span className="text-[10px] font-bold text-slate-400 text-center mt-0.5">
                   {currentSlide.impactDesc}
                 </span>
               </div>
