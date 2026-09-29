@@ -619,10 +619,6 @@ export default function DashboardView() {
   // Buka modal reminder dan inisialisasi checklist default
   // Buka modal reminder dan inisialisasi checklist default (hanya nomor valid yang dicentang otomatis)
   const handleOpenReminderModal = (bulanToUse?: string) => {
-    if (!isPremium) {
-      setPremiumLockFeature('WhatsApp Gateway (Reminder Otomatis)');
-      return;
-    }
     const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
     setReminderBulan(target);
     const unpayed = students.filter(s => 
@@ -661,8 +657,9 @@ export default function DashboardView() {
 
   // Fallback: Kirim manual via link wa.me
   const handleKirimManualWA = (student: any) => {
+    const val = validateWhatsAppNumber(student.nomor_whatsapp || '');
+    const cleanPhone = val.cleanNumber || (student.nomor_whatsapp || '').replace(/[^0-9]/g, '');
     const message = formatReminderMessage(student);
-    const cleanPhone = (student.nomor_whatsapp || '').replace(/[^0-9]/g, '');
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -982,15 +979,10 @@ export default function DashboardView() {
             onClick={() => handleOpenReminderModal()}
             id="btnKirimReminderWa"
             className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer relative"
-            title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Kirim Reminder SPP via WhatsApp)" : "Kirim Reminder SPP via WhatsApp"}
+            title="Kirim Reminder SPP via WhatsApp"
             aria-label="Kirim Reminder SPP via WhatsApp"
           >
             <MessageCircle className="w-5 h-5 shrink-0" />
-            {!isPremium && (
-              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs ring-1 ring-white">
-                ★
-              </span>
-            )}
           </button>
         </div>
       </div>
@@ -1479,6 +1471,21 @@ export default function DashboardView() {
 
             {/* Modal Body (Scrollable) */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {!isPremium && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-3 text-xs text-amber-900 shadow-xs">
+                  <div className="w-6 h-6 rounded-full bg-amber-200/80 text-amber-800 flex items-center justify-center font-black shrink-0 text-xs">
+                    ★
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="font-bold text-amber-950">Mode Akun Free — Pengiriman Manual wa.me Aktif</p>
+                    <p className="text-amber-800 leading-relaxed">
+                      Anda dapat mengirimkan pengingat SPP secara gratis menggunakan tombol <strong>Kirim Manual (wa.me)</strong> pada setiap siswa. 
+                      Fitur pengiriman otomatis sekali klik langsung via server gateway serta broadcast massal (batch) merupakan fitur khusus <strong>Akun Premium ⭐</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Box Pengaturan Interval Keamanan Anti-Blokir */}
               <div className="bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-slate-50 p-4 rounded-xl border border-emerald-200/80 shadow-xs">
                 <div className="flex items-start justify-between gap-3">
@@ -1909,31 +1916,48 @@ export default function DashboardView() {
                               </div>
                             )}
 
-                            {/* Tombol Kirim Satuan via WhatsApp */}
+                            {/* Tombol Kirim Satuan via WhatsApp (Otomatis Gateway - Premium) */}
                             <button
                               type="button"
-                              disabled={isBatchRunning || isSendingThis || !isValidPhone}
+                              disabled={isBatchRunning || isSendingThis || (isPremium && !isValidPhone)}
                               onClick={() => handleKirimSingleWA(student)}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                              title={!isValidPhone ? (phoneValidation.message || 'Nomor tidak valid') : 'Kirim reminder langsung sekarang via WhatsApp'}
+                              className={!isPremium
+                                ? "px-2.5 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 hover:border-amber-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                : "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                              }
+                              title={!isPremium ? "Kirim Otomatis Gateway (Fitur Khusus Akun Premium ⭐)" : (!isValidPhone ? (phoneValidation.message || 'Nomor tidak valid') : 'Kirim reminder langsung sekarang via WhatsApp Gateway')}
                             >
-                              {isSendingThis ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              {!isPremium ? (
+                                <>
+                                  <span className="text-[11px] text-amber-500 font-black">★</span>
+                                  <span>Otomatis</span>
+                                </>
+                              ) : isSendingThis ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Mengirim...</span>
+                                </>
                               ) : (
-                                <Send className="w-3.5 h-3.5" />
+                                <>
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Kirim WA</span>
+                                </>
                               )}
-                              Kirim WA
                             </button>
 
-                            {/* Tombol Fallback Manual WhatsApp Web */}
+                            {/* Tombol Fallback Manual WhatsApp Web (wa.me) */}
                             <button
                               type="button"
                               disabled={isBatchRunning || !student.nomor_whatsapp}
                               onClick={() => handleKirimManualWA(student)}
-                              className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
-                              title="Fallback: Buka wa.me manual di tab baru jika dibutuhkan"
+                              className={!isPremium
+                                ? "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 shadow-xs"
+                                : "p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+                              }
+                              title={!isPremium ? "Buka WhatsApp Web / wa.me untuk kirim pesan manual langsung ke orang tua" : "Fallback: Buka wa.me manual di tab baru jika dibutuhkan"}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
+                              {!isPremium && <span>Kirim Manual (wa.me)</span>}
                             </button>
                           </div>
                         </li>
@@ -1964,11 +1988,20 @@ export default function DashboardView() {
                 {/* Tombol Utama Kirim Massal (WhatsApp) */}
                 <button
                   type="button"
-                  disabled={isBatchRunning || selectedReminderIds.length === 0}
+                  disabled={isBatchRunning || (isPremium && selectedReminderIds.length === 0)}
                   onClick={handleStartBatchSend}
-                  className="px-4 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={!isPremium
+                    ? "px-4 py-2 text-xs sm:text-sm font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                    : "px-4 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  }
+                  title={!isPremium ? "Kirim Otomatis Massal (Fitur Khusus Akun Premium ⭐)" : undefined}
                 >
-                  {isBatchRunning ? (
+                  {!isPremium ? (
+                    <>
+                      <span className="text-amber-600 font-black">★</span>
+                      <span>Kirim Batch Otomatis (Premium)</span>
+                    </>
+                  ) : isBatchRunning ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
                       <span>Sedang Mengirim Massal ({batchProgress.current}/{batchProgress.total})...</span>
