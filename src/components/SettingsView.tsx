@@ -55,6 +55,40 @@ export default function SettingsView({
     });
   }, []);
 
+  // Helper untuk optimasi gambar dengan tetap mempertahankan rasio/proporsi asli penuh (tanpa terpotong)
+  const optimizeImage = (dataUrl: string, maxDim = 800, quality = 0.9): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -64,9 +98,13 @@ export default function SettingsView({
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageToCrop(reader.result as string);
-        setIsCropModalOpen(true);
+      reader.onloadend = async () => {
+        const rawBase64 = reader.result as string;
+        // Simpan langsung gambar penuh dengan proporsi asli agar di kwitansi tampil FULL
+        const fullOptimized = await optimizeImage(rawBase64);
+        await handleCroppedSave(fullOptimized);
+
+        setImageToCrop(rawBase64);
         if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsDataURL(file);
@@ -275,9 +313,9 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                 </h3>
                 
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                  <div className="w-24 h-24 rounded-2xl bg-indigo-50 border-2 border-dashed border-indigo-200 flex items-center justify-center overflow-hidden shrink-0 relative group">
+                  <div className="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-indigo-200 flex items-center justify-center overflow-hidden shrink-0 relative group p-1 shadow-xs">
                     {localLogo ? (
-                      <img src={localLogo} alt="School Logo" className="w-full h-full object-cover" />
+                      <img src={localLogo} alt="School Logo" className="w-full h-full object-contain" />
                     ) : (
                       <div className="text-indigo-300 font-bold text-3xl">
                         {localName ? localName.charAt(0).toUpperCase() : 'C'}
@@ -320,7 +358,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Dapat digeser & diatur agar pas di bingkai.</p>
+                    <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Foto tampil pas di panel admin dan tampil utuh/penuh di kwitansi.</p>
                     {photoMessage.text && (
                       <div className={`p-2.5 rounded-xl text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
                         photoMessage.type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'

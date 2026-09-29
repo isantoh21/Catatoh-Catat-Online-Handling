@@ -141,7 +141,7 @@ export default function LoginView({
           <div className="md:hidden text-center mb-8">
              {schoolLogo ? (
                 <div className="w-20 h-20 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-sm overflow-hidden bg-white border border-slate-200">
-                  <img src={schoolLogo} alt="Logo" className="w-full h-full object-cover" />
+                  <img src={schoolLogo} alt="Logo" className="w-full h-full object-contain p-1" />
                 </div>
               ) : (
                 <div className="w-20 h-20 mx-auto flex items-center justify-center mb-4 shadow-sm rounded-2xl overflow-hidden bg-white border border-slate-200">

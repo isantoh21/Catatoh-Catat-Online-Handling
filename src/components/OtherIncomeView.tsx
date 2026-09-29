@@ -125,9 +125,36 @@ export default function OtherIncomeView() {
       
       if (schoolLogo) {
         try {
-          doc.addImage(schoolLogo, 20, 10, 20, 20);
+          let logoW = 20;
+          let logoH = 20;
+          let logoX = 20;
+          let logoY = 10;
+
+          try {
+            const imgProps = (doc as any).getImageProperties(schoolLogo);
+            if (imgProps && imgProps.width && imgProps.height) {
+              const aspect = imgProps.width / imgProps.height;
+              const maxW = 35; // Lebar maksimal di kwitansi (mm)
+              const maxH = 22; // Tinggi maksimal di kwitansi (mm)
+              
+              if (aspect > maxW / maxH) {
+                // Gambar horizontal / landscape
+                logoW = maxW;
+                logoH = maxW / aspect;
+              } else {
+                // Gambar persegi / portrait
+                logoH = maxH;
+                logoW = maxH * aspect;
+              }
+              logoY = 10 + (maxH - logoH) / 2;
+            }
+          } catch (propErr) {
+            console.warn("Could not read image properties, using default dimensions", propErr);
+          }
+
+          doc.addImage(schoolLogo, logoX, logoY, logoW, logoH);
         } catch (e) {
-          console.error("Gagal memuat logo sekolah", e);
+          console.error("Gagal memuat logo sekolah di kwitansi", e);
         }
       }
       

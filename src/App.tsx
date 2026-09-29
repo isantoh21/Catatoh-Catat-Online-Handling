@@ -518,7 +518,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 {schoolLogo ? (
                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white">
-                    <img src={schoolLogo} alt="Logo" className="w-full h-full object-cover" />
+                    <img src={schoolLogo} alt="Logo" className="w-full h-full object-contain" />
                   </div>
                 ) : (
                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white">
