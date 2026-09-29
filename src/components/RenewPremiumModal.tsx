@@ -77,7 +77,7 @@ export default function RenewPremiumModal({
 
   const waConfirmText = `Halo Admin CATATOH, saya ingin konfirmasi perpanjangan langganan akun sekolah:\n- Email Akun: ${userEmail}\n- Pilihan Paket: PREMIUM (${selectedPlan === 'yearly' ? 'Tahunan - Rp 250.000' : 'Bulanan - Rp 30.000'})\n- Rekening Tujuan: BCA 7805556218 a.n Muhammad Ikhsan\n- Tanggal Pengajuan: ${new Date().toLocaleDateString('id-ID')}\nMohon konfirmasi status perpanjangan akun saya. Terima kasih! 🙏`;
 
-  const waAdminUrl = `https://wa.me/6281234567890?text=${encodeURIComponent(waConfirmText)}`;
+  const waAdminUrl = `https://wa.me/6285347360359?text=${encodeURIComponent(waConfirmText)}`;
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-[999] animate-in fade-in duration-200">

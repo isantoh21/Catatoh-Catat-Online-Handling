@@ -1,6 +1,9 @@
 import { supabase, superAdminSupabase } from './supabaseClient';
 import { useState, useEffect } from 'react';
 
+// Nomor kontak resmi WhatsApp Admin CATATOH
+export const ADMIN_WHATSAPP_NUMBER: string = '6285347360359';
+
 // Daftar email yang secara default berstatus Premium Lifetime jika belum pernah dicabut
 export const DEFAULT_PREMIUM_EMAILS: string[] = [
   'beti1508@gmail.com',
