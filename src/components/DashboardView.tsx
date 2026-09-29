@@ -952,15 +952,6 @@ export default function DashboardView() {
           </button>
 
           <button 
-            onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
-            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 cursor-pointer"
-            title="Pengaturan Template Pesan WA"
-            aria-label="Pengaturan Template Pesan WA"
-          >
-            <Settings className="w-5 h-5 shrink-0" />
-          </button>
-
-          <button 
             onClick={() => handleOpenReminderModal()}
             id="btnKirimReminderWaha"
             className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer"
@@ -1398,7 +1389,17 @@ export default function DashboardView() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  title="Ubah teks dan format template pesan broadcast/pengingat WA"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Ubah Template Broadcast WA</span>
+                </button>
+
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-sm">
                   <span className="text-xs text-slate-500 font-medium">Bulan:</span>
                   <select 
@@ -1944,8 +1945,8 @@ export default function DashboardView() {
 
       {/* WA Template Modal */}
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Settings className="w-4 h-4 text-indigo-600" />
