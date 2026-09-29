@@ -1420,6 +1420,29 @@ export default function DashboardView() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={handleCopyParentLink}
+                  className={`px-3 py-1.5 border rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                    copiedParentLink
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-2 ring-emerald-400/20'
+                      : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border-amber-300'
+                  }`}
+                  title={copiedParentLink ? "Link Kartu SPP Berhasil Disalin!" : `Salin link kartu SPP orang tua (${getSchoolParentUrl()})`}
+                >
+                  {copiedParentLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>Link SPP</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
                   className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
                   title="Ubah teks dan format template pesan broadcast/pengingat WA"
@@ -1993,6 +2016,7 @@ export default function DashboardView() {
                 <li><span className="font-bold text-indigo-600">[BULAN]</span> : Bulan tagihan</li>
                 <li><span className="font-bold text-indigo-600">[TAHUN]</span> : Tahun tagihan</li>
                 <li><span className="font-bold text-indigo-600">[NOMINAL]</span> : Nominal tagihan (format Rupiah)</li>
+                <li><span className="font-bold text-indigo-600">[LINK_SPP]</span> : Link kartu SPP orang tua / siswa</li>
               </ul>
               
               <div className="mt-4">
