@@ -912,29 +912,25 @@ export default function DashboardView() {
             <button 
               onClick={handleCopyParentLink}
               id="btnCopyKartuSppOrtu"
-              className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-l-xl flex items-center gap-2 transition-all border border-r-0 cursor-pointer ${
+              className={`h-10 w-10 flex items-center justify-center rounded-l-xl transition-all border border-r-0 cursor-pointer ${
                 copiedParentLink 
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-2 ring-emerald-400/20' 
                   : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border-amber-300'
               }`}
-              title={`Salin link ${getSchoolParentUrl()} khusus ${currentSchoolName || 'sekolah Anda'}`}
+              title={copiedParentLink ? 'Link Kartu SPP Berhasil Disalin!' : `Salin link kartu SPP orang tua (${getSchoolParentUrl()})`}
+              aria-label="Salin link kartu SPP orang tua"
             >
               {copiedParentLink ? (
-                <>
-                  <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
-                  <span>Link Sekolah Disalin!</span>
-                </>
+                <Check className="w-5 h-5 text-emerald-600 shrink-0" />
               ) : (
-                <>
-                  <Link2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0" />
-                  <span>Copy Link Cek Kartu SPP Orang Tua</span>
-                </>
+                <Link2 className="w-5 h-5 text-amber-700 shrink-0" />
               )}
             </button>
             <button
               onClick={() => setIsShareModalOpen(true)}
-              className="px-2.5 py-2 bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-r-xl transition-colors cursor-pointer"
+              className="h-10 px-2.5 bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-r-xl transition-colors cursor-pointer flex items-center justify-center"
               title="Lihat Detail Link & Format Pengumuman WA"
+              aria-label="Format Pengumuman WA"
             >
               <Share2 className="w-4 h-4 text-amber-800" />
             </button>
@@ -943,37 +939,35 @@ export default function DashboardView() {
           <button 
             onClick={() => setIsModerationModalOpen(true)}
             id="btnModerasiBuktiWa"
-            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer relative"
-            title="Moderasi dan verifikasi bukti transfer yang dikirim orang tua via WhatsApp"
+            className="h-10 w-10 relative rounded-xl flex items-center justify-center transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer"
+            title="Moderasi Bukti Transfer WA (Chat)"
+            aria-label="Moderasi Bukti Transfer WA"
           >
-            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 shrink-0" />
-            <span>Moderasi Bukti WA</span>
-            {pendingVerificationsCount > 0 ? (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-400 text-indigo-950 animate-pulse">
+            <MessageSquare className="w-5 h-5 text-amber-300 shrink-0" />
+            {pendingVerificationsCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold bg-amber-400 text-indigo-950 flex items-center justify-center shadow border-2 border-white animate-pulse">
                 {pendingVerificationsCount}
-              </span>
-            ) : (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-white/20 text-indigo-100">
-                0
               </span>
             )}
           </button>
 
           <button 
             onClick={() => { setTempWaTemplate(waTemplate); setIsTemplateModalOpen(true); }}
-            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 cursor-pointer"
+            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 cursor-pointer"
+            title="Pengaturan Template Pesan WA"
+            aria-label="Pengaturan Template Pesan WA"
           >
-            <Settings className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span>Template WA</span>
+            <Settings className="w-5 h-5 shrink-0" />
           </button>
+
           <button 
             onClick={() => handleOpenReminderModal()}
             id="btnKirimReminderWaha"
-            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
-            title="Kirim reminder SPP massal atau satuan via WAHA WhatsApp Gateway"
+            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer"
+            title="Kirim Reminder SPP via WAHA"
+            aria-label="Kirim Reminder SPP via WAHA"
           >
-            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span>Kirim Reminder (WAHA)</span>
+            <MessageCircle className="w-5 h-5 shrink-0" />
           </button>
         </div>
       </div>
