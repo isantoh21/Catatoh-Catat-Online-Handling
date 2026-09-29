@@ -374,6 +374,13 @@ export async function setTargetUserPremium(
             updated_at: new Date().toISOString()
           };
         }
+        if (cleanEmail) {
+          currentSubs[cleanEmail] = {
+            plan,
+            expires_at: expiresAt,
+            updated_at: new Date().toISOString()
+          };
+        }
       } else {
         // Cabut dari daftar aktif
         currentEmails = currentEmails.filter(e => e.toLowerCase() !== cleanEmail);

@@ -297,13 +297,18 @@ export default function SuperAdminView() {
     try {
       const res = await renewUserSubscription(user.id, user.email, plan);
       if (res.success) {
-        setUsers(prev => prev.map(u => u.id === user.id ? { 
-          ...u, 
-          is_premium: true, 
-          subscription_plan: plan,
-          subscription_expires_at: res.newExpiresAt 
-        } : u));
+        setUsers(prev => prev.map(u => 
+          (String(u.id) === String(user.id) || (u.email && u.email.toLowerCase() === user.email?.toLowerCase()))
+            ? { 
+                ...u, 
+                is_premium: true, 
+                subscription_plan: plan, 
+                subscription_expires_at: res.newExpiresAt 
+              } 
+            : u
+        ));
         alert(res.message);
+        await fetchData();
       } else {
         alert('Gagal: ' + res.message);
       }
