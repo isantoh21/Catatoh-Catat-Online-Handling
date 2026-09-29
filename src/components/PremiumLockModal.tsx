@@ -60,15 +60,19 @@ export default function PremiumLockModal({
             <div className="space-y-1.5 text-slate-300 pl-6">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Kapasitas Siswa Tanpa Batas (Standar maks. 100 siswa)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 <span>Absensi Wajah AI Kamera Kiosk Siswa & Guru</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                <span>Koneksi WhatsApp Gateway & OCR Bukti Bayar AI</span>
+                <span>Koneksi WhatsApp Gateway & Bot Notifikasi</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                <span>Kirim Reminder SPP Massal Anti-Ban</span>
+                <span>Kirim Reminder SPP Massal 1-Klik</span>
               </div>
             </div>
           </div>
