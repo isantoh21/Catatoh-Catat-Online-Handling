@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert, X, Copy, Users, Settings, Database, Activity, Search, Edit2, Trash2, Power, AlertCircle, Save, CheckCircle2, RefreshCw, Mail, Link as LinkIcon, Clock, HelpCircle, Crown, KeyRound, Lock, Sparkles } from 'lucide-react';
 import { supabase, superAdminSupabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { DEFAULT_PREMIUM_EMAILS, setTargetUserPremium, renewUserSubscription } from '../../lib/premiumService';
+import { DEFAULT_PREMIUM_EMAILS, setTargetUserPremium, renewUserSubscription, getCentralPremiumConfig, parseGlobalConfig } from '../../lib/premiumService';
 
 export default function SuperAdminView() {
   const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'logs' | 'database'>('users');
@@ -187,28 +187,21 @@ export default function SuperAdminView() {
         let premiumSubs: Record<string, any> = {};
 
         try {
-          const { data: globalData } = await superAdminSupabase
-            .from('global_settings')
-            .select('premium_emails, premium_user_ids, revoked_user_ids, revoked_emails, premium_subscriptions')
-            .eq('id', 'default')
-            .maybeSingle();
-
-          if (globalData) {
-            if (Array.isArray(globalData.premium_emails)) {
-              premiumEmails = Array.from(new Set([...premiumEmails, ...globalData.premium_emails.map((e: string) => String(e).toLowerCase().trim())]));
-            }
-            if (Array.isArray(globalData.premium_user_ids)) {
-              premiumIds = globalData.premium_user_ids.map((id: string) => String(id).trim());
-            }
-            if (Array.isArray(globalData.revoked_user_ids)) {
-              revokedIds = globalData.revoked_user_ids.map((id: string) => String(id).trim());
-            }
-            if (Array.isArray(globalData.revoked_emails)) {
-              revokedEmails = globalData.revoked_emails.map((e: string) => String(e).toLowerCase().trim());
-            }
-            if (globalData.premium_subscriptions && typeof globalData.premium_subscriptions === 'object') {
-              premiumSubs = globalData.premium_subscriptions;
-            }
+          const config = await getCentralPremiumConfig();
+          if (Array.isArray(config.premium_emails)) {
+            premiumEmails = Array.from(new Set([...premiumEmails, ...config.premium_emails.map((e: string) => String(e).toLowerCase().trim())]));
+          }
+          if (Array.isArray(config.premium_user_ids)) {
+            premiumIds = config.premium_user_ids.map((id: string) => String(id).trim());
+          }
+          if (Array.isArray(config.revoked_user_ids)) {
+            revokedIds = config.revoked_user_ids.map((id: string) => String(id).trim());
+          }
+          if (Array.isArray(config.revoked_emails)) {
+            revokedEmails = config.revoked_emails.map((e: string) => String(e).toLowerCase().trim());
+          }
+          if (config.premium_subscriptions && typeof config.premium_subscriptions === 'object') {
+            premiumSubs = config.premium_subscriptions;
           }
         } catch (settingsErr) {
           console.warn('Global settings fetch warning:', settingsErr);
@@ -219,6 +212,7 @@ export default function SuperAdminView() {
           const userIdStr = String(u.id || '').trim();
 
           // PRIORITASKAN CEK STATUS PENCABUTAN (REVOKED)
+          // Jika akun ada di daftar dicabut, secara mutlak berstatus Standar/Gratis!
           const isRevoked = (userIdStr && revokedIds.includes(userIdStr)) || 
                             (emailLower && revokedEmails.includes(emailLower));
 
@@ -226,7 +220,7 @@ export default function SuperAdminView() {
           if (!isRevoked) {
             isPrem = (userIdStr && premiumIds.includes(userIdStr)) ||
                      (emailLower && premiumEmails.includes(emailLower)) ||
-                     u.is_premium === true;
+                     DEFAULT_PREMIUM_EMAILS.includes(emailLower);
           }
 
           const subInfo = premiumSubs[userIdStr] || premiumSubs[emailLower];
@@ -249,7 +243,8 @@ export default function SuperAdminView() {
         if (data) {
           setMaintenanceMode(data.maintenance_mode);
           setAllowRegistration(data.allow_registration);
-          setGlobalMessage(data.announcement || '');
+          const parsed = parseGlobalConfig(data.announcement);
+          setGlobalMessage(parsed.announcement_text || (typeof parsed === 'string' ? parsed : ''));
         }
       }
     } catch (err) {
@@ -519,11 +514,18 @@ export default function SuperAdminView() {
     setShowConfirmModal(false);
     setSaveStatus('saving');
     try {
+      const currentConfig = await getCentralPremiumConfig();
+      const updatedConfig = {
+        ...currentConfig,
+        announcement_text: globalMessage,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await superAdminSupabase.from('global_settings').upsert({
         id: 'default',
         maintenance_mode: maintenanceMode,
         allow_registration: allowRegistration,
-        announcement: globalMessage,
+        announcement: JSON.stringify(updatedConfig),
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' });
 

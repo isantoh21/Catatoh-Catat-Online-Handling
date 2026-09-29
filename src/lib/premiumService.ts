@@ -1,7 +1,7 @@
 import { supabase, superAdminSupabase } from './supabaseClient';
 import { useState, useEffect } from 'react';
 
-// Daftar email yang secara default langsung berstatus Premium Lifetime (Bebas Kadaluarsa)
+// Daftar email yang secara default berstatus Premium Lifetime jika belum pernah dicabut
 export const DEFAULT_PREMIUM_EMAILS: string[] = [
   'beti1508@gmail.com',
   'isantoh21@gmail.com',
@@ -17,103 +17,113 @@ export interface PremiumInfo {
   email?: string;
 }
 
+export interface GlobalAnnouncementConfig {
+  announcement_text?: string;
+  premium_emails?: string[];
+  premium_user_ids?: string[];
+  revoked_user_ids?: string[];
+  revoked_emails?: string[];
+  premium_subscriptions?: Record<string, any>;
+  updated_at?: string;
+}
+
+/**
+ * Parsing konfigurasi kontrol sentral dari kolom announcement global_settings
+ */
+export function parseGlobalConfig(rawAnnouncement?: string | null): GlobalAnnouncementConfig {
+  if (!rawAnnouncement) return {};
+  try {
+    const trimmed = String(rawAnnouncement).trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (_) {}
+  return { announcement_text: rawAnnouncement || '' };
+}
+
+/**
+ * Mengambil konfigurasi sentral dari global_settings dengan fallback ke localStorage
+ */
+export async function getCentralPremiumConfig(): Promise<GlobalAnnouncementConfig> {
+  let config: GlobalAnnouncementConfig = {};
+
+  try {
+    const { data } = await supabase
+      .from('global_settings')
+      .select('announcement')
+      .eq('id', 'default')
+      .maybeSingle();
+
+    if (data && data.announcement) {
+      config = parseGlobalConfig(data.announcement);
+    }
+  } catch (_) {}
+
+  // Gabungkan dengan persistent cache di localStorage jika ada
+  try {
+    const local = localStorage.getItem('catatoh_system_premium_registry');
+    if (local) {
+      const localConfig = parseGlobalConfig(local);
+      config = {
+        announcement_text: config.announcement_text || localConfig.announcement_text || '',
+        premium_emails: Array.from(new Set([...(config.premium_emails || []), ...(localConfig.premium_emails || [])])),
+        premium_user_ids: Array.from(new Set([...(config.premium_user_ids || []), ...(localConfig.premium_user_ids || [])])),
+        revoked_user_ids: Array.from(new Set([...(config.revoked_user_ids || []), ...(localConfig.revoked_user_ids || [])])),
+        revoked_emails: Array.from(new Set([...(config.revoked_emails || []), ...(localConfig.revoked_emails || [])])),
+        premium_subscriptions: { ...(localConfig.premium_subscriptions || {}), ...(config.premium_subscriptions || {}) }
+      };
+    }
+  } catch (_) {}
+
+  return config;
+}
+
 /**
  * Cek apakah email atau user ID tertentu tergolong pengguna Premium aktif.
- * Pengecekan mencakup validasi masa aktif (expiry date).
  */
 export async function checkIsUserPremium(email?: string | null, userId?: string | null): Promise<boolean> {
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanId = (userId || '').trim();
 
-  // 1. Cek pembatalan (revocation) di global_settings terlebih dahulu!
-  // Jika pernah dicabut oleh SuperAdmin, akun ini harus berstatus NON-PREMIUM.
-  try {
-    const { data: globalSet } = await supabase
-      .from('global_settings')
-      .select('premium_emails, premium_user_ids, premium_subscriptions, revoked_user_ids, revoked_emails')
-      .eq('id', 'default')
-      .maybeSingle();
+  // 1. Cek dari konfigurasi sentral (memiliki otoritas tertinggi)
+  const config = await getCentralPremiumConfig();
+  const revokedIds = (config.revoked_user_ids || []).map(id => String(id).trim());
+  const revokedEmails = (config.revoked_emails || []).map(e => String(e).toLowerCase().trim());
 
-    if (globalSet) {
-      const revokedIds: string[] = Array.isArray(globalSet.revoked_user_ids)
-        ? globalSet.revoked_user_ids.map((id: string) => String(id).trim())
-        : [];
-      const revokedEmails: string[] = Array.isArray(globalSet.revoked_emails)
-        ? globalSet.revoked_emails.map((e: string) => String(e).toLowerCase().trim())
-        : [];
+  // JIKA DICABUT OLEH ADMIN: Langsung return false!
+  if ((cleanId && revokedIds.includes(cleanId)) || (cleanEmail && revokedEmails.includes(cleanEmail))) {
+    if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
+    return false;
+  }
 
-      // JIKA DICABUT OLEH ADMIN: Langsung return false!
-      if ((cleanId && revokedIds.includes(cleanId)) || (cleanEmail && revokedEmails.includes(cleanEmail))) {
+  // Cek jika ada di daftar aktif sentral
+  const pEmails = (config.premium_emails || []).map(e => String(e).toLowerCase().trim());
+  const pIds = (config.premium_user_ids || []).map(id => String(id).trim());
+  if ((cleanEmail && pEmails.includes(cleanEmail)) || (cleanId && pIds.includes(cleanId))) {
+    // Cek expiry jika tercatat
+    const subs = config.premium_subscriptions || {};
+    const sub = (cleanId && subs[cleanId]) || (cleanEmail && subs[cleanEmail]);
+    if (sub && sub.expires_at) {
+      const exp = new Date(sub.expires_at);
+      if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) {
         if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
         return false;
       }
-
-      // Cek expiry dari record global_settings.premium_subscriptions jika ada
-      if (globalSet.premium_subscriptions && typeof globalSet.premium_subscriptions === 'object') {
-        const sub = (cleanId && globalSet.premium_subscriptions[cleanId]) || (cleanEmail && globalSet.premium_subscriptions[cleanEmail]);
-        if (sub && sub.expires_at) {
-          const exp = new Date(sub.expires_at);
-          if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) {
-            if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
-            return false;
-          }
-        }
-      }
-
-      const pEmails: string[] = Array.isArray(globalSet.premium_emails) 
-        ? globalSet.premium_emails.map((e: string) => String(e).toLowerCase().trim()) 
-        : [];
-      const pIds: string[] = Array.isArray(globalSet.premium_user_ids) 
-        ? globalSet.premium_user_ids.map((id: string) => String(id).trim()) 
-        : [];
-
-      if ((cleanEmail && pEmails.includes(cleanEmail)) || (cleanId && pIds.includes(cleanId))) {
-        if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
-        return true;
-      }
     }
-  } catch (_) {
-    // Fallback jika global_settings belum ada
-  }
-
-  // 2. Cek default hardcoded (Lifetime VIP)
-  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
-    if (cleanId) {
-      localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
-    }
+    if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
     return true;
   }
 
-  // 3. Cek database user_settings jika userId tersedia
-  if (cleanId) {
-    try {
-      const { data: userSet } = await supabase
-        .from('user_settings')
-        .select('is_premium, subscription_plan, subscription_expires_at, subscription_status')
-        .eq('user_id', cleanId)
-        .maybeSingle();
-
-      if (userSet) {
-        if (userSet.subscription_expires_at) {
-          const expDate = new Date(userSet.subscription_expires_at);
-          if (!isNaN(expDate.getTime())) {
-            const isStillValid = expDate.getTime() > Date.now();
-            if (!isStillValid) {
-              localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
-              return false;
-            }
-          }
-        }
-
-        if (typeof userSet.is_premium === 'boolean') {
-          localStorage.setItem(`catatoh_is_premium_${cleanId}`, String(userSet.is_premium));
-          return userSet.is_premium;
-        }
-      }
-    } catch (_) {}
+  // 2. Cek default hardcoded (Lifetime VIP) jika tidak dicabut
+  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
+    if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
+    return true;
   }
 
-  // 4. Fallback ke cached status di localStorage
+  // 3. Fallback ke cached status di localStorage
   if (cleanId) {
     const cached = localStorage.getItem(`catatoh_is_premium_${cleanId}`);
     if (cached !== null) {
@@ -131,25 +141,12 @@ export async function getUserSubscriptionDetails(userId?: string, userEmail?: st
   const cleanEmail = (userEmail || '').trim().toLowerCase();
   const cleanId = (userId || '').trim();
 
-  // 1. Cek apakah ada revocation di global_settings
-  let isRevoked = false;
-  try {
-    const { data: globalSet } = await supabase
-      .from('global_settings')
-      .select('revoked_user_ids, revoked_emails')
-      .eq('id', 'default')
-      .maybeSingle();
+  const config = await getCentralPremiumConfig();
+  const revokedIds = (config.revoked_user_ids || []).map(id => String(id).trim());
+  const revokedEmails = (config.revoked_emails || []).map(e => String(e).toLowerCase().trim());
 
-    if (globalSet) {
-      const rIds: string[] = Array.isArray(globalSet.revoked_user_ids) ? globalSet.revoked_user_ids : [];
-      const rEmails: string[] = Array.isArray(globalSet.revoked_emails) ? globalSet.revoked_emails : [];
-      if ((cleanId && rIds.includes(cleanId)) || (cleanEmail && rEmails.includes(cleanEmail))) {
-        isRevoked = true;
-      }
-    }
-  } catch (_) {}
-
-  if (isRevoked) {
+  // Cek pencabutan
+  if ((cleanId && revokedIds.includes(cleanId)) || (cleanEmail && revokedEmails.includes(cleanEmail))) {
     if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
     return {
       isPremium: false,
@@ -168,113 +165,132 @@ export async function getUserSubscriptionDetails(userId?: string, userEmail?: st
       isPremium: true,
       plan: 'yearly',
       status: 'active',
-      expiresAt: null, // Lifetime
+      expiresAt: null,
       daysRemaining: 9999,
       isExpiringSoon: false,
       email: cleanEmail
     };
   }
 
-  if (userId) {
-    try {
-      const { data: userSet } = await supabase
-        .from('user_settings')
-        .select('is_premium, subscription_plan, subscription_expires_at, subscription_status')
-        .eq('user_id', userId)
-        .maybeSingle();
+  // Cek subscription info dari central config
+  const subs = config.premium_subscriptions || {};
+  const sub = (cleanId && subs[cleanId]) || (cleanEmail && subs[cleanEmail]);
+  if (sub) {
+    let isPrem = true;
+    let daysRemaining: number | null = null;
+    let isExpired = false;
+    let expiresAt = sub.expires_at || null;
 
-      if (userSet) {
-        let isPrem = userSet.is_premium === true;
-        let expiresAt = userSet.subscription_expires_at || null;
-        let daysRemaining: number | null = null;
-        let isExpired = false;
-
-        if (expiresAt) {
-          const exp = new Date(expiresAt);
-          if (!isNaN(exp.getTime())) {
-            const diffMs = exp.getTime() - Date.now();
-            daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-            if (daysRemaining <= 0) {
-              isExpired = true;
-              isPrem = false;
-            }
-          }
+    if (expiresAt) {
+      const exp = new Date(expiresAt);
+      if (!isNaN(exp.getTime())) {
+        const diffMs = exp.getTime() - Date.now();
+        daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (daysRemaining <= 0) {
+          isExpired = true;
+          isPrem = false;
         }
-
-        const plan = (userSet.subscription_plan as 'monthly' | 'yearly') || (isPrem ? 'monthly' : 'free');
-        const status: 'active' | 'expired' | 'trial' | 'free' = !isPrem 
-          ? (isExpired ? 'expired' : 'free') 
-          : 'active';
-
-        return {
-          isPremium: isPrem,
-          plan: isPrem ? plan : 'free',
-          status,
-          expiresAt,
-          daysRemaining,
-          isExpiringSoon: isPrem && daysRemaining !== null && daysRemaining <= 5 && daysRemaining > 0,
-          email: cleanEmail
-        };
       }
-    } catch (_) {}
+    }
+
+    const plan = (sub.plan as 'monthly' | 'yearly') || 'monthly';
+    return {
+      isPremium: isPrem,
+      plan: isPrem ? plan : 'free',
+      status: !isPrem ? (isExpired ? 'expired' : 'free') : 'active',
+      expiresAt,
+      daysRemaining,
+      isExpiringSoon: isPrem && daysRemaining !== null && daysRemaining <= 5 && daysRemaining > 0,
+      email: cleanEmail
+    };
   }
 
-  const isPrem = await checkIsUserPremium(cleanEmail, userId);
+  const isPrem = await checkIsUserPremium(cleanEmail, cleanId);
   return {
     isPremium: isPrem,
     plan: isPrem ? 'monthly' : 'free',
     status: isPrem ? 'active' : 'free',
     expiresAt: null,
-    daysRemaining: isPrem ? 30 : null,
+    daysRemaining: null,
     isExpiringSoon: false,
     email: cleanEmail
   };
 }
 
 /**
- * Hook React untuk memeriksa status premium pengguna saat ini secara reaktif
+ * React Hook untuk mendengarkan status premium seorang user
  */
-export function usePremiumStatus(userEmail?: string | null, userId?: string | null) {
+export function useUserPremium(userEmail?: string | null, userId?: string | null) {
   const [isPremium, setIsPremium] = useState<boolean>(() => {
-    const cleanEmail = (userEmail || '').trim().toLowerCase();
-    if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) return true;
     if (userId) {
-      return localStorage.getItem(`catatoh_is_premium_${userId}`) === 'true';
+      const cached = localStorage.getItem(`catatoh_is_premium_${userId}`);
+      if (cached !== null) return cached === 'true';
     }
-    return false;
+    const cleanEmail = (userEmail || '').trim().toLowerCase();
+    return DEFAULT_PREMIUM_EMAILS.includes(cleanEmail);
   });
+
   const [details, setDetails] = useState<PremiumInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let isMounted = true;
-
-    const verify = async () => {
-      let email = userEmail;
-      let uid = userId;
-
-      if (!email || !uid) {
-        const { data: { session } } = await supabase.auth.getSession();
-        email = email || session?.user?.email;
-        uid = uid || session?.user?.id;
+    async function load() {
+      setLoading(true);
+      try {
+        const prem = await checkIsUserPremium(userEmail, userId);
+        const det = await getUserSubscriptionDetails(userId || undefined, userEmail || undefined);
+        if (isMounted) {
+          setIsPremium(prem);
+          setDetails(det);
+        }
+      } catch (_) {
+      } finally {
+        if (isMounted) setLoading(false);
       }
+    }
 
-      const info = await getUserSubscriptionDetails(uid || undefined, email || undefined);
-      if (isMounted) {
-        setIsPremium(info.isPremium);
-        setDetails(info);
-        setLoading(false);
-      }
-    };
-
-    verify();
-
+    load();
     return () => {
       isMounted = false;
     };
   }, [userEmail, userId]);
 
   return { isPremium, details, loading };
+}
+
+/**
+ * Global React Hook untuk status premium pengguna saat ini
+ */
+export function usePremiumStatus(explicitEmail?: string | null, explicitUserId?: string | null) {
+  const [currentUser, setCurrentUser] = useState<{ id?: string; email?: string } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (explicitUserId || explicitEmail) return;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (isMounted && data?.user) {
+        setCurrentUser({ id: data.user.id, email: data.user.email });
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isMounted) {
+        setCurrentUser(session?.user ? { id: session.user.id, email: session.user.email } : null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [explicitEmail, explicitUserId]);
+
+  const emailToUse = explicitEmail !== undefined ? explicitEmail : currentUser?.email;
+  const idToUse = explicitUserId !== undefined ? explicitUserId : currentUser?.id;
+
+  return useUserPremium(emailToUse, idToUse);
 }
 
 /**
@@ -291,7 +307,6 @@ export async function setTargetUserPremium(
     const cleanEmail = (targetEmail || '').trim().toLowerCase();
     const cleanId = (targetUserId || '').trim();
 
-    // Hitung tanggal kadaluarsa baru jika dijadikan premium
     let expiresAt: string | null = null;
     if (newPremiumStatus) {
       if (customExpiryIso) {
@@ -302,116 +317,75 @@ export async function setTargetUserPremium(
       }
     }
 
-    // 1. Coba panggil RPC keamanan tinggi (SECURITY DEFINER) jika tersedia
-    try {
-      await superAdminSupabase.rpc('set_user_premium_by_admin', {
-        target_user_id: cleanId,
-        new_is_premium: newPremiumStatus,
-        new_plan: newPremiumStatus ? plan : 'free',
-        new_expires_at: expiresAt
-      });
-    } catch (rpcErr) {
-      console.warn('RPC set_user_premium_by_admin note:', rpcErr);
+    // 1. Ambil data announcement yang sudah ada
+    let currentConfig = await getCentralPremiumConfig();
+
+    let currentEmails = (currentConfig.premium_emails || []).map(e => String(e).toLowerCase().trim());
+    let currentIds = (currentConfig.premium_user_ids || []).map(id => String(id).trim());
+    let revokedIds = (currentConfig.revoked_user_ids || []).map(id => String(id).trim());
+    let revokedEmails = (currentConfig.revoked_emails || []).map(e => String(e).toLowerCase().trim());
+    let currentSubs = { ...(currentConfig.premium_subscriptions || {}) };
+
+    if (newPremiumStatus) {
+      // Hapus dari daftar pencabutan (revoked)
+      if (cleanId) revokedIds = revokedIds.filter(id => id !== cleanId);
+      if (cleanEmail) revokedEmails = revokedEmails.filter(e => e.toLowerCase() !== cleanEmail);
+
+      // Tambah ke daftar aktif
+      if (cleanEmail && !currentEmails.includes(cleanEmail)) currentEmails.push(cleanEmail);
+      if (cleanId && !currentIds.includes(cleanId)) currentIds.push(cleanId);
+      
+      const subRecord = {
+        plan,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString()
+      };
+      if (cleanId) currentSubs[cleanId] = subRecord;
+      if (cleanEmail) currentSubs[cleanEmail] = subRecord;
+    } else {
+      // Cabut dari daftar aktif
+      if (cleanEmail) currentEmails = currentEmails.filter(e => e.toLowerCase() !== cleanEmail);
+      if (cleanId) currentIds = currentIds.filter(id => id !== cleanId);
+      if (cleanId) delete currentSubs[cleanId];
+      if (cleanEmail) delete currentSubs[cleanEmail];
+
+      // Masukkan ke daftar revoked agar tidak bisa auto-revert!
+      if (cleanId && !revokedIds.includes(cleanId)) revokedIds.push(cleanId);
+      if (cleanEmail && !revokedEmails.includes(cleanEmail)) revokedEmails.push(cleanEmail);
     }
 
-    // 2. Simpan ke user_settings jika bisa
+    const updatedConfig: GlobalAnnouncementConfig = {
+      ...currentConfig,
+      premium_emails: currentEmails,
+      premium_user_ids: currentIds,
+      revoked_user_ids: revokedIds,
+      revoked_emails: revokedEmails,
+      premium_subscriptions: currentSubs,
+      updated_at: new Date().toISOString()
+    };
+
+    const serialized = JSON.stringify(updatedConfig);
+
+    // Simpan ke database Supabase (kolom announcement yang selalu ada dan bisa ditulis)
     try {
       await superAdminSupabase
-        .from('user_settings')
-        .upsert({
-          user_id: cleanId,
-          is_premium: newPremiumStatus,
-          subscription_plan: newPremiumStatus ? plan : 'free',
-          subscription_expires_at: expiresAt,
-          subscription_status: newPremiumStatus ? 'active' : 'free',
+        .from('global_settings')
+        .update({
+          announcement: serialized,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+        })
+        .eq('id', 'default');
     } catch (e) {
-      console.warn('Note user_settings update premium:', e);
+      console.warn('global_settings announcement update note:', e);
     }
 
-    // 3. Sinkronkan ke global_settings (tabel sentral yang selalu dipegang superadmin)
+    // Update persistent cache di localStorage
     try {
-      const { data: currentGlobal } = await superAdminSupabase
-        .from('global_settings')
-        .select('*')
-        .eq('id', 'default')
-        .maybeSingle();
-
-      let currentEmails: string[] = Array.isArray(currentGlobal?.premium_emails)
-        ? [...currentGlobal.premium_emails]
-        : [...DEFAULT_PREMIUM_EMAILS];
-
-      let currentIds: string[] = Array.isArray(currentGlobal?.premium_user_ids)
-        ? [...currentGlobal.premium_user_ids]
-        : [];
-
-      let revokedIds: string[] = Array.isArray(currentGlobal?.revoked_user_ids)
-        ? [...currentGlobal.revoked_user_ids]
-        : [];
-
-      let revokedEmails: string[] = Array.isArray(currentGlobal?.revoked_emails)
-        ? [...currentGlobal.revoked_emails]
-        : [];
-
-      let currentSubs = (currentGlobal?.premium_subscriptions && typeof currentGlobal.premium_subscriptions === 'object')
-        ? { ...currentGlobal.premium_subscriptions }
-        : {};
-
-      if (newPremiumStatus) {
-        // Hapus dari daftar pencabutan (revoked)
-        if (cleanId) revokedIds = revokedIds.filter(id => id !== cleanId);
-        if (cleanEmail) revokedEmails = revokedEmails.filter(e => e.toLowerCase() !== cleanEmail);
-
-        // Tambah ke daftar aktif
-        if (cleanEmail && !currentEmails.includes(cleanEmail)) currentEmails.push(cleanEmail);
-        if (cleanId && !currentIds.includes(cleanId)) currentIds.push(cleanId);
-        
-        if (cleanId) {
-          currentSubs[cleanId] = {
-            plan,
-            expires_at: expiresAt,
-            updated_at: new Date().toISOString()
-          };
-        }
-        if (cleanEmail) {
-          currentSubs[cleanEmail] = {
-            plan,
-            expires_at: expiresAt,
-            updated_at: new Date().toISOString()
-          };
-        }
-      } else {
-        // Cabut dari daftar aktif
-        currentEmails = currentEmails.filter(e => e.toLowerCase() !== cleanEmail);
-        currentIds = currentIds.filter(id => id !== cleanId);
-        if (cleanId) delete currentSubs[cleanId];
-        if (cleanEmail) delete currentSubs[cleanEmail];
-
-        // Masukkan ke daftar revoked agar tidak bisa auto-revert!
-        if (cleanId && !revokedIds.includes(cleanId)) revokedIds.push(cleanId);
-        if (cleanEmail && !revokedEmails.includes(cleanEmail)) revokedEmails.push(cleanEmail);
+      localStorage.setItem('catatoh_system_premium_registry', serialized);
+      if (cleanId) {
+        localStorage.setItem(`catatoh_is_premium_${cleanId}`, String(newPremiumStatus));
       }
-
-      await superAdminSupabase
-        .from('global_settings')
-        .upsert({
-          id: 'default',
-          premium_emails: currentEmails,
-          premium_user_ids: currentIds,
-          revoked_user_ids: revokedIds,
-          revoked_emails: revokedEmails,
-          premium_subscriptions: currentSubs,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-    } catch (e) {
-      console.warn('Note global_settings update premium:', e);
-    }
-
-    // 4. Update local cache
-    if (cleanId) {
-      localStorage.setItem(`catatoh_is_premium_${cleanId}`, String(newPremiumStatus));
-    }
+    } catch (_) {}
 
     return { 
       success: true, 
@@ -424,7 +398,6 @@ export async function setTargetUserPremium(
 
 /**
  * Memperpanjang (Renew) langganan pengguna
- * Jika langganan masih aktif, perpanjangan diakumulasikan ke masa aktif sebelumnya.
  */
 export async function renewUserSubscription(
   userId: string,
@@ -435,14 +408,13 @@ export async function renewUserSubscription(
     const durationDays = plan === 'yearly' ? 365 : 30;
     const addMs = durationDays * 24 * 60 * 60 * 1000;
 
-    // Ambil info masa aktif saat ini
     const currentInfo = await getUserSubscriptionDetails(userId, userEmail);
     let baseTime = Date.now();
 
     if (currentInfo.isPremium && currentInfo.expiresAt) {
       const exp = new Date(currentInfo.expiresAt);
       if (!isNaN(exp.getTime()) && exp.getTime() > Date.now()) {
-        baseTime = exp.getTime(); // Akumulasikan jika masih aktif!
+        baseTime = exp.getTime();
       }
     }
 
