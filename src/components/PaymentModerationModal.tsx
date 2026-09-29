@@ -132,7 +132,7 @@ export default function PaymentModerationModal({
         // Abaikan jika di static host seperti Vercel
       }
 
-      // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua via WAHA / Gateway
+      // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua via Gateway
       const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
       let waSuccess = false;
       let waMsg = '';
@@ -175,7 +175,7 @@ export default function PaymentModerationModal({
       if (waSuccess) {
         alert(`✅ Pembayaran ananda ${studentName} berhasil disetujui & dicatat LUNAS.\n\nPesan konfirmasi WhatsApp telah berhasil terkirim ke nomor ${targetPhone}.`);
       } else if (targetPhone) {
-        alert(`ℹ️ Pembayaran ananda ${studentName} telah dicatat LUNAS.\n\nCatatan WA: ${waMsg || 'Pesan sedang dalam antrean pengiriman WAHA.'}`);
+        alert(`ℹ️ Pembayaran ananda ${studentName} telah dicatat LUNAS.\n\nCatatan WA: ${waMsg || 'Pesan sedang dalam antrean pengiriman WhatsApp.'}`);
       }
     } catch (err: any) {
       alert('Terjadi kesalahan saat memproses: ' + err.message);
@@ -260,7 +260,7 @@ export default function PaymentModerationModal({
         // Abaikan jika di static host seperti Vercel
       }
 
-      // 2. Kirim pesan penolakan sopan ke nomor orang tua via WAHA / Gateway
+      // 2. Kirim pesan penolakan sopan ke nomor orang tua via Gateway
       const rejectTargetStudent = students.find(s => s.id === rejectingItem.student_id);
       const targetPhone = rejectingItem.sender_phone || rejectTargetStudent?.nomor_whatsapp;
       const rejectStudentName = rejectTargetStudent?.nama_lengkap || rejectingItem.student_name || 'Siswa';

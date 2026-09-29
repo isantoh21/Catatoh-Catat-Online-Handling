@@ -12,7 +12,7 @@ interface WebhookStatusBarProps {
   onOpenSettings?: () => void;
 }
 
-const WAHA_PROXY_URL = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy';
+const GATEWAY_PROXY_URL = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy';
 
 export default function WebhookStatusBar({
   mode = 'banner',
@@ -27,9 +27,9 @@ export default function WebhookStatusBar({
   const [copiedUniversal, setCopiedUniversal] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // WAHA session state
-  const [wahaStatus, setWahaStatus] = useState<string>('checking');
-  const [wahaAccount, setWahaAccount] = useState<{ id?: string; pushName?: string } | null>(null);
+  // WhatsApp gateway session state
+  const [waStatus, setWaStatus] = useState<string>('checking');
+  const [waAccount, setWaAccount] = useState<{ id?: string; pushName?: string } | null>(null);
 
   // Real connection verification states
   const [verificationsCount, setVerificationsCount] = useState<number>(0);
@@ -43,8 +43,8 @@ export default function WebhookStatusBar({
     setIsPinging(true);
     const start = performance.now();
     try {
-      // 1. Cek status WAHA via Supabase Edge Function Proxy dengan isolasi user
-      let currentWahaStatus = 'UNKNOWN';
+      // 1. Cek status WhatsApp gateway via Supabase Edge Function Proxy dengan isolasi user
+      let currentWaStatus = 'UNKNOWN';
       try {
         let activeUid = currentUserId;
         if (!activeUid) {
@@ -53,36 +53,36 @@ export default function WebhookStatusBar({
         }
 
         const urlWithUser = activeUid 
-          ? `${WAHA_PROXY_URL}?action=status&userId=${encodeURIComponent(activeUid)}`
-          : `${WAHA_PROXY_URL}?action=status`;
+          ? `${GATEWAY_PROXY_URL}?action=status&userId=${encodeURIComponent(activeUid)}`
+          : `${GATEWAY_PROXY_URL}?action=status`;
 
-        const wahaRes = await fetch(urlWithUser, {
+        const waRes = await fetch(urlWithUser, {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
         });
 
-        if (wahaRes.ok) {
-          const wahaData = await wahaRes.json();
-          if (wahaData.name === 'default') {
-            setWahaStatus('STOPPED');
-            setWahaAccount(null);
+        if (waRes.ok) {
+          const waData = await waRes.json();
+          if (waData.name === 'default') {
+            setWaStatus('STOPPED');
+            setWaAccount(null);
           } else {
-            currentWahaStatus = wahaData.status || 'UNKNOWN';
-            setWahaStatus(currentWahaStatus);
-            if (wahaData.me) {
-              setWahaAccount(wahaData.me);
+            currentWaStatus = waData.status || 'UNKNOWN';
+            setWaStatus(currentWaStatus);
+            if (waData.me) {
+              setWaAccount(waData.me);
             } else {
-              setWahaAccount(null);
+              setWaAccount(null);
             }
           }
         } else {
-          setWahaStatus('FAILED');
-          setWahaAccount(null);
+          setWaStatus('FAILED');
+          setWaAccount(null);
         }
-      } catch (wahaErr) {
-        console.warn('Gagal cek status WAHA:', wahaErr);
-        setWahaStatus('FAILED');
-        setWahaAccount(null);
+      } catch (waErr) {
+        console.warn('Gagal cek status WhatsApp:', waErr);
+        setWaStatus('FAILED');
+        setWaAccount(null);
       }
 
       // 2. Fetch actual received verifications count from Supabase
@@ -153,17 +153,17 @@ export default function WebhookStatusBar({
     await checkWebhookHealth();
   };
 
-  // REAL CONNECTION LOGIC (WAHA-AWARE):
-  // 1. If WAHA is WORKING -> connected
-  // 2. If WAHA is SCAN_QR_CODE -> waiting
+  // REAL CONNECTION LOGIC:
+  // 1. If WhatsApp gateway is WORKING -> connected
+  // 2. If WhatsApp gateway is SCAN_QR_CODE -> waiting
   // 3. If checking -> checking
   // 4. Else -> disconnected
   let connectionStatus: 'checking' | 'disconnected' | 'waiting' | 'connected' = 'checking';
-  if (wahaStatus === 'checking' || endpointStatus === 'checking') {
+  if (waStatus === 'checking' || endpointStatus === 'checking') {
     connectionStatus = 'checking';
-  } else if (wahaStatus === 'WORKING') {
+  } else if (waStatus === 'WORKING') {
     connectionStatus = 'connected';
-  } else if (wahaStatus === 'SCAN_QR_CODE') {
+  } else if (waStatus === 'SCAN_QR_CODE') {
     connectionStatus = 'waiting';
   } else {
     connectionStatus = 'disconnected';
@@ -187,7 +187,7 @@ export default function WebhookStatusBar({
               ? 'bg-slate-100 text-slate-600 border-slate-200'
               : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70'
           }`}
-          title="Status Webhook & WAHA (Klik untuk rincian)"
+          title="Status Webhook & WhatsApp Gateway (Klik untuk rincian)"
         >
           <span className="relative flex h-2 w-2">
             {connectionStatus === 'connected' && (
@@ -208,16 +208,16 @@ export default function WebhookStatusBar({
           <Radio className="w-3.5 h-3.5 shrink-0" />
           <span className="hidden md:inline">
             {connectionStatus === 'connected'
-              ? `WAHA Terhubung (${verificationsCount} Struk)`
+              ? `WhatsApp Terhubung (${verificationsCount} Struk)`
               : connectionStatus === 'waiting'
-              ? 'WAHA: Perlu Scan QR'
+              ? 'WhatsApp: Perlu Scan QR'
               : connectionStatus === 'checking'
-              ? 'Cek WAHA...'
-              : 'WAHA: Belum Terhubung'}
+              ? 'Cek WhatsApp...'
+              : 'WhatsApp: Belum Terhubung'}
           </span>
           <span className="md:hidden">
             {connectionStatus === 'connected'
-              ? `WAHA OK (${verificationsCount})`
+              ? `WA OK (${verificationsCount})`
               : connectionStatus === 'waiting'
               ? 'Scan QR'
               : 'Belum Konek'}
@@ -244,7 +244,7 @@ export default function WebhookStatusBar({
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-slate-800">Status WhatsApp & Webhook</h4>
-                    <p className="text-[10px] text-slate-400">WAHA VPS & Penerima Bukti SPP</p>
+                    <p className="text-[10px] text-slate-400">WhatsApp Gateway & Penerima Bukti SPP</p>
                   </div>
                 </div>
 
@@ -276,11 +276,11 @@ export default function WebhookStatusBar({
                     <div className="space-y-1">
                       <p className="flex items-start gap-1.5 font-bold text-emerald-800">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>WhatsApp WAHA Terhubung!</span>
+                        <span>WhatsApp Gateway Terhubung!</span>
                       </p>
-                      {wahaAccount?.id && (
+                      {waAccount?.id && (
                         <p className="text-[11px] text-emerald-700">
-                          Akun: <b>{wahaAccount.pushName || 'WhatsApp'}</b> ({wahaAccount.id.replace('@c.us', '')})
+                          Akun: <b>{waAccount.pushName || 'WhatsApp'}</b> ({waAccount.id.replace('@c.us', '')})
                         </p>
                       )}
                     </div>
@@ -294,7 +294,7 @@ export default function WebhookStatusBar({
                   {connectionStatus === 'disconnected' && (
                     <p className="flex items-start gap-1.5">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                      <span><b>Belum Terhubung.</b> Buka menu Pengaturan untuk memulai koneksi ke server WAHA VPS.</span>
+                      <span><b>Belum Terhubung.</b> Buka menu Pengaturan untuk memulai koneksi ke server WhatsApp.</span>
                     </p>
                   )}
                 </div>
@@ -365,7 +365,7 @@ export default function WebhookStatusBar({
                     }}
                     className="px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                   >
-                    <span>Pengaturan WAHA</span>
+                    <span>Pengaturan WhatsApp</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 )}
@@ -402,7 +402,7 @@ export default function WebhookStatusBar({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-bold text-slate-800">
-                Status Koneksi WhatsApp & Webhook (WAHA)
+                Status Koneksi WhatsApp Gateway & Webhook
               </h4>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
                 connectionStatus === 'connected'
@@ -412,15 +412,15 @@ export default function WebhookStatusBar({
                   : 'bg-slate-100 text-slate-800 border-slate-300'
               }`}>
                 {connectionStatus === 'connected'
-                  ? 'WAHA Terhubung'
+                  ? 'WhatsApp Terhubung'
                   : connectionStatus === 'waiting'
                   ? 'Perlu Scan QR'
                   : 'Belum Terhubung'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {connectionStatus === 'connected' && `Sesi WhatsApp WAHA aktif dan siap memproses bukti transfer otomatis (${verificationsCount} struk masuk).`}
-              {connectionStatus === 'waiting' && 'Sesi WAHA siap ditautkan. Buka Pengaturan untuk scan kode QR.'}
+              {connectionStatus === 'connected' && `Sesi WhatsApp aktif dan siap memproses bukti transfer otomatis (${verificationsCount} struk masuk).`}
+              {connectionStatus === 'waiting' && 'Sesi WhatsApp siap ditautkan. Buka Pengaturan untuk scan kode QR.'}
               {connectionStatus === 'disconnected' && 'WhatsApp belum terhubung. Buka Pengaturan untuk menghubungkan nomor WhatsApp.'}
             </p>
           </div>
@@ -459,7 +459,7 @@ export default function WebhookStatusBar({
             )}
           </div>
           <div className="overflow-hidden">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Koneksi WAHA</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Koneksi WhatsApp</span>
             <span className={`text-xs font-extrabold truncate block ${
               connectionStatus === 'connected'
                 ? 'text-emerald-700'
@@ -468,7 +468,7 @@ export default function WebhookStatusBar({
                 : 'text-slate-700'
             }`}>
               {connectionStatus === 'connected'
-                ? `Terhubung (${wahaAccount?.pushName || 'WhatsApp'})`
+                ? `Terhubung (${waAccount?.pushName || 'WhatsApp'})`
                 : connectionStatus === 'waiting'
                 ? 'Scan QR Diperlukan'
                 : 'Tidak Terhubung'}
@@ -495,9 +495,9 @@ export default function WebhookStatusBar({
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="overflow-hidden">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Engine VPS</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Engine Gateway</span>
             <span className="text-xs font-extrabold text-teal-700 truncate block">
-              WAHA VPS Engine Ready
+              WhatsApp Engine Ready
             </span>
           </div>
         </div>

@@ -162,7 +162,7 @@ export function validateWhatsAppNumber(phone: string): {
   return { valid: true, cleanNumber: clean };
 }
 
-// Kirim pesan WhatsApp melalui WAHA Supabase Proxy atau backend proxy
+// Kirim pesan WhatsApp melalui Supabase Edge Function Proxy atau backend proxy
 export async function sendWhatsAppMessage(payload: {
   apiUrl?: string;
   appkey?: string;
@@ -189,14 +189,14 @@ export async function sendWhatsAppMessage(payload: {
       activeUid = session?.user?.id;
     }
 
-    // 1. Prioritaskan Supabase Edge Function WAHA Proxy dengan isolasi user
+    // 1. Prioritaskan Supabase Edge Function Proxy dengan isolasi user
     const proxyBase = 'https://lzvrhtaewonmpsaiezai.supabase.co/functions/v1/waha-proxy?action=sendText';
-    const wahaProxyUrl = activeUid 
+    const gatewayProxyUrl = activeUid 
       ? `${proxyBase}&userId=${encodeURIComponent(activeUid)}` 
       : proxyBase;
 
     try {
-      const res = await fetch(wahaProxyUrl, {
+      const res = await fetch(gatewayProxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -232,7 +232,7 @@ export async function sendWhatsAppMessage(payload: {
         };
       }
     } catch (proxyErr) {
-      console.warn('Gagal via waha-proxy, mencoba backend local:', proxyErr);
+      console.warn('Gagal via gateway proxy, mencoba backend local:', proxyErr);
     }
 
     // 2. Coba backend internal /api/whatsapp/send
@@ -260,7 +260,7 @@ export async function sendWhatsAppMessage(payload: {
 
     return { 
       success: false, 
-      error: 'Gagal mengirim pesan WhatsApp via WAHA. Pastikan WhatsApp terhubung (WORKING).',
+      error: 'Gagal mengirim pesan WhatsApp. Pastikan WhatsApp terhubung (WORKING).',
       code: 'GATEWAY_ERROR'
     };
   } catch (err: any) {

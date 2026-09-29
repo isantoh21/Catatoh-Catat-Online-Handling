@@ -130,7 +130,7 @@ async function extractSenderPhone(payload: any): Promise<string> {
     }
   }
 
-  // 4. Cari dari message ID (format WAHA: false_628xxxxxx@c.us_...)
+  // 4. Cari dari message ID (format: false_628xxxxxx@c.us_...)
   const msgId = typeof p.id === 'string' ? p.id : '';
   const idMatch = msgId.match(/false_([0-9]{9,15})@(c\.us|s\.whatsapp\.net)/);
   if (idMatch && idMatch[1]) {
@@ -145,16 +145,16 @@ async function extractSenderPhone(payload: any): Promise<string> {
     (x) => typeof x === 'string' && x.includes('@lid')
   );
   if (rawLid) {
-    // Coba ambil nomor telepon nyata dari WAHA Contact API
+    // Coba ambil nomor telepon nyata dari Contact API
     try {
-      const WAHA_PUBLIC = 'http://13.140.178.167:29001';
-      const WAHA_KEY = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+      const GATEWAY_PUBLIC = 'http://13.140.178.167:29001';
+      const GATEWAY_KEY = process.env.WAHA_API_KEY || process.env.WHATSAPP_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
       const session = payload.session || 'default';
-      const contactUrl = `${WAHA_PUBLIC}/api/contacts/${encodeURIComponent(rawLid)}?session=${encodeURIComponent(session)}`;
+      const contactUrl = `${GATEWAY_PUBLIC}/api/contacts/${encodeURIComponent(rawLid)}?session=${encodeURIComponent(session)}`;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
       const cRes = await fetch(contactUrl, {
-        headers: { 'X-Api-Key': WAHA_KEY },
+        headers: { 'X-Api-Key': GATEWAY_KEY },
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -198,7 +198,7 @@ async function extractSenderPhone(payload: any): Promise<string> {
   return '';
 }
 
-// Download image securely from WAHA VPS or external URL and convert to Base64
+// Download image securely from Gateway VPS or external URL and convert to Base64
 async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: string; mimeType: string; base64: string } | null> {
   if (!rawUrl) return null;
 
@@ -210,21 +210,21 @@ async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: strin
   }
 
   let targetUrl = rawUrl;
-  const WAHA_PUBLIC = 'http://13.140.178.167:29001';
-  const WAHA_KEY = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+  const GATEWAY_PUBLIC = 'http://13.140.178.167:29001';
+  const GATEWAY_KEY = process.env.WAHA_API_KEY || process.env.WHATSAPP_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
 
   // Replace internal docker localhost/127.0.0.1 with public VPS IP
   if (targetUrl.includes('localhost') || targetUrl.includes('127.0.0.1') || targetUrl.startsWith('/api/files/')) {
-    targetUrl = targetUrl.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, WAHA_PUBLIC);
+    targetUrl = targetUrl.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, GATEWAY_PUBLIC);
     if (targetUrl.startsWith('/')) {
-      targetUrl = `${WAHA_PUBLIC}${targetUrl}`;
+      targetUrl = `${GATEWAY_PUBLIC}${targetUrl}`;
     }
   }
 
   try {
     const headers: Record<string, string> = {};
     if (targetUrl.includes('13.140.178.167') || targetUrl.includes('/api/files/')) {
-      headers['X-Api-Key'] = WAHA_KEY;
+      headers['X-Api-Key'] = GATEWAY_KEY;
     }
 
     const controller = new AbortController();
@@ -379,9 +379,9 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     return res.status(200).json({
       status: "online",
-      service: "CATATOH SPP - Inbound WhatsApp Webhook (WAHA Compatible)",
+      service: "CATATOH SPP - Inbound WhatsApp Webhook",
       timestamp: new Date().toISOString(),
-      supportedProviders: ["WAHA", "Starsender", "Fonnte", "Wablas", "UltraMsg", "W-API", "Meta Cloud"]
+      supportedProviders: ["WhatsApp Gateway", "Starsender", "Fonnte", "Wablas", "UltraMsg", "W-API", "Meta Cloud"]
     });
   }
 
@@ -390,7 +390,7 @@ export default async function handler(req: any, res: any) {
       const payload = req.body || {};
       const query = req.query || {};
 
-      // 1. Abaikan pesan keluar dari nomor bot/WAHA sendiri
+      // 1. Abaikan pesan keluar dari nomor bot/akun sendiri
       if (payload.payload?.fromMe === true || payload.fromMe === true) {
         return res.status(200).json({
           status: "ignored",
@@ -427,7 +427,7 @@ export default async function handler(req: any, res: any) {
       // 4. Resolusi Akun Sekolah (User ID) untuk Isolasi Data Multi-Tenant
       let targetUserId = (query.userId || query.user_id || payload.userId || payload.user_id || "").toString();
 
-      // Coba identifikasi dari session WAHA (format: user_<uid16>)
+      // Coba identifikasi dari session (format: user_<uid16>)
       if (!targetUserId && payload.session && typeof payload.session === 'string' && payload.session.startsWith('user_')) {
         const cleanSessPrefix = payload.session.replace('user_', '');
         try {
@@ -461,7 +461,7 @@ export default async function handler(req: any, res: any) {
         || ""
       ).toString();
 
-      // Ekstraksi Gambar Bukti dari WAHA & Provider Lain
+      // Ekstraksi Gambar Bukti dari Gateway & Provider Lain
       let rawProofUrl = (
         payload.payload?.media?.url
         || payload.payload?.url
@@ -736,23 +736,23 @@ export default async function handler(req: any, res: any) {
         console.error("[SUPABASE CONNECTION ERROR]", dbErr);
       }
 
-      // Auto-reply via WAHA jika pesan masuk dari nomor valid
+      // Auto-reply via WhatsApp jika pesan masuk dari nomor valid
       if (senderPhone) {
         const studentNameStr = matchedStudent ? `ananda *${matchedStudent.nama_lengkap}*` : "ananda";
         const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
         const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${detectedBulan}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
 
-        // Kirim auto-reply langsung via WAHA VPS menggunakan sesi yang sesuai
+        // Kirim auto-reply langsung via Gateway VPS menggunakan sesi yang sesuai
         try {
           const activeSession = payload.session 
             || (targetUserId ? `user_${targetUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}` : 'default');
-          const wahaBase = 'http://13.140.178.167:29001';
-          const wahaKey = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
-          await fetch(`${wahaBase}/api/sendText`, {
+          const gatewayBase = 'http://13.140.178.167:29001';
+          const gatewayKey = process.env.WAHA_API_KEY || process.env.WHATSAPP_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+          await fetch(`${gatewayBase}/api/sendText`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Api-Key': wahaKey,
+              'X-Api-Key': gatewayKey,
             },
             body: JSON.stringify({
               session: activeSession,
@@ -761,7 +761,7 @@ export default async function handler(req: any, res: any) {
             }),
           });
         } catch (replyErr) {
-          console.warn("[WAHA AUTO-REPLY FAILED]", replyErr);
+          console.warn("[WA AUTO-REPLY FAILED]", replyErr);
         }
       }
 

@@ -41,14 +41,14 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Prioritas 1: Gunakan Supabase Edge Function WAHA Proxy
+    // Prioritas 1: Gunakan Supabase Edge Function Gateway Proxy
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://lzvrhtaewonmpsaiezai.supabase.co';
-    const wahaProxyUrl = userId 
+    const gatewayProxyUrl = userId 
       ? `${supabaseUrl}/functions/v1/waha-proxy?action=sendText&userId=${encodeURIComponent(userId)}`
       : `${supabaseUrl}/functions/v1/waha-proxy?action=sendText`;
 
     try {
-      const proxyRes = await fetch(wahaProxyUrl, {
+      const proxyRes = await fetch(gatewayProxyUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ export default async function handler(req: any, res: any) {
       if (proxyRes.ok && proxyData?.success !== false) {
         return res.status(200).json({
           success: true,
-          provider: 'waha-proxy',
+          provider: 'whatsapp-gateway',
           data: proxyData,
         });
       }
@@ -80,34 +80,34 @@ export default async function handler(req: any, res: any) {
         });
       }
     } catch (proxyErr) {
-      console.warn('Waha proxy send error, mencoba fallback langsung:', proxyErr);
+      console.warn('Gateway proxy send error, mencoba fallback langsung:', proxyErr);
     }
 
-    // Prioritas 2: Direct WAHA VPS jika env tersedia
-    const wahaBaseUrl = (process.env.WAHA_BASE_URL || 'http://13.140.178.167:29001').replace(/\/+$/, '');
-    const wahaApiKey = process.env.WAHA_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
+    // Prioritas 2: Direct WhatsApp Gateway VPS jika env tersedia
+    const gatewayBaseUrl = (process.env.WAHA_BASE_URL || process.env.WHATSAPP_BASE_URL || 'http://13.140.178.167:29001').replace(/\/+$/, '');
+    const gatewayApiKey = process.env.WAHA_API_KEY || process.env.WHATSAPP_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
 
-    if (wahaBaseUrl && wahaApiKey) {
+    if (gatewayBaseUrl && gatewayApiKey) {
       const chatId = `${cleanTo}@c.us`;
-      const wahaEndpoint = file ? `${wahaBaseUrl}/api/sendFile` : `${wahaBaseUrl}/api/sendText`;
-      const wahaBody = file
+      const gatewayEndpoint = file ? `${gatewayBaseUrl}/api/sendFile` : `${gatewayBaseUrl}/api/sendText`;
+      const gatewayBody = file
         ? { session: 'default', chatId, file: typeof file === 'string' ? { url: file } : file, caption: message }
         : { session: 'default', chatId, text: message };
 
-      const directRes = await fetch(wahaEndpoint, {
+      const directRes = await fetch(gatewayEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Api-Key': wahaApiKey,
+          'X-Api-Key': gatewayApiKey,
         },
-        body: JSON.stringify(wahaBody),
+        body: JSON.stringify(gatewayBody),
       });
 
       if (directRes.ok) {
         const directJson = await directRes.json().catch(() => ({}));
         return res.status(200).json({
           success: true,
-          provider: 'waha-direct',
+          provider: 'whatsapp-direct',
           data: directJson,
         });
       }

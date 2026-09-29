@@ -24,7 +24,7 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           error: 'Configuration Error',
-          message: 'WAHA_BASE_URL or WAHA_API_KEY secret is not set in Supabase.'
+          message: 'WhatsApp Gateway configuration error: secrets not configured.'
         }),
         {
           status: 500,
@@ -484,7 +484,7 @@ Deno.serve(async (req: Request) => {
 
       const sendData = await sendRes.json().catch(() => ({}));
       const isSuccess = sendRes.ok && (!sendData?.error);
-      const errorMessage = sendData?.error || sendData?.message || (sendRes.ok ? undefined : 'Gagal mengirim pesan via WAHA');
+      const errorMessage = sendData?.error || sendData?.message || (sendRes.ok ? undefined : 'Gagal mengirim pesan WhatsApp via Gateway');
 
       return new Response(
         JSON.stringify({

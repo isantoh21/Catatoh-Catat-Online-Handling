@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles, Crop } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
-import WahaConnect from './WahaConnect';
+import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
 
 export default function SettingsView({ 
@@ -556,9 +556,9 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
           </div>
         </div>
 
-        {/* Kolom Kanan: Integrasi & Koneksi WhatsApp WAHA */}
+        {/* Kolom Kanan: Integrasi & Koneksi WhatsApp Gateway */}
             <div className="space-y-6">
-              <WahaConnect currentUserId={currentUserId} />
+              <WhatsAppConnect currentUserId={currentUserId} />
             </div>
           </div>
         </div>

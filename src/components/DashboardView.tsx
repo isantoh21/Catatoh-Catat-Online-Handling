@@ -42,7 +42,7 @@ export default function DashboardView() {
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [reminderBulan, setReminderBulan] = useState('');
 
-  // Batch Reminder WhatsApp (WAHA) State
+  // Batch Reminder WhatsApp State
   const [selectedReminderIds, setSelectedReminderIds] = useState<string[]>([]);
   const [reminderFilterKelompok, setReminderFilterKelompok] = useState<string>('Semua Kelompok');
   const [reminderSearchQuery, setReminderSearchQuery] = useState<string>('');
@@ -651,8 +651,8 @@ export default function DashboardView() {
     window.open(url, '_blank');
   };
 
-  // Kirim satuan langsung via WAHA WhatsApp Gateway
-  const handleKirimSingleWAHA = async (student: any) => {
+  // Kirim satuan langsung via WhatsApp Gateway
+  const handleKirimSingleWA = async (student: any) => {
     const val = validateWhatsAppNumber(student.nomor_whatsapp);
     if (!val.valid) {
       setStudentSendStatuses(prev => ({
@@ -691,7 +691,7 @@ export default function DashboardView() {
         }));
         await logActivity(
           'Kirim Reminder WA',
-          `Kirim reminder SPP ${targetReminderBulan} ke ${student.nama_lengkap} (${student.nomor_whatsapp}) via WAHA`,
+          `Kirim reminder SPP ${targetReminderBulan} ke ${student.nama_lengkap} (${student.nomor_whatsapp}) via WhatsApp`,
           'info'
         );
       } else {
@@ -699,7 +699,7 @@ export default function DashboardView() {
           ...prev,
           [student.id]: { 
             status: 'failed', 
-            error: res.error || 'Gagal mengirim via WAHA',
+            error: res.error || 'Gagal mengirim pesan WhatsApp',
             code: res.code
           }
         }));
@@ -732,7 +732,7 @@ export default function DashboardView() {
         };
       case 'safe':
       default:
-        // Default teraman untuk WAHA unofficial: 10 hingga 20 detik acak
+        // Default interval pengiriman aman: 10 hingga 20 detik acak
         return { min: 10, max: 20 };
     }
   };
@@ -758,7 +758,7 @@ export default function DashboardView() {
     setBatchCountdownTargetName('');
   };
 
-  // Eksekusi pengiriman batch / massal via WAHA dengan interval acak anti-banned
+  // Eksekusi pengiriman batch / massal via WhatsApp dengan interval acak anti-banned
   const handleStartBatchSend = async () => {
     const targetStudents = reminderFilteredStudents.filter(s => selectedReminderIds.includes(s.id));
     if (targetStudents.length === 0) {
@@ -845,7 +845,7 @@ export default function DashboardView() {
             ...prev,
             [student.id]: { 
               status: 'failed', 
-              error: res.error || 'Gagal mengirim via WAHA',
+              error: res.error || 'Gagal mengirim via WhatsApp',
               code: res.code 
             }
           }));
@@ -952,10 +952,10 @@ export default function DashboardView() {
 
           <button 
             onClick={() => handleOpenReminderModal()}
-            id="btnKirimReminderWaha"
+            id="btnKirimReminderWa"
             className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer"
-            title="Kirim Reminder SPP via WAHA"
-            aria-label="Kirim Reminder SPP via WAHA"
+            title="Kirim Reminder SPP via WhatsApp"
+            aria-label="Kirim Reminder SPP via WhatsApp"
           >
             <MessageCircle className="w-5 h-5 shrink-0" />
           </button>
@@ -1364,7 +1364,7 @@ export default function DashboardView() {
           </div>
         </div>
       )}
-      {/* WAHA Batch & Single Reminder Modal */}
+      {/* WhatsApp Batch & Single Reminder Modal */}
       {isReminderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1376,14 +1376,14 @@ export default function DashboardView() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-800">Kirim Reminder WhatsApp (WAHA)</h3>
+                    <h3 className="text-base font-bold text-slate-800">Kirim Reminder WhatsApp</h3>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3 text-emerald-600" />
                       Anti-Ban Proteksi
                     </span>
                   </div>
                   <p className="text-xs text-slate-500">
-                    Kirim pengingat SPP otomatis ke orang tua langsung melalui WAHA Gateway.
+                    Kirim pengingat SPP otomatis ke orang tua langsung melalui WhatsApp Gateway.
                   </p>
                 </div>
               </div>
@@ -1446,20 +1446,20 @@ export default function DashboardView() {
 
             {/* Modal Body (Scrollable) */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Box Pengaturan Interval Keamanan Anti-Blokir WAHA */}
+              {/* Box Pengaturan Interval Keamanan Anti-Blokir */}
               <div className="bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-slate-50 p-4 rounded-xl border border-emerald-200/80 shadow-xs">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                     <div>
                       <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        Interval Keamanan Anti-Blokir Meta
+                        Interval Keamanan Anti-Blokir
                         <span className="text-[10px] font-normal text-emerald-700 bg-emerald-100/80 px-2 py-0.2 rounded-md">
-                          Wajib untuk WAHA Unofficial
+                          Fitur Keamanan Anti-Blokir
                         </span>
                       </h4>
                       <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                        WhatsApp unofficial (WAHA) rentan diblokir jika mengirim pesan berturut-turut terlalu cepat. Kami menerapkan <span className="font-semibold text-emerald-800">jeda acak dinamis (random jitter)</span> agar menyerupai ketikan manusia asli.
+                        Pengiriman WhatsApp massal rentan dicurigai jika pesan dikirim berturut-turut terlalu cepat. Kami menerapkan <span className="font-semibold text-emerald-800">jeda acak dinamis (random jitter)</span> agar menyerupai ritme ketikan manusia asli.
                       </p>
                     </div>
                   </div>
@@ -1876,20 +1876,20 @@ export default function DashboardView() {
                               </div>
                             )}
 
-                            {/* Tombol Kirim Satuan via WAHA */}
+                            {/* Tombol Kirim Satuan via WhatsApp */}
                             <button
                               type="button"
                               disabled={isBatchRunning || isSendingThis || !isValidPhone}
-                              onClick={() => handleKirimSingleWAHA(student)}
+                              onClick={() => handleKirimSingleWA(student)}
                               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                              title={!isValidPhone ? (phoneValidation.message || 'Nomor tidak valid') : 'Kirim reminder langsung sekarang via WAHA'}
+                              title={!isValidPhone ? (phoneValidation.message || 'Nomor tidak valid') : 'Kirim reminder langsung sekarang via WhatsApp'}
                             >
                               {isSendingThis ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                               ) : (
                                 <Send className="w-3.5 h-3.5" />
                               )}
-                              Kirim WAHA
+                              Kirim WA
                             </button>
 
                             {/* Tombol Fallback Manual WhatsApp Web */}
@@ -1928,7 +1928,7 @@ export default function DashboardView() {
                   Tutup
                 </button>
 
-                {/* Tombol Utama Kirim Massal (WAHA) */}
+                {/* Tombol Utama Kirim Massal (WhatsApp) */}
                 <button
                   type="button"
                   disabled={isBatchRunning || selectedReminderIds.length === 0}
@@ -1943,7 +1943,7 @@ export default function DashboardView() {
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Kirim Batch ke {selectedReminderIds.length} Siswa (WAHA)</span>
+                      <span>Kirim Batch ke {selectedReminderIds.length} Siswa</span>
                     </>
                   )}
                 </button>
