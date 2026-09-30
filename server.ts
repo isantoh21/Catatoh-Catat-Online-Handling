@@ -140,36 +140,98 @@ const PAYMENT_KEYWORDS = [
   'transfer', 'bukti', 'spp', 'bayar', 'struk', 'tf', 'rekening', 'mutasi', 'setor', 'lunas', 'bca', 'bri', 'mandiri', 'bsi', 'dana', 'gopay', 'ovo', 'biaya'
 ];
 
-async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: string): Promise<ReceiptAnalysisResult | null> {
-  const apiKey = process.env.GEMINI_API_KEY || Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8');
-  if (!apiKey) {
-    console.warn("GEMINI_API_KEY tidak ditemukan, fallback ke parser reguler.");
-    return null;
+async function analyzeReceiptWithCustomProvider(
+  imagePart: { inlineData: { mimeType: string; data: string } },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  const customBaseUrl = (process.env.CUSTOM_AI_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, "");
+  const customApiKey = process.env.CUSTOM_AI_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng";
+  const customModels = [
+    "gemini/gemini-3.1-flash-lite",
+    "vertex_ai/gemini-3.1-flash-lite",
+    "gemini/gemini-2.5-flash-lite",
+    "vertex_ai/gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite"
+  ];
+
+  for (const model of customModels) {
+    try {
+      console.log(`[CUSTOM AI PROVIDER SERVER] Mencoba model fallback: ${model}`);
+      const res = await fetch(`${customBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${customApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
+                  }
+                }
+              ]
+            }
+          ],
+          temperature: 0.1
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[CUSTOM AI SERVER MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 150));
+        continue;
+      }
+
+      const data: any = await res.json();
+      const text = data.choices?.[0]?.message?.content || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.warn(`[CUSTOM AI SERVER MODEL ${model} NO JSON]`, text.slice(0, 150));
+        continue;
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
+      console.log(`[CUSTOM AI SERVER SUCCESS] Berhasil dianalisis via model ${model}`);
+      return parsed as ReceiptAnalysisResult;
+    } catch (err: any) {
+      console.warn(`[CUSTOM AI SERVER MODEL ${model} ERROR]`, err.message || err);
+    }
   }
 
-  try {
-    const ai = getGemini();
+  console.error("[CUSTOM AI SERVER ALL MODELS FAILED]");
+  return null;
+}
 
-    let imagePart: any = null;
+async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: string): Promise<ReceiptAnalysisResult | null> {
+  const apiKey = process.env.GEMINI_API_KEY || Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8');
 
-    // If it's a data url
-    if (imageUrl.startsWith("data:image/")) {
-      const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-      if (match) {
-        imagePart = {
-          inlineData: {
-            mimeType: match[1],
-            data: match[2],
-          }
-        };
-      }
-    } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      // Download image buffer for Gemini
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+  let imagePart: any = null;
+
+  // If it's a data url
+  if (imageUrl.startsWith("data:image/")) {
+    const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (match) {
+      imagePart = {
+        inlineData: {
+          mimeType: match[1],
+          data: match[2],
+        }
+      };
+    }
+  } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+    // Download image buffer for Gemini
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
       const imgRes = await fetch(imageUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-
       if (imgRes.ok) {
         const buffer = await imgRes.arrayBuffer();
         const mimeType = imgRes.headers.get("content-type") || "image/jpeg";
@@ -181,13 +243,16 @@ async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: strin
           }
         };
       }
+    } finally {
+      clearTimeout(timeout);
     }
+  }
 
-    if (!imagePart) {
-      return null;
-    }
+  if (!imagePart) {
+    return null;
+  }
 
-    const prompt = `Anda adalah sistem verifikasi keuangan sekolah khusus memeriksa bukti transfer bank / m-Banking / e-Wallet / struk ATM pembayaran SPP di Indonesia.
+  const prompt = `Anda adalah sistem verifikasi keuangan sekolah khusus memeriksa bukti transfer bank / m-Banking / e-Wallet / struk ATM pembayaran SPP di Indonesia.
 Analisis gambar ini dengan SANGAT KETAT dan teliti.
 
 TUGAS UTAMA:
@@ -225,21 +290,48 @@ Kembalikan HANYA JSON murni yang valid sesuai format berikut:
   "confidenceNotes": string
 }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            imagePart,
-          ]
+  if (!apiKey) {
+    console.warn("GEMINI_API_KEY tidak ditemukan, beralih ke custom fallback provider.");
+    return await analyzeReceiptWithCustomProvider(imagePart, prompt);
+  }
+
+  try {
+    const ai = getGemini();
+
+    const modelCandidates = ["gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const model of modelCandidates) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                imagePart,
+              ]
+            }
+          ],
+          config: {
+            responseMimeType: "application/json",
+          },
+        });
+        if (response && response.text) {
+          break;
         }
-      ],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[GEMINI SERVER MODEL ${model} FAILED]`, err.message || err.status || err);
+      }
+    }
+
+    if (!response || !response.text) {
+      console.warn("[GEMINI SERVER ALL MODELS FAILED, SWITCHING TO CUSTOM FALLBACK]", lastError);
+      return await analyzeReceiptWithCustomProvider(imagePart, prompt);
+    }
 
     const text = response.text || "";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -248,7 +340,12 @@ Kembalikan HANYA JSON murni yang valid sesuai format berikut:
     console.log("[GEMINI VISION RECEIPT ANALYSIS SUCCESS]", parsed);
     return parsed as ReceiptAnalysisResult;
   } catch (err: any) {
-    console.error("[GEMINI VISION RECEIPT ANALYSIS ERROR]", err);
+    console.error("[GEMINI VISION RECEIPT ANALYSIS ERROR, TRYING CUSTOM FALLBACK]", err);
+    try {
+      return await analyzeReceiptWithCustomProvider(imagePart, prompt);
+    } catch (fbErr) {
+      console.error("[CUSTOM PROVIDER FALLBACK ERROR]", fbErr);
+    }
     return null;
   }
 }

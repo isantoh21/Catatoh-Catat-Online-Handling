@@ -248,37 +248,82 @@ async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: strin
   return null;
 }
 
+async function analyzeReceiptWithCustomProvider(
+  imageInfo: { mimeType: string; base64: string },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  const customBaseUrl = (process.env.CUSTOM_AI_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, "");
+  const customApiKey = process.env.CUSTOM_AI_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng";
+  const customModels = [
+    "gemini/gemini-3.1-flash-lite",
+    "vertex_ai/gemini-3.1-flash-lite",
+    "gemini/gemini-2.5-flash-lite",
+    "vertex_ai/gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite"
+  ];
+
+  for (const model of customModels) {
+    try {
+      console.log(`[CUSTOM AI PROVIDER] Mencoba model fallback: ${model}`);
+      const res = await fetch(`${customBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${customApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${imageInfo.mimeType};base64,${imageInfo.base64}`
+                  }
+                }
+              ]
+            }
+          ],
+          temperature: 0.1
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[CUSTOM AI MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 150));
+        continue;
+      }
+
+      const data: any = await res.json();
+      const text = data.choices?.[0]?.message?.content || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.warn(`[CUSTOM AI MODEL ${model} NO JSON]`, text.slice(0, 150));
+        continue;
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
+      console.log(`[CUSTOM AI PROVIDER SUCCESS] Berhasil dianalisis via model ${model}`);
+      return parsed as ReceiptAnalysisResult;
+    } catch (err: any) {
+      console.warn(`[CUSTOM AI MODEL ${model} ERROR]`, err.message || err);
+    }
+  }
+
+  console.error("[CUSTOM AI PROVIDER ALL MODELS FAILED]");
+  return null;
+}
+
 async function analyzeReceiptWithGemini(
   imageInfo: { mimeType: string; base64: string }, 
   messageCaption?: string,
   customApiKey?: string
 ): Promise<ReceiptAnalysisResult | null> {
-  const apiKey = customApiKey 
-    || process.env.GEMINI_API_KEY 
-    || process.env.VITE_GEMINI_API_KEY 
-    || Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8');
-  if (!apiKey) {
-    return null;
-  }
-
-  try {
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-
-    const imagePart = {
-      inlineData: {
-        mimeType: imageInfo.mimeType,
-        data: imageInfo.base64,
-      }
-    };
-
-    const prompt = `Anda adalah sistem verifikasi keuangan sekolah khusus memeriksa bukti transfer bank / m-Banking / e-Wallet / struk ATM pembayaran SPP di Indonesia.
+  const prompt = `Anda adalah sistem verifikasi keuangan sekolah khusus memeriksa bukti transfer bank / m-Banking / e-Wallet / struk ATM pembayaran SPP di Indonesia.
 Analisis gambar ini dengan SANGAT KETAT dan teliti.
 
 TUGAS UTAMA:
@@ -318,6 +363,31 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
   "confidenceNotes": "..."
 }`;
 
+  const apiKey = customApiKey 
+    || process.env.GEMINI_API_KEY 
+    || process.env.VITE_GEMINI_API_KEY 
+    || Buffer.from('QVEuQWI4Uk42SlZCMjl4WGQ4Y2RIME11RlVkTTVUaUlqZGc2V0huZWs4RUtGeTZEVWo2MUE=', 'base64').toString('utf8');
+  if (!apiKey) {
+    return await analyzeReceiptWithCustomProvider(imageInfo, prompt);
+  }
+
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+
+    const imagePart = {
+      inlineData: {
+        mimeType: imageInfo.mimeType,
+        data: imageInfo.base64,
+      }
+    };
+
     let response;
     const modelCandidates = ["gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
     let lastError: any = null;
@@ -346,7 +416,9 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
     }
 
     if (!response || !response.text) {
-      console.error("[GEMINI VISION ALL MODELS FAILED]", lastError);
+      console.warn("[GEMINI VISION ALL MODELS FAILED, SWITCHING TO CUSTOM FALLBACK PROVIDER]", lastError);
+      const fallbackResult = await analyzeReceiptWithCustomProvider(imageInfo, prompt);
+      if (fallbackResult) return fallbackResult;
       return null;
     }
 
@@ -354,6 +426,8 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn("[GEMINI VISION NO JSON FOUND]", text);
+      const fallbackResult = await analyzeReceiptWithCustomProvider(imageInfo, prompt);
+      if (fallbackResult) return fallbackResult;
       return null;
     }
     const parsed = JSON.parse(jsonMatch[0]);
@@ -361,7 +435,13 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick atau markdown:
     parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
     return parsed as ReceiptAnalysisResult;
   } catch (error) {
-    console.error("[GEMINI VISION ERROR]", error);
+    console.error("[GEMINI VISION ERROR, TRYING CUSTOM PROVIDER]", error);
+    try {
+      const fallbackResult = await analyzeReceiptWithCustomProvider(imageInfo, prompt);
+      if (fallbackResult) return fallbackResult;
+    } catch (fbErr) {
+      console.error("[CUSTOM PROVIDER FALLBACK ERROR]", fbErr);
+    }
     return null;
   }
 }
