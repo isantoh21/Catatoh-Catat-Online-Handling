@@ -206,12 +206,11 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
       }
 
       const statusUrl = uid
-        ? `${functionUrl}?action=status&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=status`;
+        ? `${functionUrl}?action=status&userId=${encodeURIComponent(uid)}&_t=${Date.now()}`
+        : `${functionUrl}?action=status&_t=${Date.now()}`;
 
       const res = await fetch(statusUrl, {
         method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
       });
 
       if (!res.ok) {
@@ -255,7 +254,10 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
     } catch (err: any) {
       if (isMountedRef.current) {
         console.warn('Gagal menghubungi proxy WhatsApp:', err);
-        setErrorMessage(err.message || 'Tidak dapat terhubung ke server gateway');
+        const friendlyMsg = err?.message === 'Failed to fetch'
+          ? 'Sedang menghubungkan ke server gateway...'
+          : err?.message || 'Tidak dapat terhubung ke server gateway';
+        setErrorMessage(friendlyMsg);
       }
       return null;
     }
@@ -273,14 +275,13 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
         uid = session?.user?.id || '';
       }
 
-      // Gunakan query format=base64 agar menerima Data URL langsung tanpa masalah blob revocation
+      // Gunakan query format=base64 & _t agar menerima Data URL langsung tanpa masalah blob revocation
       const qrUrl = uid
-        ? `${functionUrl}?action=qr&format=base64&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=qr&format=base64`;
+        ? `${functionUrl}?action=qr&format=base64&userId=${encodeURIComponent(uid)}&_t=${Date.now()}`
+        : `${functionUrl}?action=qr&format=base64&_t=${Date.now()}`;
 
       const res = await fetch(qrUrl, {
         method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
       });
 
       if (!res.ok) {
