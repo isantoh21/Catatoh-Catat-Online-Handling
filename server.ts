@@ -552,6 +552,18 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       }
     }
 
+    let activeUserGatewayConfig: any = null;
+    if (targetUserId) {
+      try {
+        const { data: userConf } = await serverSupabase
+          .from("user_settings")
+          .select("wa_gateway_config")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+        activeUserGatewayConfig = userConf?.wa_gateway_config;
+      } catch (_) {}
+    }
+
     const verificationRecord: CachedVerification = {
       id: "verif_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
       user_id: targetUserId || undefined,
@@ -611,8 +623,25 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
     if (appkey && authkey && senderPhone) {
       const studentNameStr = matchedStudent ? `ananda ${matchedStudent.nama_lengkap}` : "ananda";
       const bankInfoStr = verificationRecord.bank_pengirim ? ` melalui ${verificationRecord.bank_pengirim}` : "";
-      const nominalStr = verificationRecord.nominal > 0 ? ` sebesar Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
-      const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+      const nominalVal = verificationRecord.nominal > 0 ? `Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
+      const nominalTeks = verificationRecord.nominal > 0 ? ` sebesar ${nominalVal}` : "";
+
+      const customTemplate = activeUserGatewayConfig?.templates?.receiptReceived;
+      let replyMsg: string;
+
+      if (customTemplate) {
+        replyMsg = customTemplate
+          .replace(/\[NAMA_SISWA\]/g, studentNameStr)
+          .replace(/\[BULAN\]/g, detectedBulan || "")
+          .replace(/\[TAHUN\]/g, String(currentYear || new Date().getFullYear()))
+          .replace(/\[NOMINAL\]/g, nominalVal)
+          .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
+          .replace(/\[TANGGAL\]/g, detectedDate)
+          .replace(/\[BANK\]/g, verificationRecord.bank_pengirim || "Bank / E-Wallet");
+      } else {
+        const nominalStr = verificationRecord.nominal > 0 ? ` sebesar Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
+        replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+      }
 
       try {
         const formData = new URLSearchParams();

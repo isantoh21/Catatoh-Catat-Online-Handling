@@ -14,6 +14,8 @@ import PaymentModerationModal from './PaymentModerationModal';
 import { getPaymentVerifications, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
 import { usePremiumStatus } from '../lib/premiumService';
 import PremiumLockModal from './PremiumLockModal';
+import WhatsAppTemplateModal from './WhatsAppTemplateModal';
+import { getWhatsAppTemplates } from '../lib/whatsappTemplates';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -155,14 +157,14 @@ export default function DashboardView() {
         }
 
         // Cek metadata dari database (Supabase Auth) untuk lintas perangkat
-        if (currentUser.user_metadata && currentUser.user_metadata.wa_template) {
-          setWaTemplate(currentUser.user_metadata.wa_template);
-          localStorage.setItem('waTemplate_' + currentUser.id, currentUser.user_metadata.wa_template); // Sync lokal
-        } else {
-          // Fallback ke localStorage jika belum ada di database
-          const savedTemplate = localStorage.getItem('waTemplate_' + currentUser.id);
-          if (savedTemplate) {
-            setWaTemplate(savedTemplate);
+        try {
+          const loadedTemplates = await getWhatsAppTemplates(currentUser.id);
+          if (loadedTemplates?.broadcast) {
+            setWaTemplate(loadedTemplates.broadcast);
+          }
+        } catch (_) {
+          if (currentUser.user_metadata && currentUser.user_metadata.wa_template) {
+            setWaTemplate(currentUser.user_metadata.wa_template);
           }
         }
       }
@@ -2037,57 +2039,14 @@ export default function DashboardView() {
       )}
 
       {/* WA Template Modal */}
-      {isTemplateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Settings className="w-4 h-4 text-indigo-600" />
-                Pengaturan Template WA
-              </h3>
-              <button onClick={() => setIsTemplateModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 text-sm text-slate-600">
-              <p>
-                Gunakan variabel berikut untuk menampilkan data secara otomatis:
-              </p>
-              <ul className="list-disc pl-5 font-mono text-xs text-slate-500 space-y-1">
-                <li><span className="font-bold text-indigo-600">[NAMA_SISWA]</span> : Nama siswa</li>
-                <li><span className="font-bold text-indigo-600">[BULAN]</span> : Bulan tagihan</li>
-                <li><span className="font-bold text-indigo-600">[TAHUN]</span> : Tahun tagihan</li>
-                <li><span className="font-bold text-indigo-600">[NOMINAL]</span> : Nominal tagihan (format Rupiah)</li>
-                <li><span className="font-bold text-indigo-600">[LINK_SPP]</span> : Link kartu SPP orang tua / siswa</li>
-              </ul>
-              
-              <div className="mt-4">
-                <label className="block text-xs font-bold text-slate-700 mb-2">Pesan Template</label>
-                <textarea
-                  value={tempWaTemplate}
-                  onChange={(e) => setTempWaTemplate(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-y min-h-[150px]"
-                  placeholder="Tulis template WA di sini..."
-                ></textarea>
-              </div>
-            </div>
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
-              <button
-                onClick={() => setIsTemplateModalOpen(false)}
-                className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleSaveTemplate}
-                className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
-              >
-                Simpan Template
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WhatsAppTemplateModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        initialTab="broadcast"
+        onSaved={(newTemplates) => {
+          setWaTemplate(newTemplates.broadcast);
+        }}
+      />
 
       {/* Share / Detail Link Kartu SPP Modal */}
       {isShareModalOpen && (

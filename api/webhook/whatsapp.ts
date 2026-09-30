@@ -653,17 +653,19 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      // Cari Kunci Gemini API dari ENV atau database user_settings
+      // Cari Kunci Gemini API dan konfigurasi gateway/template dari database user_settings
       let geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-      if (!geminiApiKey && targetUserId) {
+      let activeUserGatewayConfig: any = null;
+      if (targetUserId) {
         try {
           const { data: userConf } = await serverSupabase
             .from("user_settings")
             .select("wa_gateway_config")
             .eq("user_id", targetUserId)
             .maybeSingle();
-          if (userConf?.wa_gateway_config?.geminiApiKey) {
-            geminiApiKey = userConf.wa_gateway_config.geminiApiKey;
+          activeUserGatewayConfig = userConf?.wa_gateway_config;
+          if (activeUserGatewayConfig?.geminiApiKey && !geminiApiKey) {
+            geminiApiKey = activeUserGatewayConfig.geminiApiKey;
           }
         } catch (_) {}
       }
@@ -819,8 +821,25 @@ export default async function handler(req: any, res: any) {
       // Auto-reply via WhatsApp jika pesan masuk dari nomor valid
       if (senderPhone) {
         const studentNameStr = matchedStudent ? `ananda *${matchedStudent.nama_lengkap}*` : "ananda";
-        const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
-        const replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${detectedBulan}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        const nominalVal = finalNominal > 0 ? `Rp ${finalNominal.toLocaleString("id-ID")}` : "";
+        const nominalTeks = finalNominal > 0 ? ` sebesar *${nominalVal}*` : "";
+
+        const customTemplate = activeUserGatewayConfig?.templates?.receiptReceived;
+        let replyMsg: string;
+
+        if (customTemplate) {
+          replyMsg = customTemplate
+            .replace(/\[NAMA_SISWA\]/g, studentNameStr)
+            .replace(/\[BULAN\]/g, detectedBulan || "")
+            .replace(/\[TAHUN\]/g, String(currentYear || new Date().getFullYear()))
+            .replace(/\[NOMINAL\]/g, nominalVal)
+            .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
+            .replace(/\[TANGGAL\]/g, detectedDate)
+            .replace(/\[BANK\]/g, verificationPayload.bank_pengirim || "Bank / E-Wallet");
+        } else {
+          const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
+          replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${detectedBulan}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        }
 
         // Kirim auto-reply langsung via Gateway VPS menggunakan sesi yang sesuai
         try {

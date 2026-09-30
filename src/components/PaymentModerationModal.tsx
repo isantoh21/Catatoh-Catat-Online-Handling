@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, XCircle, Clock, Search, Filter, MessageSquare, 
   ExternalLink, ZoomIn, RefreshCw, AlertCircle, Sparkles, Send,
-  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2, Crown
+  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2, Crown, Settings
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
@@ -17,6 +17,14 @@ import {
   clearLocalVerifications,
   isRealTransferReceipt
 } from '../lib/whatsappGateway';
+import WhatsAppTemplateModal from './WhatsAppTemplateModal';
+import { 
+  WhatsAppTemplates, 
+  DEFAULT_TEMPLATES, 
+  getWhatsAppTemplates, 
+  formatReceiptApprovedMessage, 
+  formatReceiptRejectedMessage 
+} from '../lib/whatsappTemplates';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -61,6 +69,9 @@ export default function PaymentModerationModal({
 
   const { isPremium, loading: premiumLoading } = usePremiumStatus();
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [templates, setTemplates] = useState<WhatsAppTemplates>(DEFAULT_TEMPLATES);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templateModalInitialTab, setTemplateModalInitialTab] = useState<'broadcast' | 'receiptReceived' | 'receiptApproved' | 'receiptRejected'>('receiptApproved');
 
   useEffect(() => {
     if (isOpen && isPremium) {
@@ -74,8 +85,12 @@ export default function PaymentModerationModal({
     const uid = session?.user?.id;
     if (uid) setCurrentUserId(uid);
 
-    const items = await getPaymentVerifications(uid);
+    const [items, loadedTemplates] = await Promise.all([
+      getPaymentVerifications(uid),
+      getWhatsAppTemplates(uid)
+    ]);
     setVerifications(items);
+    setTemplates(loadedTemplates);
     setLoading(false);
   };
 
@@ -140,7 +155,14 @@ export default function PaymentModerationModal({
       let waMsg = '';
 
       if (targetPhone) {
-        const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${Number(item.nominal).toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
+        const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
+          studentName,
+          bulan: item.bulan,
+          tahun: item.tahun,
+          nominal: item.nominal,
+          tanggal: tanggalBayar,
+          bank: item.bank_pengirim
+        });
 
         try {
           const config = await getWhatsAppGatewayConfig(uid);
@@ -201,7 +223,14 @@ export default function PaymentModerationModal({
         return;
       }
 
-      const approvalMsg = `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅\n\nAlhamdulillah, pembayaran SPP ananda *${studentName}* untuk bulan *${item.bulan} ${item.tahun}* sebesar *Rp ${Number(item.nominal).toLocaleString('id-ID')}* telah diverifikasi dan dicatat *LUNAS*.\n\nTerima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`;
+      const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
+        studentName,
+        bulan: item.bulan,
+        tahun: item.tahun,
+        nominal: item.nominal,
+        tanggal: item.tanggal_transfer,
+        bank: item.bank_pengirim
+      });
 
       const config = await getWhatsAppGatewayConfig(uid);
       const sendRes = await sendWhatsAppMessage({
@@ -268,7 +297,13 @@ export default function PaymentModerationModal({
       const rejectStudentName = rejectTargetStudent?.nama_lengkap || rejectingItem.student_name || 'Siswa';
 
       if (targetPhone) {
-        const rejectMsg = `*PEMBERITAHUAN VERIFIKASI SPP* ⚠️\n\nHalo Ayah/Bunda, mohon maaf bukti pembayaran SPP ananda *${rejectStudentName}* belum dapat kami verifikasi dengan alasan:\n\n👉 *${finalReason}*\n\nMohon mengirimkan ulang foto struk transfer yang jelas atau konfirmasi kembali ke pihak tata usaha. Terima kasih.`;
+        const rejectMsg = formatReceiptRejectedMessage(templates.receiptRejected, {
+          studentName: rejectStudentName,
+          reason: finalReason,
+          bulan: rejectingItem.bulan,
+          tahun: rejectingItem.tahun,
+          nominal: rejectingItem.nominal
+        });
 
         try {
           const config = await getWhatsAppGatewayConfig(uid);
@@ -578,6 +613,18 @@ export default function PaymentModerationModal({
                 <span className="hidden sm:inline">Kosongkan Antrean</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                setTemplateModalInitialTab('receiptApproved');
+                setIsTemplateModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer border border-white/20"
+              title="Edit susunan template pesan WA resi masuk, disetujui, dan ditolak"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden md:inline">Template Pesan Resi</span>
+            </button>
             <button
               onClick={() => setIsSimulateModalOpen(true)}
               className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -1189,6 +1236,14 @@ export default function PaymentModerationModal({
           </div>
         </div>
       )}
+
+      {/* Modal Pengaturan Template WA */}
+      <WhatsAppTemplateModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        initialTab={templateModalInitialTab}
+        onSaved={(newTemplates) => setTemplates(newTemplates)}
+      />
     </div>
   );
 }
