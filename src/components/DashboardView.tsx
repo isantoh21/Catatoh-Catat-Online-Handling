@@ -6,7 +6,7 @@ import {
   Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, 
   CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, 
   Building2, Copy, MessageSquare, Play, Pause, AlertTriangle, AlertCircle, XCircle, 
-  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert, Crown
+  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
@@ -23,7 +23,7 @@ const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i)
 
 export default function DashboardView() {
   const navigate = useNavigate();
-  const { isPremium, details: subDetails } = usePremiumStatus();
+  const { isPremium } = usePremiumStatus();
   const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -957,65 +957,6 @@ export default function DashboardView() {
             {currentSchoolName ? `Monitor dan kelola pembayaran siswa • ${currentSchoolName}` : 'Monitor dan catat pembayaran bulanan siswa'}
           </p>
         </div>
-      </div>
-
-      {/* Banner Status Akun & Masa Aktif Sekolah */}
-      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs transition-all ${
-        isPremium 
-          ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border-amber-400/40 text-slate-800'
-          : 'bg-indigo-50/60 border-indigo-100 text-indigo-950'
-      }`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shadow-xs shrink-0 ${
-            isPremium
-              ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 shadow-amber-500/20'
-              : 'bg-indigo-600 text-white shadow-indigo-600/20'
-          }`}>
-            <Crown className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Paket Akun:</span>
-              <span className={`text-xs font-black px-2 py-0.5 rounded-full border ${
-                isPremium ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-indigo-100 text-indigo-900 border-indigo-200'
-              }`}>
-                {isPremium ? `PREMIUM ⭐ (${subDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'})` : 'STANDAR (FREE)'}
-              </span>
-            </div>
-            <div className="text-xs mt-0.5 flex flex-wrap items-center gap-1.5 text-slate-600 font-medium">
-              <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-              <span>Masa Aktif:</span>
-              <strong className="text-slate-800 font-bold">
-                {isPremium ? (
-                  subDetails?.expiresAt ? (
-                    `s/d ${new Date(subDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
-                  ) : (
-                    'VIP Lifetime (Permanen)'
-                  )
-                ) : (
-                  'Maksimal 100 Siswa (Free)'
-                )}
-              </strong>
-              {isPremium && subDetails?.daysRemaining !== null && subDetails?.expiresAt && (
-                <span className={`font-bold ${subDetails.isExpiringSoon ? 'text-rose-600' : 'text-emerald-700'}`}>
-                  ({subDetails.daysRemaining > 0 ? `Sisa ${subDetails.daysRemaining} hari lagi` : 'Masa aktif berakhir'})
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => navigate('/pengaturan')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs ${
-            isPremium
-              ? 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300/80'
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
-          }`}
-        >
-          <span>{isPremium ? 'Kelola Masa Aktif' : 'Tingkatkan ke Premium'}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
