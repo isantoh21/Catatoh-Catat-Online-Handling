@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle, ExternalLink, RefreshCw, Search, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -36,8 +37,22 @@ export default function ReportsView() {
   const [duplicateModal, setDuplicateModal] = useState<{isOpen: boolean, duplicates: any[]}>({isOpen: false, duplicates: []});
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
+  // Modal Siswa Belum Lunas
+  const navigate = useNavigate();
+  const [isUnpaidModalOpen, setIsUnpaidModalOpen] = useState(false);
+  const [unpaidSearchQuery, setUnpaidSearchQuery] = useState('');
+  const [unpaidFilterKelompok, setUnpaidFilterKelompok] = useState('Semua Kelompok');
+
   useEffect(() => {
     fetchData();
+
+    // Listen to real-time changes on students table so student count is always synchronized
+    const studentsChannel = supabase
+      .channel('realtime-reports-students')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        fetchData();
+      })
+      .subscribe();
 
     const paymentsChannel = supabase
       .channel('realtime-reports-payments')
@@ -60,10 +75,17 @@ export default function ReportsView() {
       })
       .subscribe();
 
+    const handleFocus = () => {
+      fetchData();
+    };
+    window.addEventListener('focus', handleFocus);
+
     return () => {
+      supabase.removeChannel(studentsChannel);
       supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(expensesChannel);
       supabase.removeChannel(otherIncomesChannel);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [selectedTahun]); // Re-fetch all data for the year when year changes
 
@@ -79,12 +101,14 @@ export default function ReportsView() {
       return;
     }
 
-    // Fetch active students for metrics
+    // Fetch active students for metrics (select all fields including kelompok & no. WA)
     const { data: studentsData } = await supabase
       .from('students')
-      .select('id, nama_lengkap, nominal_spp')
+      .select('id, nama_lengkap, nominal_spp, kelompok, nomor_whatsapp')
       .eq('user_id', currentUser.id)
-      .eq('status_aktif', true);
+      .eq('status_aktif', true)
+      .order('nama_lengkap', { ascending: true })
+      .range(0, 4999);
       
     if (studentsData) setStudents(studentsData);
 
@@ -93,7 +117,8 @@ export default function ReportsView() {
       .from('payments')
       .select('*, students(nama_lengkap, kelompok)')
       .eq('user_id', currentUser.id)
-      .eq('tahun', parseInt(selectedTahun));
+      .eq('tahun', parseInt(selectedTahun))
+      .range(0, 9999);
       
     if (paymentsData) setPayments(paymentsData);
 
@@ -184,10 +209,42 @@ export default function ReportsView() {
   const totalPengeluaran = monthlyExpenses.reduce((sum, e) => sum + Number(e.nominal), 0);
   const labaRugi = totalPemasukan - totalPengeluaran;
 
-  const totalLunas = monthlyPayments.length;
-  const totalBelumLunas = selectedBulan === 'Semua Bulan' 
-    ? (students.length * 12) - totalLunas 
-    : students.length - totalLunas;
+  // Sinkronisasi status siswa Lunas & Belum Lunas berbasis siswa aktif (100% sinkron dengan Dashboard)
+  const isStudentLunas = (studentId: string, bulan: string) => 
+    payments.some(p => p.student_id === studentId && p.bulan === bulan);
+
+  const lunasStudents = selectedBulan === 'Semua Bulan'
+    ? students.filter(s => {
+        const paidMonths = new Set(payments.filter(p => p.student_id === s.id).map(p => p.bulan));
+        return paidMonths.size === 12;
+      })
+    : students.filter(s => isStudentLunas(s.id, selectedBulan));
+
+  const belumLunasStudents = selectedBulan === 'Semua Bulan'
+    ? students.filter(s => {
+        const paidMonths = new Set(payments.filter(p => p.student_id === s.id).map(p => p.bulan));
+        return paidMonths.size < 12;
+      })
+    : students.filter(s => !isStudentLunas(s.id, selectedBulan));
+
+  const totalLunas = lunasStudents.length;
+  const totalBelumLunas = belumLunasStudents.length;
+
+  const totalTagihanBelumLunas = selectedBulan === 'Semua Bulan'
+    ? Math.max(0, (students.length * 12) - payments.filter(p => students.some(s => s.id === p.student_id)).length)
+    : totalBelumLunas;
+
+  const uniqueKelompokList = Array.from(new Set(students.map(s => s.kelompok).filter(Boolean)));
+
+  const filteredUnpaidStudents = belumLunasStudents.filter(s => {
+    const matchKelompok = unpaidFilterKelompok === 'Semua Kelompok' || s.kelompok === unpaidFilterKelompok;
+    const matchSearch = !unpaidSearchQuery.trim() || 
+      s.nama_lengkap.toLowerCase().includes(unpaidSearchQuery.toLowerCase()) ||
+      (s.nomor_whatsapp && s.nomor_whatsapp.includes(unpaidSearchQuery));
+    return matchKelompok && matchSearch;
+  });
+
+  const totalNominalTunggakan = filteredUnpaidStudents.reduce((sum, s) => sum + Number(s.nominal_spp || 100000), 0);
 
   const transactions = monthlyPayments.map(p => ({
     nama_lengkap: p.students?.nama_lengkap || 'Unknown',
@@ -467,24 +524,33 @@ export default function ReportsView() {
                   <TableIcon className="w-4 h-4" /> Export Excel (CSV)
                 </button>
               </div>
-              <div className="flex justify-end gap-4">
-              <select 
-                value={selectedBulan}
-                onChange={e => setSelectedBulan(e.target.value)}
-                className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm"
-              >
-                <option value="Semua Bulan">Semua Bulan</option>
-                {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-              <select 
-                value={selectedTahun}
-                onChange={e => setSelectedTahun(e.target.value)}
-                className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm"
-              >
-                {YEAR_OPTIONS.map(y => (
-                  <option key={y} value={y.toString()}>{y}</option>
-                ))}
-              </select>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  onClick={fetchData}
+                  disabled={loading}
+                  className="px-3 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                  title="Sinkronkan Data Laporan"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+                  <span>Sinkronkan</span>
+                </button>
+                <select 
+                  value={selectedBulan}
+                  onChange={e => setSelectedBulan(e.target.value)}
+                  className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
+                >
+                  <option value="Semua Bulan">Semua Bulan</option>
+                  {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <select 
+                  value={selectedTahun}
+                  onChange={e => setSelectedTahun(e.target.value)}
+                  className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
+                >
+                  {YEAR_OPTIONS.map(y => (
+                    <option key={y} value={y.toString()}>{y}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -500,12 +566,24 @@ export default function ReportsView() {
                 <p className="text-3xl font-black text-slate-800">{formatRupiah(totalPemasukan)}</p>
                 <div className="mt-4 flex flex-col gap-1.5">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-500">SPP ({totalLunas} Lunas):</span>
+                    <span className="text-slate-500">SPP ({totalLunas} Siswa Lunas):</span>
                     <span className="text-emerald-600">{formatRupiah(totalPemasukanSpp)}</span>
                   </div>
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-rose-500">Belum Lunas:</span>
-                    <span className="text-rose-600">{totalBelumLunas} Siswa</span>
+                  <div 
+                    onClick={() => setIsUnpaidModalOpen(true)}
+                    className="flex justify-between text-xs font-bold p-1.5 -mx-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors group"
+                    title="Klik untuk melihat daftar lengkap siswa yang belum lunas"
+                  >
+                    <span className="text-rose-500 flex items-center gap-1 group-hover:underline">
+                      Belum Lunas:
+                    </span>
+                    <span className="text-rose-600 flex items-center gap-1.5">
+                      <span>
+                        {totalBelumLunas} Siswa
+                        {selectedBulan === 'Semua Bulan' ? ` (${totalTagihanBelumLunas} Tagihan)` : ''}
+                      </span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                    </span>
                   </div>
                   <div className="flex justify-between text-xs font-bold">
                     <span className="text-slate-500">Lainnya:</span>
@@ -785,6 +863,152 @@ export default function ReportsView() {
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Rincian Siswa Belum Lunas */}
+      {isUnpaidModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-rose-50 to-orange-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+                  <UserMinus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <span>Siswa Belum Lunas SPP</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                      {belumLunasStudents.length} Siswa
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Periode: <b>{selectedBulan} {selectedTahun}</b> • Estimasi Belum Terbayar: <b className="text-rose-600">{formatRupiah(totalNominalTunggakan)}</b>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsUnpaidModalOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nama siswa atau no. WA..."
+                  value={unpaidSearchQuery}
+                  onChange={e => setUnpaidSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium"
+                />
+              </div>
+              <select
+                value={unpaidFilterKelompok}
+                onChange={e => setUnpaidFilterKelompok(e.target.value)}
+                className="px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 font-semibold text-slate-700 bg-slate-50"
+              >
+                <option value="Semua Kelompok">Semua Kelompok ({uniqueKelompokList.length})</option>
+                {uniqueKelompokList.map(k => (
+                  <option key={k as string} value={k as string}>{k as string}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Table */}
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
+              {filteredUnpaidStudents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
+                    <CheckCircle2 className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800">
+                    {unpaidSearchQuery || unpaidFilterKelompok !== 'Semua Kelompok' 
+                      ? 'Tidak ada siswa yang cocok dengan filter' 
+                      : `Semua siswa sudah lunas untuk periode ${selectedBulan} ${selectedTahun}!`}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {unpaidSearchQuery || unpaidFilterKelompok !== 'Semua Kelompok'
+                      ? 'Coba ubah kata kunci pencarian atau pilihan kelompok.'
+                      : 'Luar biasa! Tidak ada tagihan SPP yang menunggak pada periode ini.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+                      <tr>
+                        <th className="px-4 py-3 text-center w-12">No</th>
+                        <th className="px-4 py-3">Nama Siswa</th>
+                        <th className="px-4 py-3 text-center">Kelompok</th>
+                        <th className="px-4 py-3 text-right">Tagihan SPP</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredUnpaidStudents.map((s, idx) => (
+                        <tr key={s.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="px-4 py-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-800">{s.nama_lengkap}</p>
+                            {s.nomor_whatsapp && (
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">{s.nomor_whatsapp}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
+                              {s.kelompok || '-'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-slate-800">
+                            {formatRupiah(s.nominal_spp || 100000)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                              Belum Lunas
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-500">
+                Menampilkan <b>{filteredUnpaidStudents.length}</b> dari <b>{belumLunasStudents.length}</b> siswa belum lunas
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUnpaidModalOpen(false);
+                    navigate('/');
+                  }}
+                  className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka di Menu Pembayaran SPP</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsUnpaidModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>
