@@ -75,9 +75,13 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; text: string } | null>(null);
   const [showTools, setShowTools] = useState<boolean>(false);
 
-  // References for polling interval & blob URL cleanup
+  // References for polling interval & data URL stability
   const pollTimerRef = useRef<number | null>(null);
   const prevBlobUrlRef = useRef<string | null>(null);
+  const prevBase64Ref = useRef<string | null>(null);
+  const lastQrFetchTimeRef = useRef<number>(0);
+  const isFetchingQrRef = useRef<boolean>(false);
+  const [qrLoadError, setQrLoadError] = useState<boolean>(false);
   const isMountedRef = useRef<boolean>(true);
   const hasAutoRegisteredWebhookRef = useRef<boolean>(false);
 
@@ -178,14 +182,17 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
     loadSettings();
   }, [activeUserId]);
 
-  // Helper untuk membersihkan Object URL sebelumnya agar tidak memory leak
+  // Helper untuk membersihkan data URL & Object URL sebelumnya agar tidak memory leak
   const clearQrImage = () => {
+    prevBase64Ref.current = null;
+    lastQrFetchTimeRef.current = 0;
     if (prevBlobUrlRef.current) {
       URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = null;
     }
     if (isMountedRef.current) {
       setQrImageUrl(null);
+      setQrLoadError(false);
     }
   };
 
@@ -254,8 +261,11 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
     }
   }, [activeUserId, functionUrl, onStatusChange, registerWebhookSilently]);
 
-  // 2. Fetch QR Code Image (Blob)
+  // 2. Fetch QR Code Image (Base64 / Data URL)
   const fetchQrCode = useCallback(async () => {
+    if (isFetchingQrRef.current) return;
+    isFetchingQrRef.current = true;
+
     try {
       let uid = activeUserId;
       if (!uid) {
@@ -263,9 +273,10 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
         uid = session?.user?.id || '';
       }
 
+      // Gunakan query format=base64 agar menerima Data URL langsung tanpa masalah blob revocation
       const qrUrl = uid
-        ? `${functionUrl}?action=qr&userId=${encodeURIComponent(uid)}`
-        : `${functionUrl}?action=qr`;
+        ? `${functionUrl}?action=qr&format=base64&userId=${encodeURIComponent(uid)}`
+        : `${functionUrl}?action=qr&format=base64`;
 
       const res = await fetch(qrUrl, {
         method: 'GET',
@@ -273,26 +284,50 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
       });
 
       if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        if (errJson?.error === 'QR_NOT_READY') {
+          console.log('[QR] Menunggu gateway siap menerbitkan QR...');
+        } else {
+          console.warn('[QR] Gagal fetch QR:', res.status, errJson);
+        }
         return;
       }
 
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('application/json')) {
+        const json = await res.json().catch(() => null);
+        if (json?.success && json?.qrImageUrl && isMountedRef.current) {
+          if (json.qrImageUrl !== prevBase64Ref.current) {
+            prevBase64Ref.current = json.qrImageUrl;
+            setQrImageUrl(json.qrImageUrl);
+          }
+          setQrLoadError(false);
+          return;
+        }
+      }
+
+      // Fallback: jika edge function mengembalikan raw image blob
       const blob = await res.blob();
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || blob.size < 50) return;
 
-      if (blob.size < 50) {
-        return;
-      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Url = reader.result as string;
+        if (base64Url && isMountedRef.current) {
+          if (base64Url !== prevBase64Ref.current) {
+            prevBase64Ref.current = base64Url;
+            setQrImageUrl(base64Url);
+          }
+          setQrLoadError(false);
+        }
+      };
+      reader.readAsDataURL(blob);
 
-      // Hapus URL blob sebelumnya
-      if (prevBlobUrlRef.current) {
-        URL.revokeObjectURL(prevBlobUrlRef.current);
-      }
-
-      const newUrl = URL.createObjectURL(blob);
-      prevBlobUrlRef.current = newUrl;
-      setQrImageUrl(newUrl);
     } catch (err) {
       console.warn('Gagal memuat gambar QR:', err);
+    } finally {
+      isFetchingQrRef.current = false;
     }
   }, [activeUserId, functionUrl]);
 
@@ -306,7 +341,12 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
       const currentStatus = await fetchStatus();
 
       if (currentStatus === 'SCAN_QR_CODE') {
-        await fetchQrCode();
+        const now = Date.now();
+        // Ambil QR jika belum ada gambar, atau setiap 15 detik jika belum terscan
+        if (!prevBase64Ref.current || (now - lastQrFetchTimeRef.current >= 15000)) {
+          lastQrFetchTimeRef.current = now;
+          await fetchQrCode();
+        }
         if (isMountedRef.current) {
           pollTimerRef.current = window.setTimeout(poll, 2500);
         }
@@ -362,6 +402,7 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
   const handleStart = async (forceReset = false) => {
     setIsStarting(true);
     setErrorMessage(null);
+    setQrLoadError(false);
     clearQrImage();
 
     try {
@@ -371,7 +412,8 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
         uid = session?.user?.id || '';
       }
 
-      const action = forceReset ? 'reset' : 'start';
+      // Gunakan action restart jika user me-reset sesi agar credential lama dibersihkan dan sesi langsung dinyalakan
+      const action = forceReset ? 'restart' : 'start';
       const startUrl = uid
         ? `${functionUrl}?action=${action}&userId=${encodeURIComponent(uid)}`
         : `${functionUrl}?action=${action}`;
@@ -383,11 +425,12 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
+      if (!res.ok && !data.status) {
         throw new Error(data.message || data.error || 'Gagal memulai sesi WhatsApp');
       }
 
       setStatus(data.status || 'STARTING');
+      lastQrFetchTimeRef.current = 0; // Segera fetch QR begitu status SCAN_QR_CODE
       startPolling();
     } catch (err: any) {
       if (isMountedRef.current) {
@@ -714,15 +757,43 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
 
             {/* QR Image Container */}
             <div className="relative p-4 bg-white rounded-2xl shadow-md border border-slate-200">
-              {qrImageUrl ? (
+              {qrLoadError ? (
+                <div className="w-64 h-64 sm:w-72 sm:h-72 flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-xl p-4 text-center space-y-3">
+                  <AlertCircle className="w-10 h-10 text-rose-500 animate-bounce" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-rose-800">
+                      Gagal Memuat Gambar QR
+                    </p>
+                    <p className="text-[11px] text-rose-600 leading-tight">
+                      Server gateway sedang menyiapkan kode QR baru atau koneksi terputus.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQrLoadError(false);
+                      lastQrFetchTimeRef.current = 0;
+                      fetchQrCode();
+                    }}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Coba Lagi</span>
+                  </button>
+                </div>
+              ) : qrImageUrl ? (
                 <div className="relative group">
                   <img
                     src={qrImageUrl}
                     alt="WhatsApp QR Code"
-                    className="w-64 h-64 sm:w-72 sm:h-72 object-contain rounded-xl"
+                    onError={() => {
+                      console.warn('QR image failed to load, triggering error state');
+                      setQrLoadError(true);
+                    }}
+                    className="w-64 h-64 sm:w-72 sm:h-72 object-contain rounded-xl select-none"
                   />
                   <div className="absolute top-2 right-2">
-                    <span className="flex h-3 w-3 relative">
+                    <span className="flex h-3 w-3 relative" title="Kode QR aktif & siap dipindai">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                     </span>
@@ -741,14 +812,14 @@ export const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({
                 type="button"
                 onClick={() => handleStart(true)}
                 disabled={isStarting}
-                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isStarting ? 'animate-spin' : ''}`} />
                 <span>Perbarui / Terbitkan Kode QR Baru</span>
               </button>
               <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-                <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                <span>Kode QR dan status diperbarui otomatis setiap 2.5 detik</span>
+                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                <span>Status otomatis terhubung saat kode QR berhasil dipindai dari ponsel</span>
               </div>
             </div>
           </div>

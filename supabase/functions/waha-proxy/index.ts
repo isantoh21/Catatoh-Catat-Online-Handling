@@ -110,8 +110,8 @@ Deno.serve(async (req: Request) => {
       return null;
     };
 
-    // 1. Action: start, restart, logout, or reset
-    if (action === 'logout' || action === 'reset') {
+    // 1. Action: logout
+    if (action === 'logout') {
       try {
         const logoutRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
           method: 'POST',
@@ -144,45 +144,24 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (action === 'start' || action === 'restart') {
-      const existingSession = await fetchCurrentSession(sessionName);
+    // Action: start, restart, or reset
+    if (action === 'start' || action === 'restart' || action === 'reset') {
+      let existingSession = await fetchCurrentSession(sessionName);
 
-      // Jika session FAILED (misal di-logout dari HP) atau action adalah explicit restart:
-      // Panggil WAHA /logout agar auth credentials lama dibersihkan dan kode QR baru langsung diterbitkan
-      if (action === 'restart' || existingSession?.status === 'FAILED') {
+      // Jika restart / reset, atau session berstatus FAILED:
+      // Bersihkan sesi lama dengan logout terlebih dahulu agar WAHA membersihkan state auth yang korup
+      if (action === 'restart' || action === 'reset' || existingSession?.status === 'FAILED') {
         try {
-          const cleanLogoutRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
+          await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
             method: 'POST',
             headers: { 'X-Api-Key': WAHA_API_KEY },
           });
-
-          if (cleanLogoutRes.ok) {
-            const restartData = await cleanLogoutRes.text();
-            return new Response(restartData, {
-              status: 200,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-              },
-            });
-          }
         } catch (e) {
-          console.warn('Logout fallback error:', e);
+          console.warn('Logout cleanup notice:', e);
         }
-
-        // Fallback jika logout gagal
-        const restartRes = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/restart`, {
-          method: 'POST',
-          headers: { 'X-Api-Key': WAHA_API_KEY },
-        });
-
-        if (restartRes.ok) {
-          const restartData = await restartRes.text();
-          return new Response(restartData, {
-            status: restartRes.status,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
+        // Beri jeda kecil agar WAHA selesai me-reset state
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        existingSession = await fetchCurrentSession(sessionName);
       }
 
       // If session does not exist yet, create it
@@ -221,22 +200,23 @@ Deno.serve(async (req: Request) => {
 
       let resData = await startRes.json().catch(() => null);
 
-      // If start resulted in FAILED or error, fallback to clean logout
-      if (!startRes.ok || resData?.status === 'FAILED') {
-        const fallbackLogout = await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/logout`, {
-          method: 'POST',
-          headers: {
-            'X-Api-Key': WAHA_API_KEY,
-          },
-        });
-        const fallbackText = await fallbackLogout.text();
-        return new Response(fallbackText, {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        });
+      if (!startRes.ok) {
+        // Cek apakah sebenarnya session sudah berjalan
+        const checkSess = await fetchCurrentSession(sessionName);
+        if (checkSess && (checkSess.status === 'STARTING' || checkSess.status === 'SCAN_QR_CODE' || checkSess.status === 'WORKING')) {
+          return new Response(JSON.stringify(checkSess), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(
+          JSON.stringify(resData || { error: 'Gagal memulai sesi WhatsApp' }),
+          {
+            status: startRes.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
       }
 
       return new Response(JSON.stringify(resData), {
@@ -296,22 +276,61 @@ Deno.serve(async (req: Request) => {
       });
 
       if (!qrRes.ok) {
-        const errorText = await qrRes.text();
-        return new Response(errorText, {
-          status: qrRes.status,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        });
+        const errorText = await qrRes.text().catch(() => '');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            status: qrRes.status,
+            error: 'QR_NOT_READY',
+            message: 'Kode QR belum siap atau sesi sedang dipersiapkan. Coba lagi dalam beberapa detik.',
+            details: errorText
+          }),
+          {
+            status: qrRes.status,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+          }
+        );
       }
 
       const qrBuffer = await qrRes.arrayBuffer();
+      const contentType = qrRes.headers.get('content-type') || 'image/png';
+
+      // Dukungan format base64 / json agar frontend tidak bergantung pada pemrosesan blob lokal
+      const requestedFormat = url.searchParams.get('format');
+      if (requestedFormat === 'base64' || requestedFormat === 'json') {
+        const bytes = new Uint8Array(qrBuffer);
+        let binary = '';
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
+        const dataUrl = `data:${contentType};base64,${b64}`;
+        return new Response(
+          JSON.stringify({
+            success: true,
+            qrImageUrl: dataUrl,
+          }),
+          {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+          }
+        );
+      }
+
       return new Response(qrBuffer, {
         status: 200,
         headers: {
           ...corsHeaders,
-          'Content-Type': 'image/png',
+          'Content-Type': contentType,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         },
       });
