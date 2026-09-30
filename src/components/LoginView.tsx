@@ -661,7 +661,7 @@ export default function LoginView({
                 rel="noopener noreferrer" 
                 className="font-semibold text-emerald-600 underline hover:text-emerald-700 transition-colors"
               >
-                WhatsApp (0853-4736-0359)
+                WhatsApp
               </a>
               .
             </p>
@@ -745,7 +745,7 @@ export default function LoginView({
                 className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4 fill-white text-transparent" />
-                <span>Konfirmasi via WhatsApp (0853-4736-0359)</span>
+                <span>Konfirmasi Pembayaran via WhatsApp</span>
               </a>
 
               {/* Tombol Lanjut ke Dashboard */}
