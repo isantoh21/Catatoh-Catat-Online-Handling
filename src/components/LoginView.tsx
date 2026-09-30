@@ -21,6 +21,19 @@ import {
 import { INDONESIAN_CITIES } from '../data/cities';
 import { supabase } from '../lib/supabaseClient';
 
+interface FeatureUseCase {
+  id: string;
+  title: string;
+  badge: string;
+  desc: string;
+  icon: React.ReactNode;
+  useCase: string;
+  beforeApp: string;
+  afterApp: string;
+  impactMetric: string;
+  impactDesc: string;
+}
+
 export default function LoginView({ 
     onLogin, 
     schoolName = 'CATATOH', 
@@ -38,6 +51,9 @@ export default function LoginView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  // Modal Use Case Pop-up State
+  const [selectedFeatureModal, setSelectedFeatureModal] = useState<FeatureUseCase | null>(null);
 
   // Register Tier & Subscription Selection
   const [selectedTier, setSelectedTier] = useState<'free' | 'premium'>('free');
@@ -132,43 +148,85 @@ export default function LoginView({
     }
   };
 
-  const FEATURES_LIST = [
+  const FEATURES_LIST: FeatureUseCase[] = [
     {
-      icon: <ScanFace className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />,
+      id: 'face',
       title: 'Presensi Biometrik Wajah AI',
-      desc: 'Scan wajah siswa & guru tanpa sentuh dalam 1 detik anti-curang, terikat radius GPS sekolah, dan rekap bulanan otomatis siap cetak PDF.'
+      badge: 'Face Recognition Anti-Curang',
+      desc: 'Scan wajah siswa & guru tanpa sentuh dalam 1 detik anti-curang, terikat radius GPS sekolah, dan rekap bulanan otomatis siap cetak PDF.',
+      icon: <ScanFace className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />,
+      useCase: 'Perangkat tablet atau smartphone dipasang di gerbang masuk atau meja piket sekolah. Siswa dan guru cukup berdiri di depan kamera selama 1 detik, sistem langsung mencatat kehadiran secara akurat tanpa perlu menyentuh perangkat.',
+      beforeApp: 'Antrean panjang setiap pagi di meja piket, buku presensi kertas rentan hilang atau rusak, sering terjadi praktik titip absen antar teman/staf, dan tata usaha harus mengetik ulang rekapan ratusan lembar absensi di akhir bulan.',
+      afterApp: 'AI Face Recognition memvalidasi kontur biometrik wajah dalam 1 detik, memastikan siswa berada tepat di dalam radius GPS sekolah, bebas kecurangan titip absen, dan rekap persentase kehadiran bulanan otomatis siap cetak PDF.',
+      impactMetric: '1 Detik',
+      impactDesc: 'Kecepatan validasi kehadiran per siswa'
     },
     {
-      icon: <MessageCircle className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />,
+      id: 'wa',
       title: 'WhatsApp Gateway Otomatis & Anti-Ban',
-      desc: 'Notifikasi kehadiran real-time ke nomor orang tua saat anak tiba/pulang, serta reminder tagihan SPP massal sekali klik dengan proteksi Anti-Banned.'
+      badge: 'Notifikasi Otomatis & Reminder SPP Massal',
+      desc: 'Notifikasi kehadiran real-time ke nomor orang tua saat anak tiba/pulang, serta reminder tagihan SPP massal sekali klik dengan proteksi Anti-Banned.',
+      icon: <MessageCircle className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />,
+      useCase: 'Begitu siswa terdeteksi scan masuk atau pulang, pesan WhatsApp resmi otomatis terkirim ke ponsel orang tua. Di awal bulan, bendahara cukup menekan 1 tombol untuk mengirimkan tagihan SPP massal ke seluruh wali murid.',
+      beforeApp: 'Guru dan bendahara sungkan atau canggung saat harus menagih biaya SPP secara manual satu per satu via chat pribadi, proses ketik ratusan pesan sangat melelahkan, dan nomor WhatsApp sekolah sering terblokir (banned) akibat copy-paste pesan berulang.',
+      afterApp: 'Sistem cloud mengirimkan tagihan resmi secara terstruktur dengan jeda acak dinamis (Anti-Banned Protection) menyerupai ketikan manusia. Orang tua menerima rincian tunggakan personal, meningkatkan kepatuhan bayar tepat waktu.',
+      impactMetric: '85%+',
+      impactDesc: 'Kenaikan kepatuhan pelunasan SPP tepat waktu'
     },
     {
-      icon: <Wallet className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />,
+      id: 'finance',
       title: 'Pencatatan SPP, Uang Gedung & Buku Kas',
-      desc: 'Sentralisasi pembukuan SPP, infak, tabungan, dan kas masuk/keluar sekolah dengan filter kelas instan serta cetak kuitansi PDF resmi.'
+      badge: 'Sentralisasi Arus Kas & Multi-Pos Biaya',
+      desc: 'Sentralisasi pembukuan SPP, infak, tabungan, dan kas masuk/keluar sekolah dengan filter kelas instan serta cetak kuitansi PDF resmi.',
+      icon: <Wallet className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />,
+      useCase: 'Bendahara dan kepala sekolah mengelola pos SPP bulanan, uang pangkal/gedung, tabungan siswa, dan kas operasional harian dalam satu layar terpusat yang selalu tersinkronisasi.',
+      beforeApp: 'Pencatatan tersebar di puluhan lembar buku tulis dan file Excel terpisah yang versinya sering bentrok antar staf, sering terjadi selisih uang kas fisik dengan catatan buku, serta rekap tahunan memakan waktu berminggu-minggu.',
+      afterApp: 'Semua aliran dana tercatat otomatis dalam buku kas digital multi-tenant dengan filter kelas instan, rekap saldo otomatis, dan pencatatan yang siap diaudit kapan saja lengkap dengan kuitansi nota PDF standar resmi sekolah.',
+      impactMetric: '100%',
+      impactDesc: 'Akurasi pembukuan tanpa selisih kas'
     },
     {
-      icon: <Bot className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />,
+      id: 'ocr',
       title: 'AI Vision OCR (Gemini) Struk Transfer',
-      desc: 'Foto struk transfer m-Banking dari wali murid langsung dibaca otomatis (nominal, tanggal & bank) tanpa perlu hitung dan cek manual.'
+      badge: 'Ekstraksi Cerdas Struk Transfer Bank',
+      desc: 'Foto struk transfer m-Banking dari wali murid langsung dibaca otomatis (nominal, tanggal & bank) tanpa perlu hitung dan cek manual.',
+      icon: <Bot className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />,
+      useCase: 'Orang tua mengirim foto struk transfer dari m-Banking (BCA, BRI, Mandiri, BSI, dll) ke WhatsApp sekolah. AI Vision membaca teks foto secara cerdas dan mencocokkan nominalnya ke data tagihan siswa.',
+      beforeApp: 'Inbox chat sekolah dipenuhi ratusan foto bukti transfer yang tercecer, bendahara harus mencocokkan satu per satu ke mutasi rekening koran bank, rawan terkecoh oleh struk editan atau palsu, serta sering salah input nama siswa yang mirip.',
+      afterApp: 'Teknologi AI Vision Google Gemini mengekstrak nominal transfer, tanggal transaksi, dan nama bank pengirim dengan presisi tinggi. Bendahara cukup menekan tombol "Verifikasi", dan status tagihan langsung lunas seketika.',
+      impactMetric: '3x Lebih Cepat',
+      impactDesc: 'Efisiensi waktu verifikasi pembayaran'
     },
     {
-      icon: <CheckCircle2 className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />,
+      id: 'moderation',
       title: 'Moderasi Bukti Bayar via Chat WhatsApp',
-      desc: 'Panel verifikasi khusus untuk mengecek bukti transfer yang dikirim orang tua melalui chat WhatsApp sebelum disetujui lunas.'
+      badge: 'Panel Verifikasi Struk Terpadu',
+      desc: 'Panel verifikasi khusus untuk mengecek bukti transfer yang dikirim orang tua melalui chat WhatsApp sebelum disetujui lunas.',
+      icon: <CheckCircle2 className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />,
+      useCase: 'Staf tata usaha membuka panel moderasi khusus di dashboard untuk melihat seluruh pesan bukti transfer masuk secara terkelompok, mengecek foto struk, membalas chat orang tua, atau menyetujui pelunasan.',
+      beforeApp: 'Petugas harus bolak-balik membuka WhatsApp Web di laptop pribadi, mencari riwayat chat orang tua di antara pesan pribadi dan grup keluarga, sehingga rawan ada bukti pembayaran yang terlewat atau tidak tercatat.',
+      afterApp: 'Semua bukti pembayaran masuk ke antrean moderasi terpadu. Begitu disetujui, nota kuitansi digital lunas langsung terbit dan konfirmasi WhatsApp otomatis terkirim kembali ke orang tua.',
+      impactMetric: '0 Struk Tercecer',
+      impactDesc: 'Pengelolaan bukti bayar tertib dan transparan'
     },
     {
-      icon: <Receipt className="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />,
+      id: 'portal',
       title: 'Kartu SPP & Portal Mandiri Wali Murid',
-      desc: 'Tautan mandiri transparan 24 jam bagi orang tua untuk memantau status SPP 1 tahun ajaran dan unduh kuitansi resmi tanpa perlu login.'
+      badge: 'Transparansi Real-Time 24 Jam',
+      desc: 'Tautan mandiri transparan 24 jam bagi orang tua untuk memantau status SPP 1 tahun ajaran dan unduh kuitansi resmi tanpa perlu login.',
+      icon: <Receipt className="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />,
+      useCase: 'Setiap wali murid memiliki tautan khusus kartu SPP online anak mereka. Orang tua bisa melihat riwayat pembayaran selama 1 tahun ajaran dan mengunduh kuitansi resmi kapan pun dari smartphone tanpa perlu install aplikasi tambahan.',
+      beforeApp: 'Kartu SPP fisik kertas sering robek, basah, atau hilang di tas sekolah anak. Orang tua terus-menerus menelepon tata usaha sekolah hanya untuk menanyakan apakah pembayaran bulan lalu sudah masuk atau belum.',
+      afterApp: 'Orang tua memiliki akses mandiri 24 jam yang transparan untuk mengecek status lunas dan cetak nota kuitansi, membangun rasa saling percaya dan menaikkan citra profesionalitas sekolah.',
+      impactMetric: '90%',
+      impactDesc: 'Penurunan panggilan telepon tanya tagihan SPP'
     }
   ];
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row font-sans selection:bg-blue-600 selection:text-white">
       
-      {/* Kolom Kiri: Showcase & Daftar Lengkap Fitur Unggulan CATATOH */}
+      {/* Kolom Kiri: Showcase & Daftar Lengkap Fitur Unggulan CATATOH (Interaktif dengan Modal Use Case) */}
       <div 
         className="w-full lg:w-[52%] xl:w-[54%] p-6 sm:p-10 lg:p-14 flex flex-col justify-between relative order-2 lg:order-1 border-t lg:border-t-0 lg:border-r border-blue-100/80 overflow-y-auto"
         style={{
@@ -213,20 +271,41 @@ export default function LoginView({
             Platform modern all-in-one untuk mendigitalkan seluruh operasional administrasi sekolah: absensi biometrik wajah, pembukuan kas & SPP, hingga notifikasi WhatsApp otomatis.
           </p>
 
-          {/* Core Feature List (Semua Fitur Utama CATATOH) */}
-          <div className="mt-6 space-y-3.5">
-            {FEATURES_LIST.map((feat, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-2.5 rounded-xl bg-white/70 backdrop-blur-xs border border-blue-100 shadow-2xs hover:bg-white transition-all">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 border border-blue-100">
+          {/* Interactive Feature List Prompt */}
+          <div className="mt-6 mb-3">
+            <span className="text-[11px] font-bold text-blue-800 bg-blue-100/70 border border-blue-200/80 px-2.5 py-1 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              Klik fitur di bawah untuk melihat Use Case (Sebelum vs Setelah CATATOH)
+            </span>
+          </div>
+
+          {/* Core Feature List (Klik untuk Memunculkan Pop-up Use Case) */}
+          <div className="space-y-3">
+            {FEATURES_LIST.map((feat) => (
+              <div 
+                key={feat.id} 
+                onClick={() => setSelectedFeatureModal(feat)}
+                className="flex items-start gap-3 p-3 rounded-2xl bg-white/75 backdrop-blur-xs border border-blue-100 shadow-2xs hover:bg-white hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative"
+                title={`Klik untuk melihat use case: ${feat.title}`}
+              >
+                <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center shrink-0 border border-blue-100 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                   {feat.icon}
                 </div>
-                <div>
-                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 leading-tight">
-                    {feat.title}
-                  </h4>
+                <div className="flex-1 pr-6">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 leading-tight group-hover:text-blue-700 transition-colors">
+                      {feat.title}
+                    </h4>
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-600 border border-blue-200/60 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      Lihat Use Case →
+                    </span>
+                  </div>
                   <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-snug font-normal">
                     {feat.desc}
                   </p>
+                </div>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all">
+                  <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
             ))}
@@ -459,7 +538,7 @@ export default function LoginView({
                         </p>
                         <p className="text-slate-800 flex items-start gap-1 font-medium">
                           <span className="text-emerald-600 font-bold shrink-0">✓</span>
-                          <span>Notifikasi WA Otomatis kehadiran ke ortu</span>
+                          <span>Notifikasi WA Otomatis kehadiran ke orang tua</span>
                         </p>
                         <p className="text-slate-800 flex items-start gap-1 font-medium">
                           <span className="text-emerald-600 font-bold shrink-0">✓</span>
@@ -669,6 +748,105 @@ export default function LoginView({
 
         </div>
       </div>
+
+      {/* MODAL POP-UP USE CASE FITUR (SEBELUM VS SETELAH PAKAI CATATOH) */}
+      {selectedFeatureModal && (
+        <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-[999] animate-in fade-in duration-200">
+          <div className="bg-white border border-blue-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+            
+            {/* Header Modal */}
+            <div className="p-5 sm:p-6 bg-gradient-to-r from-blue-50 via-indigo-50/50 to-white border-b border-blue-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shadow-blue-600/25 shrink-0">
+                  {selectedFeatureModal.icon}
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                    {selectedFeatureModal.title}
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 mt-0.5 block">
+                    {selectedFeatureModal.badge}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedFeatureModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                title="Tutup Modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body Modal */}
+            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto">
+              
+              {/* Skenario Nyata */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100 text-slate-700 text-xs sm:text-sm leading-relaxed">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-800 mb-1 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  Skenario Penggunaan Nyata di Sekolah:
+                </p>
+                <p className="text-slate-800 font-medium">{selectedFeatureModal.useCase}</p>
+              </div>
+
+              {/* Komparasi: Sebelum vs Setelah */}
+              <div className="space-y-3">
+                
+                {/* Sebelum Ada App */}
+                <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-200/80 space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+                    <div className="w-5 h-5 rounded-full bg-rose-200 text-rose-800 flex items-center justify-center text-xs font-black">
+                      ✕
+                    </div>
+                    <span className="uppercase tracking-wider">Sebelum Menggunakan CATATOH (Kendala):</span>
+                  </div>
+                  <p className="text-xs text-rose-950 leading-relaxed pl-7">
+                    {selectedFeatureModal.beforeApp}
+                  </p>
+                </div>
+
+                {/* Setelah Pake App */}
+                <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                    <div className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center text-xs font-black">
+                      ✓
+                    </div>
+                    <span className="uppercase tracking-wider">Setelah Menggunakan CATATOH (Solusi):</span>
+                  </div>
+                  <p className="text-xs text-emerald-950 leading-relaxed pl-7 font-medium">
+                    {selectedFeatureModal.afterApp}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* Dampak Nyata / Metrik */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Dampak Nyata Terukur:</span>
+                  <span className="text-xs font-semibold text-slate-700">{selectedFeatureModal.impactDesc}</span>
+                </div>
+                <div className="px-3 py-1 rounded-lg bg-blue-600 text-white font-black text-sm shadow-xs">
+                  {selectedFeatureModal.impactMetric}
+                </div>
+              </div>
+
+              {/* Tombol Tutup */}
+              <button
+                type="button"
+                onClick={() => setSelectedFeatureModal(null)}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl font-bold text-xs transition-colors cursor-pointer mt-1"
+              >
+                Tutup Pop-up Use Case
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* MODAL KONFIRMASI PEMBAYARAN & INSTRUKSI WHATSAPP SETELAH DAFTAR PREMIUN */}
       {registeredPremiumPending && (
