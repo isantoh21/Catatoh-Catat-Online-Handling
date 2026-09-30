@@ -7,7 +7,6 @@ export const ADMIN_WHATSAPP_NUMBER: string = '6285347360359';
 // Daftar email yang secara default berstatus Premium Lifetime jika belum pernah dicabut
 export const DEFAULT_PREMIUM_EMAILS: string[] = [
   'beti1508@gmail.com',
-  'isantoh21@gmail.com',
 ];
 
 export interface PremiumInfo {
@@ -52,34 +51,34 @@ export function parseGlobalConfig(rawAnnouncement?: string | null): GlobalAnnoun
  */
 export async function getCentralPremiumConfig(): Promise<GlobalAnnouncementConfig> {
   let config: GlobalAnnouncementConfig = {};
+  let dbSuccess = false;
 
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('global_settings')
       .select('announcement')
       .eq('id', 'default')
       .maybeSingle();
 
-    if (data && data.announcement) {
+    if (!error && data && data.announcement) {
       config = parseGlobalConfig(data.announcement);
+      dbSuccess = true;
+      // Database adalah otoritas tunggal: simpan ke cache localStorage cadangan
+      try {
+        localStorage.setItem('catatoh_system_premium_registry', JSON.stringify(config));
+      } catch (_) {}
     }
   } catch (_) {}
 
-  // Gabungkan dengan persistent cache di localStorage jika ada
-  try {
-    const local = localStorage.getItem('catatoh_system_premium_registry');
-    if (local) {
-      const localConfig = parseGlobalConfig(local);
-      config = {
-        announcement_text: config.announcement_text || localConfig.announcement_text || '',
-        premium_emails: Array.from(new Set([...(config.premium_emails || []), ...(localConfig.premium_emails || [])])),
-        premium_user_ids: Array.from(new Set([...(config.premium_user_ids || []), ...(localConfig.premium_user_ids || [])])),
-        revoked_user_ids: Array.from(new Set([...(config.revoked_user_ids || []), ...(localConfig.revoked_user_ids || [])])),
-        revoked_emails: Array.from(new Set([...(config.revoked_emails || []), ...(localConfig.revoked_emails || [])])),
-        premium_subscriptions: { ...(localConfig.premium_subscriptions || {}), ...(config.premium_subscriptions || {}) }
-      };
-    }
-  } catch (_) {}
+  // Hanya jika gagal membaca dari database (offline), gunakan cache di localStorage
+  if (!dbSuccess) {
+    try {
+      const local = localStorage.getItem('catatoh_system_premium_registry');
+      if (local) {
+        config = parseGlobalConfig(local);
+      }
+    } catch (_) {}
+  }
 
   return config;
 }
@@ -102,36 +101,34 @@ export async function checkIsUserPremium(email?: string | null, userId?: string 
     return false;
   }
 
+  // Cek subscription expiry jika tercatat di sentral
+  const subs = config.premium_subscriptions || {};
+  const sub = (cleanId && subs[cleanId]) || (cleanEmail && subs[cleanEmail]);
+  if (sub && sub.expires_at) {
+    const exp = new Date(sub.expires_at);
+    if (!isNaN(exp.getTime())) {
+      if (exp.getTime() <= Date.now()) {
+        if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
+        return false;
+      } else {
+        if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
+        return true;
+      }
+    }
+  }
+
   // Cek jika ada di daftar aktif sentral
   const pEmails = (config.premium_emails || []).map(e => String(e).toLowerCase().trim());
   const pIds = (config.premium_user_ids || []).map(id => String(id).trim());
   if ((cleanEmail && pEmails.includes(cleanEmail)) || (cleanId && pIds.includes(cleanId))) {
-    // Cek expiry jika tercatat
-    const subs = config.premium_subscriptions || {};
-    const sub = (cleanId && subs[cleanId]) || (cleanEmail && subs[cleanEmail]);
-    if (sub && sub.expires_at) {
-      const exp = new Date(sub.expires_at);
-      if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) {
-        if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'false');
-        return false;
-      }
-    }
     if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
     return true;
   }
 
-  // 2. Cek default hardcoded (Lifetime VIP) jika tidak dicabut
+  // 2. Cek default hardcoded (Lifetime VIP) jika tidak dicabut dan belum memiliki expiry khusus
   if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
     if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
     return true;
-  }
-
-  // 3. Fallback ke cached status di localStorage
-  if (cleanId) {
-    const cached = localStorage.getItem(`catatoh_is_premium_${cleanId}`);
-    if (cached !== null) {
-      return cached === 'true';
-    }
   }
 
   return false;
@@ -162,20 +159,7 @@ export async function getUserSubscriptionDetails(userId?: string, userEmail?: st
     };
   }
 
-  // Cek jika akun lifetime
-  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
-    return {
-      isPremium: true,
-      plan: 'yearly',
-      status: 'active',
-      expiresAt: null,
-      daysRemaining: 9999,
-      isExpiringSoon: false,
-      email: cleanEmail
-    };
-  }
-
-  // Cek subscription info dari central config
+  // 1. Cek subscription info dari central config TERLEBIH DAHULU (prioritas jika diberi 1 bulan/1 tahun)
   const subs = config.premium_subscriptions || {};
   const sub = (cleanId && subs[cleanId]) || (cleanEmail && subs[cleanEmail]);
   if (sub) {
@@ -208,11 +192,38 @@ export async function getUserSubscriptionDetails(userId?: string, userEmail?: st
     };
   }
 
+  // 2. Cek jika akun lifetime default (hanya jika TIDAK ada konfigurasi langganan berjangka)
+  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
+    return {
+      isPremium: true,
+      plan: 'yearly',
+      status: 'active',
+      expiresAt: null,
+      daysRemaining: 9999,
+      isExpiringSoon: false,
+      email: cleanEmail
+    };
+  }
+
   const isPrem = await checkIsUserPremium(cleanEmail, cleanId);
+  if (isPrem) {
+    const fallbackDays = 30;
+    const fallbackExpiry = new Date(Date.now() + fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+    return {
+      isPremium: true,
+      plan: 'monthly',
+      status: 'active',
+      expiresAt: fallbackExpiry,
+      daysRemaining: fallbackDays,
+      isExpiringSoon: false,
+      email: cleanEmail
+    };
+  }
+
   return {
-    isPremium: isPrem,
-    plan: isPrem ? 'monthly' : 'free',
-    status: isPrem ? 'active' : 'free',
+    isPremium: false,
+    plan: 'free',
+    status: 'free',
     expiresAt: null,
     daysRemaining: null,
     isExpiringSoon: false,
@@ -371,13 +382,24 @@ export async function setTargetUserPremium(
 
     // Simpan ke database Supabase (kolom announcement yang selalu ada dan bisa ditulis)
     try {
-      await superAdminSupabase
+      const { error: upsertErr } = await superAdminSupabase
         .from('global_settings')
-        .update({
+        .upsert({
+          id: 'default',
           announcement: serialized,
           updated_at: new Date().toISOString()
-        })
-        .eq('id', 'default');
+        }, { onConflict: 'id' });
+
+      if (upsertErr) {
+        console.warn('global_settings upsert error, trying update fallback:', upsertErr);
+        await superAdminSupabase
+          .from('global_settings')
+          .update({
+            announcement: serialized,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', 'default');
+      }
     } catch (e) {
       console.warn('global_settings announcement update note:', e);
     }

@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-export const logActivity = async (action: string, description: string) => {
+export const logActivity = async (action: string, description: string, _type?: string) => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;

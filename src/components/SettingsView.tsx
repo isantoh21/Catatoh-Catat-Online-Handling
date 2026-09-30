@@ -4,7 +4,7 @@ import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, Map
 import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
-import { usePremiumStatus } from '../lib/premiumService';
+import { usePremiumStatus, DEFAULT_PREMIUM_EMAILS } from '../lib/premiumService';
 import RenewPremiumModal from './RenewPremiumModal';
 
 export default function SettingsView({ 
@@ -323,12 +323,20 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base sm:text-lg font-black text-slate-900">
-                      {isPremium ? 'Status Akun: PREMIUM ⭐' : 'Status Akun: FREE / REGULER'}
+                      {isPremium 
+                        ? (DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
+                            ? 'Status Akun: VIP LIFETIME 👑'
+                            : `Status Akun: PREMIUM ⭐ (${subDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'})`)
+                        : 'Status Akun: FREE / REGULER'}
                     </h3>
                     <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
                       isPremium ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-slate-100 text-slate-600 border-slate-200'
                     }`}>
-                      {isPremium ? (subDetails?.plan === 'yearly' ? 'Tahunan (Rp 250rb/thn)' : 'Bulanan (Rp 30rb/bln)') : 'Maksimal 100 Siswa'}
+                      {isPremium 
+                        ? (DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
+                            ? 'Permanen (VIP)'
+                            : (subDetails?.plan === 'yearly' ? 'Tahunan (Rp 250rb/thn)' : 'Bulanan (Rp 30rb/bln)')) 
+                        : 'Maksimal 100 Siswa'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">
@@ -342,8 +350,10 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                             </span>
                           )}
                         </>
-                      ) : (
+                      ) : DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim()) ? (
                         'Akun VIP Lifetime Aktif (Bebas Biaya Perpanjangan)'
+                      ) : (
+                        'Akun Premium Aktif'
                       )
                     ) : (
                       'Tingkatkan ke Premium untuk presensi wajah siswa & guru, broadcast reminder WhatsApp otomatis, dan kapasitas siswa tanpa batas.'

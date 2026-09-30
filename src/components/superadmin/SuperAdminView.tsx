@@ -216,16 +216,29 @@ export default function SuperAdminView() {
           const isRevoked = (userIdStr && revokedIds.includes(userIdStr)) || 
                             (emailLower && revokedEmails.includes(emailLower));
 
+          const subInfo = premiumSubs[userIdStr] || premiumSubs[emailLower];
+          let expiresAt = isRevoked ? null : (subInfo?.expires_at || u.subscription_expires_at || null);
+
           let isPrem = false;
           if (!isRevoked) {
-            isPrem = (userIdStr && premiumIds.includes(userIdStr)) ||
-                     (emailLower && premiumEmails.includes(emailLower)) ||
-                     DEFAULT_PREMIUM_EMAILS.includes(emailLower);
+            if (expiresAt) {
+              const exp = new Date(expiresAt);
+              isPrem = !isNaN(exp.getTime()) ? exp.getTime() > Date.now() : true;
+            } else {
+              isPrem = (userIdStr && premiumIds.includes(userIdStr)) ||
+                       (emailLower && premiumEmails.includes(emailLower)) ||
+                       DEFAULT_PREMIUM_EMAILS.includes(emailLower);
+            }
           }
 
-          const subInfo = premiumSubs[userIdStr] || premiumSubs[emailLower];
-          const expiresAt = isRevoked ? null : (subInfo?.expires_at || u.subscription_expires_at || null);
           const plan = isRevoked ? 'free' : (subInfo?.plan || u.subscription_plan || (isPrem ? 'monthly' : 'free'));
+
+          // Jika akun premium aktif dan bukan akun lifetime permanen, pastikan tanggal masa aktif selalu dihitung
+          if (isPrem && !expiresAt && !DEFAULT_PREMIUM_EMAILS.includes(emailLower)) {
+            const fallbackDays = plan === 'yearly' ? 365 : 30;
+            expiresAt = new Date(Date.now() + fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+          }
+
           return { 
             ...u, 
             is_premium: isPrem,
@@ -1068,18 +1081,22 @@ export default function SuperAdminView() {
                                 {/* Status Badge */}
                                 <div className="flex items-center gap-2">
                                   {user.is_premium ? (
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black rounded-full shadow-xs">
-                                      <Crown className="w-3.5 h-3.5 text-amber-400" />
-                                      PREMIUM ⭐
-                                    </span>
+                                    DEFAULT_PREMIUM_EMAILS.includes((user.email || '').toLowerCase().trim()) ? (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-black rounded-full shadow-xs">
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                        VIP LIFETIME 👑
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black rounded-full shadow-xs">
+                                        <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                        PREMIUM ⭐ ({user.subscription_plan === 'yearly' ? 'Tahunan' : 'Bulanan'})
+                                      </span>
+                                    )
                                   ) : (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-900 text-slate-400 border border-slate-800 text-xs font-medium rounded-full">
-                                      Standar
+                                      Standar (Free)
                                     </span>
                                   )}
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {user.is_premium ? (user.subscription_plan === 'yearly' ? 'Tahunan' : 'Bulanan') : 'Free'}
-                                  </span>
                                 </div>
 
                                 {/* Detail Masa Aktif */}
@@ -1087,7 +1104,7 @@ export default function SuperAdminView() {
                                   {user.is_premium ? (
                                     DEFAULT_PREMIUM_EMAILS.includes((user.email || '').toLowerCase().trim()) ? (
                                       <span className="text-amber-400 font-bold flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3 text-amber-400" /> VIP Lifetime (Permanen)
+                                        <Sparkles className="w-3 h-3 text-amber-400" /> Permanen (Tanpa Batas)
                                       </span>
                                     ) : user.subscription_expires_at ? (
                                       (() => {
@@ -1107,10 +1124,10 @@ export default function SuperAdminView() {
                                         );
                                       })()
                                     ) : (
-                                      <span className="text-slate-400">Aktif (Tanpa Batas Waktu)</span>
+                                      <span className="text-indigo-400 font-semibold">Aktif ({user.subscription_plan === 'yearly' ? '1 Tahun' : '1 Bulan'})</span>
                                     )
                                   ) : (
-                                    <span className="text-slate-500">Masa aktif: Tanpa Batas (Free)</span>
+                                    <span className="text-slate-500">Masa aktif: Maks. 100 Siswa</span>
                                   )}
                                 </div>
 

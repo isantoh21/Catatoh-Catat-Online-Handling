@@ -713,7 +713,7 @@ export default function LoginView({
 
           {/* Help & Support Footer */}
           <div className="mt-7 text-center text-xs text-slate-500 space-y-1 leading-relaxed">
-            <p>Butuh bantuan paket atau integrasi WhatsApp?</p>
+            <p>Butuh bantuan paket?</p>
             <p>
               Hubungi kami lewat{' '}
               <a 
@@ -732,15 +732,6 @@ export default function LoginView({
                 className="font-semibold text-slate-900 underline hover:text-blue-600 transition-colors"
               >
                 Instagram
-              </a>
-              {' '}atau{' '}
-              <a 
-                href="https://wa.me/6285347360359?text=Halo%20Admin%20CATATOH%2C%20saya%20butuh%20bantuan%20terkait%20akun%20sekolah" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="font-semibold text-emerald-600 underline hover:text-emerald-700 transition-colors"
-              >
-                WhatsApp
               </a>
               .
             </p>

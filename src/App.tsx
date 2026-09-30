@@ -22,7 +22,7 @@ import AttendancePortal from './components/AttendancePortal';
 import StudentAttendancePortal from './components/students/StudentAttendancePortal';
 import ParentSppCardView from './components/ParentSppCardView';
 import WebhookStatusBar from './components/WebhookStatusBar';
-import { usePremiumStatus } from './lib/premiumService';
+import { usePremiumStatus, DEFAULT_PREMIUM_EMAILS } from './lib/premiumService';
 
 export default function App() {
   const navigate = useNavigate();
@@ -633,7 +633,9 @@ export default function App() {
                     {isPremium ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[9px] font-black uppercase">
                         <Crown className="w-2.5 h-2.5" />
-                        PREMIUM
+                        {DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
+                          ? 'VIP LIFETIME'
+                          : `PREMIUM (${premiumDetails?.plan === 'yearly' ? 'TAHUNAN' : 'BULANAN'})`}
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full bg-indigo-800/80 text-indigo-200 text-[9px] font-semibold border border-indigo-700/50">
@@ -646,10 +648,12 @@ export default function App() {
                     <span>Masa Aktif:</span>
                     <span className="font-bold text-amber-300 font-mono">
                       {isPremium ? (
-                        premiumDetails?.expiresAt ? (
+                        DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim()) ? (
+                          'Permanen'
+                        ) : premiumDetails?.expiresAt ? (
                           `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`
                         ) : (
-                          'VIP Lifetime'
+                          `${premiumDetails?.plan === 'yearly' ? '1 Tahun' : '1 Bulan'}`
                         )
                       ) : (
                         'Maks. 100 Siswa'
@@ -720,9 +724,11 @@ export default function App() {
               onClick={() => navigate('/pengaturan')}
               title={
                 isPremium
-                  ? premiumDetails?.expiresAt
-                    ? `Paket Premium Aktif s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID')} (${premiumDetails.daysRemaining} hari lagi). Klik untuk kelola.`
-                    : 'Paket VIP Lifetime Aktif (Permanen). Klik untuk kelola.'
+                  ? DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
+                    ? 'Paket VIP Lifetime Aktif (Permanen). Klik untuk kelola.'
+                    : premiumDetails?.expiresAt
+                      ? `Paket Premium ${premiumDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'} Aktif s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID')} (${premiumDetails.daysRemaining} hari lagi). Klik untuk kelola.`
+                      : `Paket Premium ${premiumDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'} Aktif. Klik untuk kelola.`
                   : 'Paket Standar / Free (Maksimal 100 Siswa). Klik untuk upgrade ke Premium.'
               }
               className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
@@ -734,12 +740,18 @@ export default function App() {
               <Crown className={`w-3.5 h-3.5 ${isPremium ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
               {isPremium ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-amber-950">PREMIUM</span>
+                  <span className="font-extrabold text-amber-950">
+                    {DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
+                      ? 'VIP LIFETIME 👑'
+                      : `PREMIUM ⭐ (${premiumDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'})`}
+                  </span>
                   <span className="hidden sm:inline text-[11px] font-semibold text-amber-800 font-mono">
-                    {premiumDetails?.expiresAt ? (
+                    {DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim()) ? (
+                      '(Permanen)'
+                    ) : premiumDetails?.expiresAt ? (
                       `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} (${premiumDetails.daysRemaining}h)`
                     ) : (
-                      'VIP Lifetime'
+                      `(${premiumDetails?.plan === 'yearly' ? '1 Tahun' : '1 Bulan'})`
                     )}
                   </span>
                 </div>
