@@ -50,19 +50,24 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // POST: Update verification status
+  // POST: Update verification status or details (nominal, bulan, etc.)
   if (req.method === 'POST') {
     try {
-      const { id, status, rejectReason } = req.body || {};
+      const { id, status, rejectReason, nominal, bulan, tahun, tanggal_transfer, waktu_transfer } = req.body || {};
       if (!id) {
         return res.status(400).json({ success: false, error: 'ID is required' });
       }
 
       const updateData: any = {
-        status,
         updated_at: new Date().toISOString(),
       };
-      if (rejectReason) updateData.reject_reason = rejectReason;
+      if (status) updateData.status = status;
+      if (rejectReason !== undefined) updateData.reject_reason = rejectReason;
+      if (nominal !== undefined) updateData.nominal = Number(nominal);
+      if (bulan !== undefined) updateData.bulan = bulan;
+      if (tahun !== undefined) updateData.tahun = Number(tahun);
+      if (tanggal_transfer !== undefined) updateData.tanggal_transfer = tanggal_transfer;
+      if (waktu_transfer !== undefined) updateData.waktu_transfer = waktu_transfer;
 
       const { error } = await serverSupabase
         .from('payment_verifications')
@@ -75,7 +80,7 @@ export default async function handler(req: any, res: any) {
 
       return res.status(200).json({
         success: true,
-        message: `Status verifikasi diperbarui ke ${status}`,
+        message: `Data verifikasi berhasil diperbarui`,
       });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });

@@ -27,15 +27,80 @@ function detectMonthFromText(text: string): string {
 
 function detectNominalFromText(text: string): number {
   if (!text) return 100000;
-  const match = text.match(/(?:rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+(?:\s*(?:ribu|rb))?|\d{4,9})/i);
+  // Buang pecahan sen (,00 atau .00) di akhir angka agar tidak terbaca puluhan/ratusan juta
+  const cleanedText = text.replace(/([.,])00(?!\d)/g, '');
+  const match = cleanedText.match(/(?:rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+(?:\s*(?:ribu|rb))?|\d{4,9})/i);
   if (match) {
     const rawNum = match[1].replace(/[.,]/g, '');
-    const parsed = parseInt(rawNum, 10);
+    let parsed = parseInt(rawNum, 10);
     if (!isNaN(parsed) && parsed >= 10000 && parsed <= 50000000) {
+      // Genapkan ke nominal asli jika ada biaya admin transfer 2500 (misal 752500 -> 750000)
+      if (parsed > 10000 && (parsed % 5000 === 2500 || String(parsed).endsWith('2500'))) {
+        parsed = parsed - 2500;
+      }
       return parsed;
     }
   }
   return 100000;
+}
+
+// Helper untuk membersihkan dan menormalkan nominal dari AI Gemini
+// Mengantisipasi kesalahan umum AI membaca format sen di struk Indonesia (misal 750.000,00 terbaca 75000000)
+// Serta menggenapkan biaya admin transfer 2.500 (misal 752.500 -> 750.000, 502.500 -> 500.000)
+function parseReceiptNominal(rawNominal: any, expectedStudentSpp?: number): number {
+  if (rawNominal === undefined || rawNominal === null || rawNominal === '') return 0;
+  
+  let num = 0;
+  if (typeof rawNominal === 'number') {
+    num = Math.round(rawNominal);
+  } else {
+    let str = String(rawNominal).trim().replace(/^(?:rp|idr)\.?\s*/i, '');
+    // Cek jika berakhiran sen ,00 atau .00 -> WAJIB dibuang
+    if (/[,.]00$/.test(str)) {
+      str = str.slice(0, -3);
+    } else if (/[,.]\d{2}$/.test(str)) {
+      str = str.slice(0, -3);
+    }
+    // Hapus pemisah ribuan titik/koma
+    str = str.replace(/[.,\s]/g, '');
+    num = parseInt(str, 10);
+    if (isNaN(num)) num = 0;
+  }
+
+  // 1. Jika ada data SPP siswa dan angka terbaca tepat 100x lipat dari SPP (karena membaca ',00')
+  // Contoh: Siswa SPP Rp 750.000, struk tertulis 750.000,00 lalu terbaca 75.000.000 (75000000)
+  if (expectedStudentSpp && expectedStudentSpp > 0) {
+    if (num === expectedStudentSpp * 100) {
+      console.log(`[NOMINAL FIX] Memperbaiki nominal terbaca x100 (${num} -> ${expectedStudentSpp}) sesuai nominal SPP siswa`);
+      return expectedStudentSpp;
+    }
+    // Jika siswa SPP 750.000 dan transfer menyertakan admin 2500 (752500), genapkan ke SPP siswa
+    if (num === expectedStudentSpp + 2500) {
+      console.log(`[NOMINAL FIX] Menggenapkan transfer SPP + biaya admin 2500 (${num} -> ${expectedStudentSpp})`);
+      return expectedStudentSpp;
+    }
+  }
+
+  // 2. Koreksi umum pembacaan sen: Jika nominal berakhiran 00 dan nilainya di atas 10 juta (misal 75000000, 75250000, 25000000)
+  // dan jika dibagi 100 menghasilkan angka SPP wajar (Rp 20.000 - Rp 5.000.000)
+  if (num >= 10000000 && num % 100 === 0) {
+    const candidate = num / 100;
+    if (expectedStudentSpp && (candidate === expectedStudentSpp || candidate === expectedStudentSpp + 2500)) {
+      num = candidate;
+    } else if (num >= 50000000 && candidate >= 50000 && candidate <= 5000000) {
+      console.log(`[NOMINAL FIX] Mendeteksi nominal berlebih akibat pecahan sen (,00): ${num} -> ${candidate}`);
+      num = candidate;
+    }
+  }
+
+  // 3. Genapkan biaya admin transfer bank Rp 2.500 ke nominal asli SPP
+  // Contoh: 752500 -> 750000, 502500 -> 500000, 402500 -> 400000
+  if (num > 10000 && (num % 5000 === 2500 || String(num).endsWith('2500'))) {
+    console.log(`[NOMINAL FIX] Menggenapkan biaya admin transfer 2500: ${num} -> ${num - 2500}`);
+    num = num - 2500;
+  }
+
+  return num;
 }
 
 function normalizePhoneDigits(phone: string): string {
@@ -334,7 +399,24 @@ TUGAS UTAMA:
      Maka isi "isTransferReceipt": true.
 
 2. Jika isTransferReceipt true:
-   - "nominal": angka bulat murni transfer (misal 150000). Jika ada kode unik misal Rp 150.123, masukkan 150123.
+   - "nominal": angka bulat murni transfer dalam Rupiah (integer tanpa sen).
+     ⚠️ ATURAN SANGAT KRUSIAL FORMAT NOMINAL & SEN RUPIAH DI STRUK INDONESIA:
+     * Pada struk bank/m-Banking/ATM Indonesia (BCA, Mandiri, BRI, BNI, BSI, DANA, dll.), format uang sangat sering menyertakan 2 digit pecahan desimal sen di belakang koma, seperti "Rp 750.000,00" atau "750.000,00".
+     * Bagian ",00" atau ".00" di paling belakang adalah SEN (nol sen), BUKAN tambahan angka nol nominal rupiah!
+     * JANGAN SEKALI-KALI memasukkan angka sen (,00) sebagai nol nominal!
+     * CONTOH PEMBACAAN YANG BENAR:
+       - Struk bertuliskan "Rp 750.000,00" atau "750.000,00" artinya Tujuh Ratus Lima Puluh Ribu Rupiah -> isi "nominal": 750000 (BUKAN 75000000!).
+       - Struk bertuliskan "Rp 150.000,00" -> isi "nominal": 150000 (BUKAN 15000000!).
+       - Struk bertuliskan "Rp 50.000,00" -> isi "nominal": 50000 (BUKAN 5000000!).
+       - Struk bertuliskan "Rp 1.500.000,00" -> isi "nominal": 1500000 (BUKAN 150000000!).
+       - Struk bertuliskan "Rp 250.000" -> isi "nominal": 250000.
+       - Jika ada kode unik transfer misal Rp 150.123, masukkan 150123.
+     * ⚠️ ATURAN BIAYA ADMIN BANK (Rp 2.500):
+       - Jika pada struk terdapat lebihan 2.500 karena biaya transfer BI-FAST (misal tertulis Rp 752.500, Rp 502.500, Rp 402.500, Rp 252.500), MAKA BULATKAN KE NOMINAL ASLI SPP (buang 2.500):
+         752.500 -> isi "nominal": 750000
+         502.500 -> isi "nominal": 500000
+         402.500 -> isi "nominal": 400000
+         252.500 -> isi "nominal": 250000
    - "tanggal": format YYYY-MM-DD (misal 2026-03-21) dari tanggal transaksi di struk.
    - "waktu": format HH:mm 24 jam (misal 08:35) dari jam transfer di struk.
    - "bulan": nama bulan dalam bahasa Indonesia (Januari-Desember) yang bersangkutan.
@@ -343,7 +425,7 @@ TUGAS UTAMA:
    - "namaPengirim": nama pemilik rekening pengirim jika tertera.
    - "namaSiswa": nama siswa atau ananda jika tertulis di kolom berita/catatan transfer atau di caption.
    - "statusTransaksi": 'BERHASIL' / 'PENDING' / 'GAGAL'.
-   - "confidenceNotes": ringkasan singkat hasil bacaan struk (misal: "Struk BCA Mobile Rp 150.000 atas nama Budi").
+   - "confidenceNotes": ringkasan singkat hasil bacaan struk (misal: "Struk BCA Mobile Rp 750.000 atas nama Budi").
 
 Teks pesan pengirim: "${messageCaption || ''}"
 
@@ -749,8 +831,9 @@ export default async function handler(req: any, res: any) {
         ? geminiAnalysis.bulan
         : detectMonthFromText(messageText);
 
-      const detectedNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0)
-        ? geminiAnalysis.nominal
+      const parsedAiNominal = parseReceiptNominal(geminiAnalysis?.nominal, matchedStudent?.nominal_spp);
+      const detectedNominal = (parsedAiNominal > 0)
+        ? parsedAiNominal
         : detectNominalFromText(messageText);
 
       // Validasi format tanggal dari Gemini (harus YYYY-MM-DD nyata, bukan placeholder)
@@ -762,9 +845,14 @@ export default async function handler(req: any, res: any) {
       const detectedTime = isValidTime ? rawGeminiTime : new Date().toTimeString().slice(0, 5);
       const currentYear = geminiAnalysis?.tahun || new Date().getFullYear();
 
-      const finalNominal = (geminiAnalysis?.nominal && geminiAnalysis.nominal > 0) 
-        ? geminiAnalysis.nominal 
+      let finalNominal = (parsedAiNominal > 0) 
+        ? parsedAiNominal 
         : (matchedStudent?.nominal_spp || detectedNominal);
+
+      // Antisipasi ganda jika nominal akhir masih bernilai kelipatan 100 dari SPP siswa
+      if (matchedStudent?.nominal_spp && finalNominal === matchedStudent.nominal_spp * 100) {
+        finalNominal = matchedStudent.nominal_spp;
+      }
 
       // Tentukan catatan verifikasi AI
       const confidenceNotes = geminiAnalysis?.confidenceNotes || (geminiApiKey ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual");
