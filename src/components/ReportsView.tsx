@@ -106,7 +106,7 @@ export default function ReportsView() {
       .from('students')
       .select('id, nama_lengkap, nominal_spp, kelompok, nomor_whatsapp')
       .eq('user_id', currentUser.id)
-      .eq('status_aktif', true)
+      .neq('status_aktif', false)
       .order('nama_lengkap', { ascending: true })
       .range(0, 4999);
       

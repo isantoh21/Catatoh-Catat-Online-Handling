@@ -243,7 +243,7 @@ export default function DashboardView() {
       .from('students')
       .select('*')
       .eq('user_id', currentUser.id)
-      .eq('status_aktif', true)
+      .neq('status_aktif', false)
       .order('nama_lengkap', { ascending: true });
       
     if (studentsData) setStudents(studentsData);

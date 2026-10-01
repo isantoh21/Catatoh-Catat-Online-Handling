@@ -47,6 +47,7 @@ export default function StudentsView() {
   const [isImporting, setIsImporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [editStatusAktif, setEditStatusAktif] = useState<boolean>(true);
   const [duplicateModal, setDuplicateModal] = useState<{isOpen: boolean, duplicates: any[]}>({isOpen: false, duplicates: []});
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,7 +95,19 @@ export default function StudentsView() {
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
     
-    if (data) setStudents(data);
+    if (data) {
+      setStudents(data);
+      // Auto-heal data siswa lama yang kolom status_aktif nya masih NULL/undefined menjadi true (aktif)
+      const nullStatusStudents = data.filter(s => s.status_aktif === null || s.status_aktif === undefined);
+      if (nullStatusStudents.length > 0) {
+        supabase
+          .from('students')
+          .update({ status_aktif: true })
+          .in('id', nullStatusStudents.map(s => s.id))
+          .eq('user_id', currentUser.id)
+          .then(() => {});
+      }
+    }
     setLoading(false);
   };
 
@@ -189,6 +202,7 @@ export default function StudentsView() {
     setWhatsapp('62');
     setNominalSpp('100000');
     setKelompok('');
+    setEditStatusAktif(true);
     setError('');
   };
 
@@ -228,14 +242,20 @@ export default function StudentsView() {
 
     if (editingId) {
       const { error: updateError } = await supabase.from('students')
-        .update({ nama_lengkap: nama, nomor_whatsapp: whatsapp, nominal_spp: Number(nominalSpp), kelompok: kelompok || null })
+        .update({ 
+          nama_lengkap: nama, 
+          nomor_whatsapp: whatsapp, 
+          nominal_spp: Number(nominalSpp), 
+          kelompok: kelompok || null,
+          status_aktif: editStatusAktif
+        })
         .eq('id', editingId)
         .eq('user_id', currentUser.id);
         
       if (updateError) {
         setError(updateError.message);
       } else {
-        await logActivity('Ubah Data Siswa', `Mengubah data siswa: ${nama}`);
+        await logActivity('Ubah Data Siswa', `Mengubah data siswa: ${nama} (${editStatusAktif ? 'Aktif' : 'Lulus'})`);
         resetModal();
         fetchStudents();
       }
@@ -320,9 +340,41 @@ export default function StudentsView() {
     setLoading(false);
   };
 
+  const handleBulkToggleStatus = async (nextStatus: boolean) => {
+    if (selectedIds.length === 0) return;
+    const actionVerb = nextStatus ? 'Mengaktifkan Kembali' : 'Meluluskan';
+    const message = nextStatus
+      ? `Apakah Anda yakin ingin MENGAKTIFKAN KEMBALI ${selectedIds.length} siswa terpilih?\n\nSiswa akan kembali masuk ke daftar siswa aktif, penagihan SPP bulanan, dan presensi.`
+      : `Apakah Anda yakin ingin MELULUSKAN ${selectedIds.length} siswa terpilih?\n\nSiswa yang lulus akan dipindahkan ke tab 'Siswa Lulus' dan dinonaktifkan dari penagihan SPP bulanan, presensi Kiosk, dan pembagian kelas.`;
+
+    if (window.confirm(message)) {
+      setLoading(true);
+      const currentUser = (await supabase.auth.getSession()).data.session?.user;
+      if (currentUser) {
+        const { error } = await supabase
+          .from('students')
+          .update({ status_aktif: nextStatus })
+          .in('id', selectedIds)
+          .eq('user_id', currentUser.id);
+
+        if (error) {
+          alert('Gagal mengubah status massal: ' + error.message);
+        } else {
+          await logActivity(
+            nextStatus ? 'Aktifkan Massal Siswa' : 'Luluskan Massal Siswa',
+            `${actionVerb} ${selectedIds.length} siswa secara massal`
+          );
+          setSelectedIds([]);
+          fetchStudents();
+        }
+      }
+      setLoading(false);
+    }
+  };
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedIds(students.map((s: any) => s.id));
+      setSelectedIds(baseFilteredStudents.map((s: any) => s.id));
     } else {
       setSelectedIds([]);
     }
@@ -338,6 +390,7 @@ export default function StudentsView() {
     setWhatsapp(student.nomor_whatsapp);
     setNominalSpp(student.nominal_spp?.toString() || '100000');
     setKelompok(student.kelompok || '');
+    setEditStatusAktif(student.status_aktif !== false);
     setIsModalOpen(true);
   };
 
@@ -486,7 +539,8 @@ export default function StudentsView() {
 
   
   const baseFilteredStudents = students.filter(s => {
-    const isAktifMatch = activeStatusTab === 'aktif' ? s.status_aktif === true : s.status_aktif === false;
+    const isAktif = s.status_aktif !== false;
+    const isAktifMatch = activeStatusTab === 'aktif' ? isAktif : !isAktif;
     const matchSearch = s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         s.nomor_whatsapp.includes(searchQuery);
     const matchKelompok = filterKelompok === 'Semua Kelompok' || s.kelompok === filterKelompok;
@@ -570,26 +624,38 @@ export default function StudentsView() {
 
   const uniqueKelompokList = Array.from(new Set(students.map(s => s.kelompok).filter(Boolean)));
 
-  const handleToggleStatus = async (id: string, currentStatus: boolean, name: string) => {
-    if (window.confirm(`Yakin ingin ${currentStatus ? 'me-nonaktifkan' : 'mengaktifkan'} siswa ${name}?`)) {
+  const handleToggleStatus = async (id: string, currentStatus: boolean | null | undefined, name: string) => {
+    const isCurrentlyActive = currentStatus !== false;
+    const nextStatus = !isCurrentlyActive;
+    const actionText = isCurrentlyActive ? 'Luluskan' : 'Aktifkan Kembali';
+    const confirmMessage = isCurrentlyActive
+      ? `Apakah Anda yakin ingin MELULUSKAN siswa "${name}"?\n\nSiswa yang telah lulus akan dipindahkan ke tab 'Siswa Lulus' dan otomatis tidak lagi ditagih SPP bulanan atau masuk presensi Kiosk.`
+      : `Apakah Anda yakin ingin MENGAKTIFKAN KEMBALI siswa "${name}"?\n\nSiswa akan kembali masuk ke daftar siswa aktif, penagihan SPP bulanan, dan presensi.`;
+
+    if (window.confirm(confirmMessage)) {
+      setLoading(true);
       const currentUser = (await supabase.auth.getSession()).data.session?.user;
-      if (!currentUser) return;
+      if (!currentUser) {
+        setLoading(false);
+        return;
+      }
       
       const { error } = await supabase
         .from('students')
-        .update({ status_aktif: !currentStatus })
+        .update({ status_aktif: nextStatus })
         .eq('id', id)
         .eq('user_id', currentUser.id);
         
       if (!error) {
         await logActivity(
-          'Ubah Status Siswa', 
-          `Mengubah status siswa ${name} menjadi ${!currentStatus ? 'Aktif' : 'Nonaktif'}`
+          `${actionText} Siswa`, 
+          `Mengubah status siswa ${name} menjadi ${nextStatus ? 'Aktif' : 'Lulus'}`
         );
-        fetchStudents();
+        await fetchStudents();
       } else {
         alert('Gagal mengubah status: ' + error.message);
       }
+      setLoading(false);
     }
   };
   
@@ -986,21 +1052,80 @@ export default function StudentsView() {
             </div>
           )}
 
-      {/* Tabs Aktif/Lulus */}
+      {/* Tabs Aktif/Lulus dengan Counter */}
       <div className="flex border-b border-slate-200">
         <button
-          onClick={() => { setActiveStatusTab('aktif'); setCurrentPage(1); }}
-          className={`py-3 px-6 text-sm font-bold border-b-2 transition-colors ${activeStatusTab === 'aktif' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+          onClick={() => { setActiveStatusTab('aktif'); setCurrentPage(1); setSelectedIds([]); }}
+          className={`py-3 px-6 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${activeStatusTab === 'aktif' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
         >
-          Siswa Aktif
+          <span>Siswa Aktif</span>
+          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+            {students.filter(s => s.status_aktif !== false).length}
+          </span>
         </button>
         <button
-          onClick={() => { setActiveStatusTab('lulus'); setCurrentPage(1); }}
-          className={`py-3 px-6 text-sm font-bold border-b-2 transition-colors ${activeStatusTab === 'lulus' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+          onClick={() => { setActiveStatusTab('lulus'); setCurrentPage(1); setSelectedIds([]); }}
+          className={`py-3 px-6 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${activeStatusTab === 'lulus' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
         >
-          Siswa Lulus
+          <span>Siswa Lulus</span>
+          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+            {students.filter(s => s.status_aktif === false).length}
+          </span>
         </button>
       </div>
+
+      {/* Floating / Sticky Bar Aksi Massal */}
+      {selectedIds.length > 0 && (
+        <div className="bg-indigo-900 text-white px-5 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-indigo-950 font-black text-xs flex items-center justify-center">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs sm:text-sm font-semibold">
+              Siswa terpilih ({activeStatusTab === 'aktif' ? 'Tab Siswa Aktif' : 'Tab Siswa Lulus'})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {activeStatusTab === 'aktif' ? (
+              <button
+                type="button"
+                onClick={() => handleBulkToggleStatus(false)}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-indigo-950 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                <GraduationCap className="w-4 h-4" />
+                <span>Luluskan Terpilih ({selectedIds.length})</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleBulkToggleStatus(true)}
+                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Aktifkan Kembali Terpilih ({selectedIds.length})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus Terpilih</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
@@ -1018,7 +1143,7 @@ export default function StudentsView() {
           <select
             value={filterKelompok}
             onChange={e => { setFilterKelompok(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
+            className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50 cursor-pointer"
           >
             <option value="Semua Kelompok">Semua Kelompok</option>
             {uniqueKelompokList.map(k => (
@@ -1041,9 +1166,9 @@ export default function StudentsView() {
                 <th className="px-6 py-4 w-12 text-center">
                   <input 
                     type="checkbox" 
-                    checked={students.length > 0 && selectedIds.length === students.length}
+                    checked={baseFilteredStudents.length > 0 && selectedIds.length > 0 && baseFilteredStudents.every(s => selectedIds.includes(s.id))}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
                 </th>
                 <th onClick={() => handleSort('nama_lengkap')} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-indigo-600 transition-colors">
@@ -1061,8 +1186,8 @@ export default function StudentsView() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-slate-500">Memuat data...</td></tr>
-              ) : students.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-slate-500">Belum ada data siswa.</td></tr>
+              ) : baseFilteredStudents.length === 0 ? (
+                <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-slate-500">Tidak ada data siswa pada tab ini.</td></tr>
               ) : (
                 paginatedStudents.map((s: any) => (
                   <tr key={s.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(s.id) ? 'bg-indigo-50/30' : ''}`}>
@@ -1071,7 +1196,7 @@ export default function StudentsView() {
                         type="checkbox" 
                         checked={selectedIds.includes(s.id)}
                         onChange={() => handleSelect(s.id)}
-                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       />
                     </td>
                     <td className="px-6 py-4">
@@ -1094,20 +1219,31 @@ export default function StudentsView() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {s.status_aktif ? (
+                      {s.status_aktif !== false ? (
                         <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-wider">Aktif</span>
                       ) : (
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-md text-[10px] font-black uppercase tracking-wider">Nonaktif</span>
+                        <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
+                          Lulus
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                      <button onClick={() => handleToggleStatus(s.id, s.status_aktif, s.nama_lengkap)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors" title={s.status_aktif ? "Luluskan" : "Aktifkan Kembali"}>
-                        {s.status_aktif ? <GraduationCap className="w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
+                      <button 
+                        onClick={() => handleToggleStatus(s.id, s.status_aktif, s.nama_lengkap)} 
+                        className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                          s.status_aktif !== false 
+                            ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' 
+                            : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+                        }`} 
+                        title={s.status_aktif !== false ? "Luluskan Siswa" : "Aktifkan Kembali Siswa"}
+                      >
+                        {s.status_aktif !== false ? <GraduationCap className="w-4 h-4 text-amber-500" /> : <RotateCcw className="w-4 h-4 text-emerald-500" />}
                       </button>
-                      <button onClick={() => openEditModal(s)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" title="Edit">
+                      <button onClick={() => openEditModal(s)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer" title="Edit">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(s.id, s.nama_lengkap)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors" title="Hapus">
+                      <button onClick={() => handleDelete(s.id, s.nama_lengkap)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer" title="Hapus">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
@@ -1213,6 +1349,21 @@ export default function StudentsView() {
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
+
+              {editingId && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Status Siswa</label>
+                  <select
+                    value={editStatusAktif ? 'aktif' : 'lulus'}
+                    onChange={e => setEditStatusAktif(e.target.value === 'aktif')}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold bg-white text-slate-800 cursor-pointer"
+                  >
+                    <option value="aktif">Aktif (Masih Bersekolah)</option>
+                    <option value="lulus">Lulus (Alumni / Nonaktif)</option>
+                  </select>
+                </div>
+              )}
+
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => resetModal()} className="flex-1 px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
                   Batal

@@ -32,6 +32,17 @@ export default function GroupsView() {
 
   useEffect(() => {
     fetchStudents();
+
+    const channel = supabase
+      .channel('realtime-groups-students')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        fetchStudents();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Reset selections when switching tabs
@@ -51,6 +62,7 @@ export default function GroupsView() {
         .from('students')
         .select('*')
         .eq('user_id', currentUser.id)
+        .neq('status_aktif', false)
         .order('nama_lengkap');
         
       if (error) throw error;

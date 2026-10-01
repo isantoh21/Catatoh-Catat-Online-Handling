@@ -76,6 +76,7 @@ export default function StudentAttendanceReports({ onNavigateToKiosk }: StudentA
         .from('students')
         .select('*')
         .eq('user_id', currentUser.id)
+        .neq('status_aktif', false)
         .order('nama_lengkap', { ascending: true });
 
       if (studentsData) {

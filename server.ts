@@ -611,7 +611,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
         let studentQuery = serverSupabase
           .from("students")
           .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
-          .eq("status_aktif", true);
+          .neq("status_aktif", false);
 
         if (targetUserId) {
           studentQuery = studentQuery.eq("user_id", targetUserId);

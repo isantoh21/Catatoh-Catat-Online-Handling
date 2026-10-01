@@ -682,7 +682,7 @@ export default async function handler(req: any, res: any) {
         let studentQuery = serverSupabase
           .from("students")
           .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
-          .eq("status_aktif", true);
+          .neq("status_aktif", false);
 
         // Jika akun sekolah sudah teridentifikasi, batasi pencarian HANYA ke siswa milik akun tersebut
         if (targetUserId) {
@@ -784,7 +784,7 @@ export default async function handler(req: any, res: any) {
           const { data: students } = await serverSupabase
             .from("students")
             .select("id, nama_lengkap, kelompok, user_id, nominal_spp, nomor_whatsapp")
-            .eq("status_aktif", true);
+            .neq("status_aktif", false);
 
           if (students) {
             matchedStudent = students.find((s: any) => {

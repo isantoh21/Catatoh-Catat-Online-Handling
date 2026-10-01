@@ -1,4 +1,6 @@
 ALTER TABLE IF EXISTS students ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
+ALTER TABLE IF EXISTS students ADD COLUMN IF NOT EXISTS status_aktif BOOLEAN DEFAULT true;
+UPDATE students SET status_aktif = true WHERE status_aktif IS NULL;
 CREATE TABLE IF NOT EXISTS student_attendance_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID DEFAULT auth.uid(),

@@ -311,6 +311,7 @@ export default function StudentAttendanceKiosk({
           .from('students')
           .select('*')
           .eq('user_id', uid)
+          .neq('status_aktif', false)
           .order('nama_lengkap', { ascending: true });
 
         if (!error && data) {

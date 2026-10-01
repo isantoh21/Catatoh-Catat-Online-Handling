@@ -73,6 +73,8 @@ ALTER TABLE IF EXISTS attendance_logs ADD COLUMN IF NOT EXISTS user_id UUID DEFA
 ALTER TABLE IF EXISTS attendance_logs ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE IF EXISTS leave_requests ADD COLUMN IF NOT EXISTS user_id UUID DEFAULT auth.uid();
 ALTER TABLE IF EXISTS students ADD COLUMN IF NOT EXISTS face_descriptor TEXT;
+ALTER TABLE IF EXISTS students ADD COLUMN IF NOT EXISTS status_aktif BOOLEAN DEFAULT true;
+UPDATE students SET status_aktif = true WHERE status_aktif IS NULL;
 ALTER TABLE IF EXISTS student_attendance_logs ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'in';
 ALTER TABLE IF EXISTS student_attendance_logs ADD COLUMN IF NOT EXISTS snapshot TEXT;
 ALTER TABLE IF EXISTS student_attendance_logs ADD COLUMN IF NOT EXISTS photo TEXT;
