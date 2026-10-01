@@ -90,22 +90,21 @@ export default function ParentSppCardView() {
   const schoolId = userId || searchParams.get('sekolah') || searchParams.get('school') || searchParams.get('id') || null;
 
   // Tahun ajaran yang sedang dipilih (e.g. 2026 untuk TA 2026/2027)
+  // Pembatasan: hanya boleh mulai semester/tahun ajaran aktif ini ke atas
   const [academicStartYear, setAcademicStartYear] = useState<number>(() => {
     const paramYear = searchParams.get('ta') || searchParams.get('tahun');
     if (paramYear) {
       const parsed = parseInt(paramYear.split('/')[0], 10);
-      if (!isNaN(parsed) && parsed > 2000 && parsed < 2100) return parsed;
+      if (!isNaN(parsed) && parsed >= defaultStartYear && parsed < 2100) return parsed;
     }
     return defaultStartYear;
   });
 
-  // Opsi pilihan tahun ajaran (+1 tahun ke depan, tahun berjalan, dan 3 tahun sebelumnya)
+  // Opsi pilihan tahun ajaran: hanya mulai semester/tahun ajaran aktif ini ke atas
   const academicYearOptions = [
-    defaultStartYear + 1,
     defaultStartYear,
-    defaultStartYear - 1,
-    defaultStartYear - 2,
-    defaultStartYear - 3,
+    defaultStartYear + 1,
+    defaultStartYear + 2,
   ];
 
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -432,9 +431,10 @@ export default function ParentSppCardView() {
   };
 
   const handleAcademicYearChange = (newStartYear: number) => {
-    setAcademicStartYear(newStartYear);
+    const safeYear = Math.max(defaultStartYear, newStartYear);
+    setAcademicStartYear(safeYear);
     if (phoneNumber.trim()) {
-      executeSearch(phoneNumber, newStartYear);
+      executeSearch(phoneNumber, safeYear);
     }
   };
 
@@ -608,11 +608,11 @@ export default function ParentSppCardView() {
                 Cek Kartu SPP Siswa
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Format Tahun Ajaran (Juli {academicStartYear} – Juni {academicStartYear + 1})
+                Format Tahun Ajaran (Mulai Semester Ini ke Atas • Juli {academicStartYear} – Juni {academicStartYear + 1})
               </p>
             </div>
 
-            {/* Selector Tahun Ajaran */}
+            {/* Selector Tahun Ajaran (Hanya Mulai Semester Ini ke Atas) */}
             <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200 self-start sm:self-auto">
               <label htmlFor="academicYearSelect" className="text-xs font-bold text-slate-600 flex items-center gap-1 pl-1.5">
                 <CalendarRange className="w-3.5 h-3.5 text-indigo-600" />
@@ -626,7 +626,7 @@ export default function ParentSppCardView() {
               >
                 {academicYearOptions.map((year) => (
                   <option key={year} value={year}>
-                    {year}/{year + 1} {year === defaultStartYear ? '(Berjalan)' : ''}
+                    TA {year}/{year + 1} {year === defaultStartYear ? '(Semester Berjalan)' : '(Mendatang)'}
                   </option>
                 ))}
               </select>
@@ -983,7 +983,7 @@ export default function ParentSppCardView() {
                 Catatan Penting untuk Orang Tua:
               </p>
               <p className="text-indigo-800/90 leading-relaxed">
-                Halaman ini menampilkan riwayat status lunas SPP untuk <strong>Tahun Ajaran {academicYearLabel}</strong> (mulai Juli {academicStartYear} hingga Juni {academicStartYear + 1}). Jika terdapat pembayaran yang belum tercatat atau membutuhkan klarifikasi kuitansi, silakan konfirmasi ke bendahara atau pihak tata usaha sekolah.
+                Halaman ini menampilkan riwayat status lunas SPP mulai semester ini ke atas untuk <strong>Tahun Ajaran {academicYearLabel}</strong> (mulai Juli {academicStartYear} hingga Juni {academicStartYear + 1}). Jika terdapat pembayaran yang belum tercatat atau membutuhkan klarifikasi kuitansi, silakan konfirmasi ke bendahara atau pihak tata usaha sekolah.
               </p>
             </div>
 
@@ -1015,7 +1015,7 @@ export default function ParentSppCardView() {
               Cek Kartu Pembayaran SPP Ananda
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-              Silakan ketikkan nomor WhatsApp orang tua di atas untuk melihat status pembayaran SPP per <strong>Tahun Ajaran {academicYearLabel}</strong> (periode Juli {academicStartYear} – Juni {academicStartYear + 1}).
+              Silakan ketikkan nomor WhatsApp orang tua di atas untuk melihat status pembayaran SPP mulai semester berjalan ke atas (<strong>Tahun Ajaran {academicYearLabel}</strong>).
             </p>
           </div>
         )}
