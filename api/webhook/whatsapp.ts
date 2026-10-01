@@ -677,6 +677,7 @@ export default async function handler(req: any, res: any) {
 
       // Pencocokan Siswa Terdaftar dengan ISOLASI KETAT per Akun Pengguna
       let matchedStudent: any = null;
+      let matchedStudents: any[] = [];
 
       try {
         let studentQuery = serverSupabase
@@ -695,7 +696,7 @@ export default async function handler(req: any, res: any) {
           // 1. Cocokkan berdasarkan nomor HP WhatsApp orang tua (8 digit belakang)
           if (senderPhone && senderPhone.length >= 8) {
             const suffix8 = senderPhone.slice(-8);
-            matchedStudent = students.find((s: any) => {
+            matchedStudents = students.filter((s: any) => {
               const cleanS = (s.nomor_whatsapp || "").replace(/\D/g, "");
               if (!cleanS || cleanS.length < 8) return false;
               const cleanSuffix = cleanS.slice(-8);
@@ -703,18 +704,37 @@ export default async function handler(req: any, res: any) {
                 || senderPhone.endsWith(cleanSuffix) 
                 || cleanS.endsWith(suffix8);
             });
+            if (matchedStudents.length > 0) {
+              matchedStudent = matchedStudents[0];
+            }
           }
 
           // 2. Jika belum cocok nomornya, coba cocokkan nama siswa di caption pesan
           if (!matchedStudent && messageText && messageText.trim().length >= 3) {
             const lowerMsg = messageText.toLowerCase();
-            matchedStudent = students.find((s: any) => {
+            const textMatches = students.filter((s: any) => {
               const name = (s.nama_lengkap || "").trim().toLowerCase();
-              if (name.length >= 3 && lowerMsg.includes(name)) {
-                return true;
-              }
-              return false;
+              return name.length >= 3 && lowerMsg.includes(name);
             });
+            if (textMatches.length > 0) {
+              matchedStudents = textMatches;
+              matchedStudent = textMatches[0];
+            }
+          }
+
+          // 3. Jika baru 1 siswa yang cocok, periksa apakah ada saudara kandung (kakak/adik) dengan nomor WhatsApp yang sama
+          if (matchedStudent && matchedStudents.length <= 1) {
+            const cleanTargetPhone = (matchedStudent.nomor_whatsapp || "").replace(/\D/g, "");
+            if (cleanTargetPhone && cleanTargetPhone.length >= 8) {
+              const targetSuffix = cleanTargetPhone.slice(-8);
+              const siblings = students.filter((s: any) => {
+                const cleanS = (s.nomor_whatsapp || "").replace(/\D/g, "");
+                return cleanS && (cleanS === cleanTargetPhone || cleanS.endsWith(targetSuffix) || cleanTargetPhone.endsWith(cleanS.slice(-8)));
+              });
+              if (siblings.length > 1) {
+                matchedStudents = siblings;
+              }
+            }
           }
 
           if (matchedStudent && !targetUserId) {
@@ -831,7 +851,11 @@ export default async function handler(req: any, res: any) {
         ? geminiAnalysis.bulan
         : detectMonthFromText(messageText);
 
-      const parsedAiNominal = parseReceiptNominal(geminiAnalysis?.nominal, matchedStudent?.nominal_spp);
+      const isSiblingTransfer = matchedStudents.length > 1;
+      const combinedSpp = matchedStudents.reduce((sum: number, s: any) => sum + (Number(s.nominal_spp) || 0), 0);
+      const referenceSpp = combinedSpp > 0 ? combinedSpp : matchedStudent?.nominal_spp;
+
+      const parsedAiNominal = parseReceiptNominal(geminiAnalysis?.nominal, referenceSpp);
       const detectedNominal = (parsedAiNominal > 0)
         ? parsedAiNominal
         : detectNominalFromText(messageText);
@@ -847,19 +871,25 @@ export default async function handler(req: any, res: any) {
 
       let finalNominal = (parsedAiNominal > 0) 
         ? parsedAiNominal 
-        : (matchedStudent?.nominal_spp || detectedNominal);
+        : (referenceSpp || detectedNominal);
 
       // Antisipasi ganda jika nominal akhir masih bernilai kelipatan 100 dari SPP siswa
-      if (matchedStudent?.nominal_spp && finalNominal === matchedStudent.nominal_spp * 100) {
-        finalNominal = matchedStudent.nominal_spp;
+      if (referenceSpp && finalNominal === referenceSpp * 100) {
+        finalNominal = referenceSpp;
       }
 
       // Tentukan catatan verifikasi AI
-      const confidenceNotes = geminiAnalysis?.confidenceNotes || (geminiApiKey ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual");
+      let confidenceNotes = geminiAnalysis?.confidenceNotes || (geminiApiKey ? "Terverifikasi AI Vision" : "Menunggu Verifikasi Manual");
+      if (isSiblingTransfer) {
+        const siblingNames = matchedStudents.map((s: any) => `${s.nama_lengkap} (${s.kelompok || '-'})`).join(', ');
+        confidenceNotes = `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${matchedStudents.length} Siswa): ${siblingNames}. ${confidenceNotes}`;
+      }
 
-      const resolvedSenderName = matchedStudent?.nama_lengkap 
-        || senderName 
-        || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa");
+      const resolvedSenderName = isSiblingTransfer
+        ? matchedStudents.map((s: any) => s.nama_lengkap).join(" & ")
+        : (matchedStudent?.nama_lengkap 
+          || senderName 
+          || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa"));
 
       const verificationPayload: Record<string, any> = {
         user_id: targetUserId || null,
@@ -908,7 +938,9 @@ export default async function handler(req: any, res: any) {
 
       // Auto-reply via WhatsApp jika pesan masuk dari nomor valid
       if (senderPhone) {
-        const studentNameStr = matchedStudent ? `ananda *${matchedStudent.nama_lengkap}*` : "ananda";
+        const studentNameStr = isSiblingTransfer
+          ? `ananda *${matchedStudents.map((s: any) => s.nama_lengkap).join(" dan ")}*`
+          : (matchedStudent ? `ananda *${matchedStudent.nama_lengkap}*` : "ananda");
         const nominalVal = finalNominal > 0 ? `Rp ${finalNominal.toLocaleString("id-ID")}` : "";
         const nominalTeks = finalNominal > 0 ? ` sebesar *${nominalVal}*` : "";
 

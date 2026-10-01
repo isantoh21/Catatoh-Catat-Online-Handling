@@ -603,6 +603,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
 
     // Cari kecocokan data siswa di Supabase berdasarkan nomor WhatsApp pengirim
     let matchedStudent: any = null;
+    let matchedStudents: any[] = [];
     let targetUserId = explicitUserId;
 
     if (senderPhone) {
@@ -620,10 +621,44 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
         const { data: students } = await studentQuery;
 
         if (students && students.length > 0) {
-          matchedStudent = students.find((s: any) => {
+          const suffix8 = senderPhone.slice(-8);
+          const phoneMatches = students.filter((s: any) => {
             const cleanS = (s.nomor_whatsapp || "").replace(/\D/g, "");
-            return cleanS.endsWith(suffix8) || senderPhone.endsWith(cleanS.slice(-8));
+            if (!cleanS || cleanS.length < 8) return false;
+            const cleanSuffix = cleanS.slice(-8);
+            return cleanS === senderPhone || senderPhone.endsWith(cleanSuffix) || cleanS.endsWith(suffix8);
           });
+
+          if (phoneMatches.length > 0) {
+            matchedStudents = phoneMatches;
+            matchedStudent = phoneMatches[0];
+          }
+
+          if (!matchedStudent && messageText && messageText.trim().length >= 3) {
+            const lowerMsg = messageText.toLowerCase();
+            const textMatches = students.filter((s: any) => {
+              const name = (s.nama_lengkap || "").trim().toLowerCase();
+              return name.length >= 3 && lowerMsg.includes(name);
+            });
+            if (textMatches.length > 0) {
+              matchedStudents = textMatches;
+              matchedStudent = textMatches[0];
+            }
+          }
+
+          if (matchedStudent && matchedStudents.length <= 1) {
+            const cleanTargetPhone = (matchedStudent.nomor_whatsapp || "").replace(/\D/g, "");
+            if (cleanTargetPhone && cleanTargetPhone.length >= 8) {
+              const targetSuffix = cleanTargetPhone.slice(-8);
+              const siblings = students.filter((s: any) => {
+                const cleanS = (s.nomor_whatsapp || "").replace(/\D/g, "");
+                return cleanS && (cleanS === cleanTargetPhone || cleanS.endsWith(targetSuffix) || cleanTargetPhone.endsWith(cleanS.slice(-8)));
+              });
+              if (siblings.length > 1) {
+                matchedStudents = siblings;
+              }
+            }
+          }
 
           if (matchedStudent && !targetUserId) {
             targetUserId = matchedStudent.user_id;
@@ -646,23 +681,41 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       } catch (_) {}
     }
 
+    const isSiblingTransfer = matchedStudents.length > 1;
+    const combinedSpp = matchedStudents.reduce((sum: number, s: any) => sum + (Number(s.nominal_spp) || 0), 0);
+    const referenceSpp = combinedSpp > 0 ? combinedSpp : matchedStudent?.nominal_spp;
+
     let finalNominal = parseReceiptNominal(
       (parsedAiNominal > 0 ? parsedAiNominal : detectedNominal),
-      matchedStudent?.nominal_spp
-    ) || (matchedStudent?.nominal_spp || detectedNominal);
+      referenceSpp
+    ) || (referenceSpp || detectedNominal);
 
-    if (matchedStudent?.nominal_spp && finalNominal === matchedStudent.nominal_spp * 100) {
-      finalNominal = matchedStudent.nominal_spp;
+    if (referenceSpp && finalNominal === referenceSpp * 100) {
+      finalNominal = referenceSpp;
+    }
+
+    const studentNamesCombined = isSiblingTransfer
+      ? matchedStudents.map((s: any) => s.nama_lengkap).join(" & ")
+      : (matchedStudent?.nama_lengkap || senderName);
+
+    const studentKelompokCombined = isSiblingTransfer
+      ? matchedStudents.map((s: any) => s.kelompok || "-").join(", ")
+      : (matchedStudent?.kelompok || "-");
+
+    let confNotes = geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi Gemini Vision" : undefined);
+    if (isSiblingTransfer) {
+      const siblingNames = matchedStudents.map((s: any) => `${s.nama_lengkap} (${s.kelompok || '-'})`).join(', ');
+      confNotes = `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${matchedStudents.length} Siswa): ${siblingNames}. ${confNotes || ''}`.trim();
     }
 
     const verificationRecord: CachedVerification = {
       id: "verif_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
       user_id: targetUserId || undefined,
       student_id: matchedStudent?.id || null,
-      student_name: matchedStudent?.nama_lengkap || senderName,
-      student_kelompok: matchedStudent?.kelompok || "-",
+      student_name: studentNamesCombined,
+      student_kelompok: studentKelompokCombined,
       sender_phone: senderPhone,
-      sender_name: senderName,
+      sender_name: isSiblingTransfer ? studentNamesCombined : senderName,
       message_text: messageText,
       proof_image_url: proofImageUrl,
       bulan: detectedBulan,
@@ -673,7 +726,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       bank_pengirim: geminiAnalysis?.bankPengirim || undefined,
       bank_tujuan: geminiAnalysis?.bankTujuan || undefined,
       nama_rekening_pengirim: geminiAnalysis?.namaPengirim || undefined,
-      confidence_notes: geminiAnalysis?.confidenceNotes || (geminiAnalysis ? "Terverifikasi Gemini Vision" : undefined),
+      confidence_notes: confNotes,
       status: "pending",
       created_at: new Date().toISOString(),
     };
@@ -690,7 +743,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
             user_id: targetUserId,
             student_id: matchedStudent?.id || null,
             sender_phone: senderPhone,
-            sender_name: senderName,
+            sender_name: verificationRecord.sender_name,
             message_text: messageText,
             proof_image_url: verificationRecord.proof_image_url,
             bulan: detectedBulan,
@@ -712,7 +765,9 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
 
     // Auto-Reply pesan WhatsApp ke Orang Tua jika gateway credentials tersedia
     if (appkey && authkey && senderPhone) {
-      const studentNameStr = matchedStudent ? `ananda ${matchedStudent.nama_lengkap}` : "ananda";
+      const studentNameStr = isSiblingTransfer
+        ? `ananda ${matchedStudents.map((s: any) => s.nama_lengkap).join(" dan ")}`
+        : (matchedStudent ? `ananda ${matchedStudent.nama_lengkap}` : "ananda");
       const bankInfoStr = verificationRecord.bank_pengirim ? ` melalui ${verificationRecord.bank_pengirim}` : "";
       const nominalVal = verificationRecord.nominal > 0 ? `Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
       const nominalTeks = verificationRecord.nominal > 0 ? ` sebesar ${nominalVal}` : "";

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, XCircle, Clock, Search, Filter, MessageSquare, 
   ExternalLink, ZoomIn, RefreshCw, AlertCircle, Sparkles, Send,
-  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2, Crown, Settings, Edit3
+  ChevronRight, Calendar, DollarSign, UserCheck, ShieldAlert, Check, X, Trash2, Crown, Settings, Edit3, Users
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
@@ -30,6 +30,53 @@ const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
+
+/**
+ * Mendeteksi semua siswa yang terkait dengan bukti transfer.
+ * Jika nomor WhatsApp sama pada 2 siswa atau lebih, siswa tersebut adalah kakak-beradik.
+ */
+export const getMatchedStudentsForItem = (item: PaymentVerification, allStudents: any[]): any[] => {
+  if (!allStudents || allStudents.length === 0) return [];
+  const cleanSenderPhone = (item.sender_phone || '').replace(/\D/g, '');
+  const senderSuffix8 = cleanSenderPhone.length >= 8 ? cleanSenderPhone.slice(-8) : '';
+
+  // Periksa juga jika bukti bayar telah terhubung ke salah satu student_id
+  const targetStudent = allStudents.find(s => s.id === item.student_id);
+  const targetPhone = targetStudent ? (targetStudent.nomor_whatsapp || '').replace(/\D/g, '') : '';
+  const targetSuffix8 = targetPhone.length >= 8 ? targetPhone.slice(-8) : '';
+
+  const matched = allStudents.filter(s => {
+    // 1. Siswa yang ID-nya langsung tertaut
+    if (item.student_id && s.id === item.student_id) return true;
+
+    const sPhone = (s.nomor_whatsapp || '').replace(/\D/g, '');
+    if (!sPhone || sPhone.length < 8) return false;
+    const sSuffix8 = sPhone.slice(-8);
+
+    // 2. Cocok dengan sender_phone
+    if (cleanSenderPhone) {
+      if (sPhone === cleanSenderPhone) return true;
+      if (senderSuffix8 && (sPhone.endsWith(senderSuffix8) || cleanSenderPhone.endsWith(sSuffix8))) {
+        return true;
+      }
+    }
+
+    // 3. Cocok dengan nomor WA targetStudent (deteksi saudara kandung / kakak adik)
+    if (targetPhone) {
+      if (sPhone === targetPhone) return true;
+      if (targetSuffix8 && (sPhone.endsWith(targetSuffix8) || targetPhone.endsWith(sSuffix8))) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  // Hapus duplikasi berdasarkan ID
+  const uniqueMap = new Map<string, any>();
+  matched.forEach(s => uniqueMap.set(s.id, s));
+  return Array.from(uniqueMap.values());
+};
 
 interface PaymentModerationModalProps {
   isOpen: boolean;
@@ -104,30 +151,54 @@ export default function PaymentModerationModal({
 
   if (!isOpen) return null;
 
-  // Handle Approve Payment
+  // Handle Approve Payment (Mendukung Pembayaran Kakak-Adik / Multi Siswa)
   const handleApprove = async (item: PaymentVerification) => {
     setIsProcessingAction(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
 
-      // Jika student_id null (nomor tidak terdaftar di data siswa), tetap bisa disetujui
-      // Bukti bayar disimpan tanpa keterkaitan ke siswa tertentu
-
-      // 1. Simpan ke tabel payments menggunakan tanggal & jam transfer asli dari struk
+      // Deteksi siswa: jika nomor WA sama pada 2 siswa atau lebih, mereka adalah kakak-adik
+      const matchedStudents = getMatchedStudentsForItem(item, students);
       const targetStudent = students.find(s => s.id === item.student_id);
-      const studentName = targetStudent?.nama_lengkap || item.student_name || 'Siswa';
+      const targetStudents = matchedStudents.length > 0 ? matchedStudents : (targetStudent ? [targetStudent] : []);
+
+      if (targetStudents.length === 0 && !item.student_id) {
+        alert('Pilih siswa terlebih dahulu sebelum menyetujui pembayaran.');
+        return;
+      }
+
+      const count = targetStudents.length || 1;
+      const totalNominal = Number(item.nominal) || 0;
+      // Bagi rata nominal untuk seluruh siswa (misal: Rp 200.000 untuk 2 anak -> Rp 100.000 / anak)
+      const perStudentNominal = Math.floor(totalNominal / count);
+      const remainder = totalNominal % count;
       const tanggalBayar = item.tanggal_transfer || new Date().toISOString().split('T')[0];
       const waktuBayar = item.waktu_transfer || new Date().toTimeString().slice(0, 5);
 
-      if (item.student_id) {
+      // 1. Simpan ke tabel payments untuk SEMUA siswa terdeteksi (kakak-adik)
+      if (targetStudents.length > 0) {
+        const paymentsToInsert = targetStudents.map((st, idx) => ({
+          user_id: uid,
+          student_id: st.id,
+          bulan: item.bulan,
+          tahun: item.tahun,
+          nominal_dibayar: perStudentNominal + (idx === 0 ? remainder : 0),
+          tanggal_bayar: tanggalBayar,
+          waktu_bayar: waktuBayar,
+        }));
+        const { error: insertPayError } = await supabase.from('payments').insert(paymentsToInsert);
+        if (insertPayError) {
+          console.warn('Gagal insert ke payments:', insertPayError);
+        }
+      } else if (item.student_id) {
         await supabase.from('payments').insert([
           {
             user_id: uid,
             student_id: item.student_id,
             bulan: item.bulan,
             tahun: item.tahun,
-            nominal_dibayar: item.nominal,
+            nominal_dibayar: totalNominal,
             tanggal_bayar: tanggalBayar,
             waktu_bayar: waktuBayar,
           }
@@ -158,16 +229,20 @@ export default function PaymentModerationModal({
       }
 
       // 3. Kirim pesan WhatsApp otomatis ke nomor orang tua via Gateway
-      const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
+      const targetPhone = item.sender_phone || targetStudents[0]?.nomor_whatsapp || targetStudent?.nomor_whatsapp;
       let waSuccess = false;
       let waMsg = '';
 
+      const studentNames = targetStudents.length > 0
+        ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+        : (item.student_name || 'Siswa');
+
       if (targetPhone) {
         const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
-          studentName,
+          studentName: studentNames,
           bulan: item.bulan,
           tahun: item.tahun,
-          nominal: item.nominal,
+          nominal: totalNominal,
           tanggal: tanggalBayar,
           bank: item.bank_pengirim
         });
@@ -191,10 +266,11 @@ export default function PaymentModerationModal({
       }
 
       // 4. Update UI & log activity
-      await logActivity(
-        'Verifikasi SPP via WhatsApp',
-        `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentName} dari no ${item.sender_phone}`
-      );
+      const logDesc = targetStudents.length > 1
+        ? `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} (${targetStudents.length} siswa kakak-adik @ Rp ${perStudentNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`
+        : `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} dari no ${item.sender_phone}`;
+
+      await logActivity('Verifikasi SPP via WhatsApp', logDesc);
 
       const updated = verifications.map(v => v.id === item.id ? { ...v, status: 'approved' as const } : v);
       setVerifications(updated);
@@ -204,10 +280,14 @@ export default function PaymentModerationModal({
         onPaymentApproved();
       }
 
+      const alertSuccessMsg = targetStudents.length > 1
+        ? `✅ Pembayaran untuk ananda ${studentNames} (${targetStudents.length} siswa kakak-adik) berhasil disetujui & dicatat LUNAS masing-masing Rp ${perStudentNominal.toLocaleString('id-ID')}.`
+        : `✅ Pembayaran ananda ${studentNames} berhasil disetujui & dicatat LUNAS.`;
+
       if (waSuccess) {
-        alert(`✅ Pembayaran ananda ${studentName} berhasil disetujui & dicatat LUNAS.\n\nPesan konfirmasi WhatsApp telah berhasil terkirim ke nomor ${targetPhone}.`);
+        alert(`${alertSuccessMsg}\n\nPesan konfirmasi WhatsApp telah berhasil terkirim ke nomor ${targetPhone}.`);
       } else if (targetPhone) {
-        alert(`ℹ️ Pembayaran ananda ${studentName} telah dicatat LUNAS.\n\nCatatan WA: ${waMsg || 'Pesan sedang dalam antrean pengiriman WhatsApp.'}`);
+        alert(`ℹ️ ${alertSuccessMsg}\n\nCatatan WA: ${waMsg || 'Pesan sedang dalam antrean pengiriman WhatsApp.'}`);
       }
     } catch (err: any) {
       alert('Terjadi kesalahan saat memproses: ' + err.message);
@@ -222,9 +302,13 @@ export default function PaymentModerationModal({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
+      const matchedStudents = getMatchedStudentsForItem(item, students);
       const targetStudent = students.find(s => s.id === item.student_id);
-      const studentName = targetStudent?.nama_lengkap || item.student_name || 'Siswa';
-      const targetPhone = item.sender_phone || targetStudent?.nomor_whatsapp;
+      const targetStudents = matchedStudents.length > 0 ? matchedStudents : (targetStudent ? [targetStudent] : []);
+      const studentName = targetStudents.length > 0
+        ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+        : (item.student_name || 'Siswa');
+      const targetPhone = item.sender_phone || targetStudents[0]?.nomor_whatsapp || targetStudent?.nomor_whatsapp;
 
       if (!targetPhone) {
         alert('Nomor WhatsApp orang tua tidak ditemukan.');
@@ -300,9 +384,13 @@ export default function PaymentModerationModal({
       }
 
       // 2. Kirim pesan penolakan sopan ke nomor orang tua via Gateway
+      const matchedStudents = getMatchedStudentsForItem(rejectingItem, students);
       const rejectTargetStudent = students.find(s => s.id === rejectingItem.student_id);
-      const targetPhone = rejectingItem.sender_phone || rejectTargetStudent?.nomor_whatsapp;
-      const rejectStudentName = rejectTargetStudent?.nama_lengkap || rejectingItem.student_name || 'Siswa';
+      const targetStudents = matchedStudents.length > 0 ? matchedStudents : (rejectTargetStudent ? [rejectTargetStudent] : []);
+      const targetPhone = rejectingItem.sender_phone || targetStudents[0]?.nomor_whatsapp || rejectTargetStudent?.nomor_whatsapp;
+      const rejectStudentName = targetStudents.length > 0
+        ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+        : (rejectingItem.student_name || 'Siswa');
 
       if (targetPhone) {
         const rejectMsg = formatReceiptRejectedMessage(templates.receiptRejected, {
@@ -468,46 +556,75 @@ export default function PaymentModerationModal({
         });
       } catch (_) {}
 
-      // 2. Jika item sudah disetujui (approved) dan memiliki student_id,
+      // 2. Jika item sudah disetujui (approved),
       // perbarui juga data di tabel `payments` agar laporan SPP, dashboard & keuangan sinkron
-      if (editingItem.student_id && editingItem.status === 'approved') {
-        let paymentUpdateQuery = supabase
-          .from('payments')
-          .update({
-            nominal_dibayar: newNominal,
-            bulan: editBulan,
-            tahun: Number(editTahun),
-            tanggal_bayar: editTanggal,
-            waktu_bayar: editWaktu,
-          })
-          .eq('student_id', editingItem.student_id)
-          .eq('bulan', oldBulan)
-          .eq('tahun', oldTahun);
+      if (editingItem.status === 'approved') {
+        const matchedStudents = getMatchedStudentsForItem(editingItem, students);
+        if (matchedStudents.length > 1) {
+          const count = matchedStudents.length;
+          const perStudentNewNominal = Math.floor(newNominal / count);
+          const remainder = newNominal % count;
 
-        if (uid) {
-          paymentUpdateQuery = paymentUpdateQuery.eq('user_id', uid);
-        }
-
-        const { data: updatedPayments, error: payError } = await paymentUpdateQuery.select();
-
-        if ((!updatedPayments || updatedPayments.length === 0) && !payError) {
-          const { data: existing } = await supabase
-            .from('payments')
-            .select('id')
-            .eq('student_id', editingItem.student_id)
-            .eq('bulan', editBulan)
-            .eq('tahun', Number(editTahun))
-            .maybeSingle();
-
-          if (existing) {
-            await supabase
+          for (let i = 0; i < matchedStudents.length; i++) {
+            const st = matchedStudents[i];
+            const stNominal = perStudentNewNominal + (i === 0 ? remainder : 0);
+            let paymentUpdateQuery = supabase
               .from('payments')
               .update({
-                nominal_dibayar: newNominal,
+                nominal_dibayar: stNominal,
+                bulan: editBulan,
+                tahun: Number(editTahun),
                 tanggal_bayar: editTanggal,
                 waktu_bayar: editWaktu,
               })
-              .eq('id', existing.id);
+              .eq('student_id', st.id)
+              .eq('bulan', oldBulan)
+              .eq('tahun', oldTahun);
+
+            if (uid) {
+              paymentUpdateQuery = paymentUpdateQuery.eq('user_id', uid);
+            }
+            await paymentUpdateQuery;
+          }
+        } else if (editingItem.student_id) {
+          let paymentUpdateQuery = supabase
+            .from('payments')
+            .update({
+              nominal_dibayar: newNominal,
+              bulan: editBulan,
+              tahun: Number(editTahun),
+              tanggal_bayar: editTanggal,
+              waktu_bayar: editWaktu,
+            })
+            .eq('student_id', editingItem.student_id)
+            .eq('bulan', oldBulan)
+            .eq('tahun', oldTahun);
+
+          if (uid) {
+            paymentUpdateQuery = paymentUpdateQuery.eq('user_id', uid);
+          }
+
+          const { data: updatedPayments, error: payError } = await paymentUpdateQuery.select();
+
+          if ((!updatedPayments || updatedPayments.length === 0) && !payError) {
+            const { data: existing } = await supabase
+              .from('payments')
+              .select('id')
+              .eq('student_id', editingItem.student_id)
+              .eq('bulan', editBulan)
+              .eq('tahun', Number(editTahun))
+              .maybeSingle();
+
+            if (existing) {
+              await supabase
+                .from('payments')
+                .update({
+                  nominal_dibayar: newNominal,
+                  tanggal_bayar: editTanggal,
+                  waktu_bayar: editWaktu,
+                })
+                .eq('id', existing.id);
+            }
           }
         }
       }
@@ -566,14 +683,23 @@ export default function PaymentModerationModal({
         ? crypto.randomUUID() 
         : `sim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+      const simSiblings = getMatchedStudentsForItem({ sender_phone: targetStudent.nomor_whatsapp, student_id: targetStudent.id } as any, students);
+      const isSimSibling = simSiblings.length > 1;
+      const simCombinedName = isSimSibling ? simSiblings.map(s => s.nama_lengkap).join(' & ') : targetStudent.nama_lengkap;
+      const simCombinedKelompok = isSimSibling ? simSiblings.map(s => s.kelompok || '-').join(', ') : (targetStudent.kelompok || '-');
+
+      const confNotes = isSimSibling
+        ? `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${simSiblings.length} Siswa): ${simCombinedName}. Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision`
+        : 'Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision';
+
       const newRecord: PaymentVerification = {
         id: generatedId,
         user_id: currentUserId || undefined,
         student_id: targetStudent.id,
-        student_name: targetStudent.nama_lengkap,
-        student_kelompok: targetStudent.kelompok || '-',
+        student_name: simCombinedName,
+        student_kelompok: simCombinedKelompok,
         sender_phone: targetStudent.nomor_whatsapp || '6281234567890',
-        sender_name: targetStudent.nama_wali || 'Wali Murid',
+        sender_name: targetStudent.nama_wali || simCombinedName,
         message_text: simMessage || 'Assalamualaikum bendahara, ini bukti transfer SPP ananda.',
         proof_image_url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
         bulan: simBulan,
@@ -584,7 +710,7 @@ export default function PaymentModerationModal({
         bank_pengirim: 'BCA Mobile',
         bank_tujuan: 'BSI Sekolah',
         nama_rekening_pengirim: targetStudent.nama_wali || targetStudent.nama_lengkap,
-        confidence_notes: 'Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision',
+        confidence_notes: confNotes,
         status: 'pending',
         created_at: new Date().toISOString()
       };
@@ -665,13 +791,15 @@ export default function PaymentModerationModal({
     }
   };
 
-  // Filter items: HANYA tampilkan bukti bayar dari siswa yang terdaftar
+  // Filter items: HANYA tampilkan bukti bayar dari siswa yang terdaftar (atau memiliki no WA siswa terdaftar)
   const filteredItems = verifications.filter(item => {
-    if (!item.student_id) return false;
+    const matched = getMatchedStudentsForItem(item, students);
+    if (!item.student_id && matched.length === 0) return false;
     if (filterTab !== 'all' && item.status !== filterTab) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const matchName = (item.student_name || '').toLowerCase().includes(q);
+      const matchName = (item.student_name || '').toLowerCase().includes(q) ||
+        matched.some(s => (s.nama_lengkap || '').toLowerCase().includes(q));
       const matchPhone = (item.sender_phone || '').includes(q);
       const matchMsg = (item.message_text || '').toLowerCase().includes(q);
       return matchName || matchPhone || matchMsg;
@@ -679,7 +807,11 @@ export default function PaymentModerationModal({
     return true;
   });
 
-  const pendingCount = verifications.filter(v => v.status === 'pending' && Boolean(v.student_id)).length;
+  const pendingCount = verifications.filter(v => {
+    if (v.status !== 'pending') return false;
+    const matched = getMatchedStudentsForItem(v, students);
+    return Boolean(v.student_id) || matched.length > 0;
+  }).length;
 
   if (!isOpen) return null;
 
@@ -910,7 +1042,12 @@ export default function PaymentModerationModal({
             </div>
           ) : (
             filteredItems.map(item => {
-              const matchedStudent = students.find(s => s.id === item.student_id);
+              const matchedStudents = getMatchedStudentsForItem(item, students);
+              const isSibling = matchedStudents.length > 1;
+              const count = matchedStudents.length || 1;
+              const totalNominal = Number(item.nominal) || 0;
+              const perStudentNominal = Math.floor(totalNominal / count);
+
               const formattedDate = new Date(item.created_at).toLocaleString('id-ID', {
                 day: 'numeric',
                 month: 'short',
@@ -975,15 +1112,22 @@ export default function PaymentModerationModal({
                       {/* Top Row: Sender & Timestamp */}
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="text-sm font-bold text-slate-800">
-                              {item.student_name || 'Siswa Belum Dipilih'}
+                              {isSibling 
+                                ? matchedStudents.map(s => s.nama_lengkap).join(' & ')
+                                : (matchedStudents[0]?.nama_lengkap || item.student_name || 'Siswa Belum Dipilih')}
                             </h4>
-                            {item.student_kelompok && (
-                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-[10px] font-bold">
-                                {item.student_kelompok}
+                            {isSibling ? (
+                              <span className="px-2 py-0.5 bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800 border border-amber-300 rounded-md text-[10px] font-extrabold flex items-center gap-1">
+                                <Users className="w-3 h-3 text-amber-600" />
+                                <span>Kakak Adik ({matchedStudents.length} Siswa)</span>
                               </span>
-                            )}
+                            ) : (matchedStudents[0]?.kelompok || item.student_kelompok) ? (
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-[10px] font-bold">
+                                {matchedStudents[0]?.kelompok || item.student_kelompok}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
                             <a 
@@ -1001,12 +1145,17 @@ export default function PaymentModerationModal({
 
                         {/* Student match badge & Delete button */}
                         <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2">
-                          {item.student_id ? (
+                          {isSibling ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold shadow-2xs">
+                              <Users className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{matchedStudents.length} Siswa Terdeteksi</span>
+                            </span>
+                          ) : item.student_id || matchedStudents.length > 0 ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
                               <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>{item.student_name || 'Siswa Terdaftar'}</span>
-                              {item.student_kelompok && item.student_kelompok !== '-' && (
-                                <span className="text-emerald-600 font-medium">({item.student_kelompok})</span>
+                              <span>{matchedStudents[0]?.nama_lengkap || item.student_name || 'Siswa Terdaftar'}</span>
+                              {(matchedStudents[0]?.kelompok || item.student_kelompok) && (matchedStudents[0]?.kelompok || item.student_kelompok) !== '-' && (
+                                <span className="text-emerald-600 font-medium">({matchedStudents[0]?.kelompok || item.student_kelompok})</span>
                               )}
                             </span>
                           ) : (
@@ -1027,6 +1176,51 @@ export default function PaymentModerationModal({
                           </button>
                         </div>
                       </div>
+
+                      {/* Kakak-Adik Split Breakdown Banner */}
+                      {isSibling && (
+                        <div className="p-3 bg-gradient-to-r from-amber-50/90 via-orange-50/60 to-indigo-50/70 border border-amber-200 rounded-xl space-y-2 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md text-[10px] font-black uppercase tracking-wider">
+                                👨‍👩‍👧‍👦 Kakak Adik
+                              </span>
+                              <span className="font-bold text-slate-800 text-xs">
+                                Nomor WA sama untuk {matchedStudents.length} siswa (1 Transfer untuk {matchedStudents.length} anak)
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 shadow-2xs">
+                              Dibagi {matchedStudents.length}: <span className="text-emerald-700 font-extrabold">Rp {perStudentNominal.toLocaleString('id-ID')}</span> / anak
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                            {matchedStudents.map((st, idx) => {
+                              const stNominal = perStudentNominal + (idx === 0 ? (totalNominal % count) : 0);
+                              return (
+                                <div key={st.id} className="p-2 bg-white/90 rounded-lg border border-amber-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                      {idx + 1}
+                                    </div>
+                                    <div className="truncate">
+                                      <p className="font-bold text-slate-800 truncate">{st.nama_lengkap}</p>
+                                      <p className="text-[10px] text-slate-500">{st.kelompok || 'Tanpa Kelas'} • SPP: Rp {(st.nominal_spp || 0).toLocaleString('id-ID')}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0 ml-2">
+                                    <span className="text-[9px] text-slate-400 block font-medium">Bagi Nominal</span>
+                                    <span className="font-extrabold text-emerald-600 text-xs">Rp {stNominal.toLocaleString('id-ID')}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-slate-500 italic">
+                            💡 Saat disetujui, nominal total (Rp {totalNominal.toLocaleString('id-ID')}) otomatis dibagi rata ({matchedStudents.length} siswa) dan seluruh siswa langsung tercatat <strong>LUNAS</strong> untuk bulan {item.bulan} {item.tahun}.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Gemini Vision Detection Badge */}
                       {(item.bank_pengirim || item.tanggal_transfer || item.confidence_notes) && (
@@ -1136,24 +1330,38 @@ export default function PaymentModerationModal({
 
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            Nominal (Rp)
+                            {isSibling ? 'Total Struk (Rp)' : 'Nominal (Rp)'}
                           </label>
                           {item.status === 'pending' ? (
-                            <input
-                              type="number"
-                              value={item.nominal}
-                              onChange={e => handleUpdateItem(item.id, 'nominal', Number(e.target.value))}
-                              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                value={item.nominal}
+                                onChange={e => handleUpdateItem(item.id, 'nominal', Number(e.target.value))}
+                                className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                              />
+                              {isSibling && (
+                                <span className="text-[10px] text-amber-700 font-semibold block mt-0.5">
+                                  @{perStudentNominal.toLocaleString('id-ID')} / anak
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <div className="flex items-center justify-between px-2 py-1 bg-emerald-50 rounded-lg border border-emerald-200">
-                              <span className="text-xs font-bold text-emerald-700">
-                                Rp {item.nominal.toLocaleString('id-ID')}
-                              </span>
+                              <div>
+                                <span className="text-xs font-bold text-emerald-700 block">
+                                  Rp {totalNominal.toLocaleString('id-ID')}
+                                </span>
+                                {isSibling && (
+                                  <span className="text-[10px] text-emerald-600 block">
+                                    @{perStudentNominal.toLocaleString('id-ID')} / anak
+                                  </span>
+                                )}
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(item)}
-                                className="p-1 text-amber-700 hover:text-amber-900 hover:bg-amber-100 rounded-md transition-colors cursor-pointer"
+                                className="p-1 text-amber-700 hover:text-amber-900 hover:bg-amber-100 rounded-md transition-colors cursor-pointer ml-1"
                                 title="Edit nominal pembayaran"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
@@ -1183,13 +1391,17 @@ export default function PaymentModerationModal({
 
                         <button
                           type="button"
-                          disabled={isProcessingAction || !item.student_id}
+                          disabled={isProcessingAction || (!item.student_id && matchedStudents.length === 0)}
                           onClick={() => handleApprove(item)}
                           className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-                          title={!item.student_id ? 'Pilih nama siswa terlebih dahulu' : 'Verifikasi dan catat lunas'}
+                          title={(!item.student_id && matchedStudents.length === 0) ? 'Pilih nama siswa terlebih dahulu' : 'Verifikasi dan catat lunas'}
                         >
                           <CheckCircle2 className="w-4 h-4" />
-                          <span>Setujui & Tandai Lunas</span>
+                          <span>
+                            {isSibling 
+                              ? `Setujui & Lunaskan ${matchedStudents.length} Siswa (Rp ${perStudentNominal.toLocaleString('id-ID')}/anak)`
+                              : 'Setujui & Tandai Lunas'}
+                          </span>
                         </button>
                       </div>
                     )}
@@ -1198,7 +1410,11 @@ export default function PaymentModerationModal({
                       <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700 font-bold">
                         <span className="flex items-center gap-1.5">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Telah Disetujui & Masuk Catatan SPP</span>
+                          <span>
+                            {isSibling 
+                              ? `Telah Disetujui & Masuk Catatan SPP (${matchedStudents.length} Siswa LUNAS)`
+                              : 'Telah Disetujui & Masuk Catatan SPP'}
+                          </span>
                         </span>
                         <div className="flex items-center gap-2">
                           <button
@@ -1343,7 +1559,20 @@ export default function PaymentModerationModal({
                 <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Siswa</label>
                 <select
                   value={simStudentId}
-                  onChange={e => setSimStudentId(e.target.value)}
+                  onChange={e => {
+                    const newId = e.target.value;
+                    setSimStudentId(newId);
+                    const found = students.find(s => s.id === newId);
+                    if (found) {
+                      const sibs = getMatchedStudentsForItem({ sender_phone: found.nomor_whatsapp, student_id: found.id } as any, students);
+                      if (sibs.length > 1) {
+                        const totalSpp = sibs.reduce((sum, s) => sum + (s.nominal_spp || 100000), 0);
+                        setSimNominal(String(totalSpp));
+                      } else if (found.nominal_spp) {
+                        setSimNominal(String(found.nominal_spp));
+                      }
+                    }
+                  }}
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                 >
                   <option value="">-- Pilih Siswa --</option>
@@ -1354,6 +1583,24 @@ export default function PaymentModerationModal({
                   ))}
                 </select>
               </div>
+
+              {(() => {
+                const selectedSimStudent = students.find(s => s.id === simStudentId);
+                const simSiblings = selectedSimStudent ? getMatchedStudentsForItem({ sender_phone: selectedSimStudent.nomor_whatsapp, student_id: selectedSimStudent.id } as any, students) : [];
+                if (simSiblings.length > 1) {
+                  const totalSpp = simSiblings.reduce((sum, s) => sum + (s.nominal_spp || 100000), 0);
+                  return (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                      <Users className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Terdeteksi Kakak-Adik ({simSiblings.length} Siswa): </span>
+                        <span>{simSiblings.map(s => s.nama_lengkap).join(' & ')} memiliki nomor WhatsApp sama. Nominal otomatis diisi total transfer kedua anak (Rp {totalSpp.toLocaleString('id-ID')}).</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
