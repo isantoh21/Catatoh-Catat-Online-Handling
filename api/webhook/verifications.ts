@@ -38,11 +38,33 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ success: true, data: [] });
       }
 
-      const mapped = (data || []).map((item: any) => ({
-        ...item,
-        student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
-        student_kelompok: item.students?.kelompok || '-',
-      }));
+      // Auto purge bukti bayar approved > 30 hari
+      const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      serverSupabase
+        .from('payment_verifications')
+        .delete()
+        .eq('user_id', userId)
+        .eq('status', 'approved')
+        .lt('created_at', thirtyDaysAgoIso)
+        .then(() => {})
+        .catch(() => {});
+
+      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+
+      const mapped = (data || [])
+        .filter((item: any) => {
+          if (item.status === 'approved') {
+            const itemTime = new Date(item.updated_at || item.created_at).getTime();
+            if (now - itemTime > thirtyDaysInMs) return false;
+          }
+          return true;
+        })
+        .map((item: any) => ({
+          ...item,
+          student_name: item.students?.nama_lengkap || item.sender_name || 'Siswa',
+          student_kelompok: item.students?.kelompok || '-',
+        }));
 
       return res.status(200).json({ success: true, data: mapped });
     } catch (e: any) {

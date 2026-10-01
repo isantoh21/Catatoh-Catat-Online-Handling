@@ -324,11 +324,37 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
       .order('created_at', { ascending: false });
 
     if (!error && data) {
+      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const expiredApprovedIds: string[] = [];
+
       const mapped = data.map((item: any) => ({
         ...item,
         student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
-      }));
+      })).filter((item: any) => {
+        // Auto-purge bukti bayar yang telah disetujui (approved) dan berumur lebih dari 30 hari
+        if (item.status === 'approved') {
+          const itemTime = new Date(item.updated_at || item.created_at).getTime();
+          if (now - itemTime > thirtyDaysInMs) {
+            expiredApprovedIds.push(item.id);
+            return false;
+          }
+        }
+        return true;
+      });
+
+      // Bersihkan dari database Supabase di latar belakang
+      if (expiredApprovedIds.length > 0) {
+        supabase
+          .from('payment_verifications')
+          .delete()
+          .in('id', expiredApprovedIds)
+          .eq('user_id', activeUserId)
+          .then(() => {})
+          .catch(() => {});
+      }
+
       // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar milik akun ini
       return mapped.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));
     }
@@ -343,7 +369,15 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId);
+        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        return json.data.filter((item: any) => {
+          if (item.status === 'approved') {
+            const itemTime = new Date(item.updated_at || item.created_at).getTime();
+            if (now - itemTime > thirtyDaysInMs) return false;
+          }
+          return isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId;
+        });
       }
     }
   } catch (e) {
@@ -356,7 +390,19 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     try {
       const parsed = JSON.parse(localList);
       if (Array.isArray(parsed)) {
-        return parsed.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId);
+        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const validList = parsed.filter((item: any) => {
+          if (item.status === 'approved') {
+            const itemTime = new Date(item.updated_at || item.created_at).getTime();
+            if (now - itemTime > thirtyDaysInMs) return false;
+          }
+          return isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId;
+        });
+        if (validList.length !== parsed.length) {
+          saveLocalVerifications(validList, activeUserId);
+        }
+        return validList;
       }
       return [];
     } catch (e) {

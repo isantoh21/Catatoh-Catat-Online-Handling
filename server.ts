@@ -895,9 +895,20 @@ app.post("/api/webhook/simulate", async (req, res) => {
 // =========================================================================
 app.get("/api/webhook/verifications", (req, res) => {
   const { userId } = req.query;
-  let list = memoryVerifications;
+  const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  let list = memoryVerifications.filter(v => {
+    // Auto purge verifikasi berstatus approved yang berumur lebih dari 30 hari
+    if (v.status === 'approved') {
+      const vTime = new Date(v.created_at).getTime();
+      if (now - vTime > thirtyDaysInMs) return false;
+    }
+    return true;
+  });
+
   if (userId) {
-    list = memoryVerifications.filter(v => !v.user_id || v.user_id === userId);
+    list = list.filter(v => !v.user_id || v.user_id === userId);
   }
   res.json({
     success: true,
