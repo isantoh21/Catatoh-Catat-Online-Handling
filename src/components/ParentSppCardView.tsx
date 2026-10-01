@@ -17,15 +17,53 @@ import {
   School,
   Copy,
   Check,
-  ChevronRight,
   ShieldCheck,
-  Building2
+  Building2,
+  CalendarRange,
+  GraduationCap
 } from 'lucide-react';
 
-const BULAN_LIST = [
+export const BULAN_LIST = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
+
+export interface AcademicMonthInfo {
+  bulan: string;          // 'Juli', 'Agustus', ..., 'Juni'
+  tahun: number;          // tahun kalender sesuai semester (e.g. 2026 atau 2027)
+  order: number;          // urutan 1 s/d 12 dalam tahun ajaran
+  semester: 'Ganjil' | 'Genap';
+  semesterNumber: 1 | 2;
+  key: string;            // e.g. "juli_2026"
+}
+
+// Menentukan tahun awal dari tahun ajaran berjalan di Indonesia:
+// - Bulan Juli s/d Desember (indeks 6 - 11) -> Tahun Ajaran dimulai tahun ini (e.g. Juli 2026 -> TA 2026/2027)
+// - Bulan Januari s/d Juni (indeks 0 - 5)   -> Tahun Ajaran dimulai tahun kemarin (e.g. Maret 2027 -> TA 2026/2027)
+export const getDefaultAcademicStartYear = (date: Date = new Date()): number => {
+  const month = date.getMonth(); // 0 = Jan, 6 = Jul
+  const year = date.getFullYear();
+  return month >= 6 ? year : year - 1;
+};
+
+// Menghasilkan daftar 12 bulan berurutan per Tahun Ajaran: Juli (Tahun X) s/d Juni (Tahun X+1)
+export const getAcademicMonthsList = (startYear: number): AcademicMonthInfo[] => {
+  const endYear = startYear + 1;
+  return [
+    { bulan: 'Juli', tahun: startYear, order: 1, semester: 'Ganjil', semesterNumber: 1, key: `juli_${startYear}` },
+    { bulan: 'Agustus', tahun: startYear, order: 2, semester: 'Ganjil', semesterNumber: 1, key: `agustus_${startYear}` },
+    { bulan: 'September', tahun: startYear, order: 3, semester: 'Ganjil', semesterNumber: 1, key: `september_${startYear}` },
+    { bulan: 'Oktober', tahun: startYear, order: 4, semester: 'Ganjil', semesterNumber: 1, key: `oktober_${startYear}` },
+    { bulan: 'November', tahun: startYear, order: 5, semester: 'Ganjil', semesterNumber: 1, key: `november_${startYear}` },
+    { bulan: 'Desember', tahun: startYear, order: 6, semester: 'Ganjil', semesterNumber: 1, key: `desember_${startYear}` },
+    { bulan: 'Januari', tahun: endYear, order: 7, semester: 'Genap', semesterNumber: 2, key: `januari_${endYear}` },
+    { bulan: 'Februari', tahun: endYear, order: 8, semester: 'Genap', semesterNumber: 2, key: `februari_${endYear}` },
+    { bulan: 'Maret', tahun: endYear, order: 9, semester: 'Genap', semesterNumber: 2, key: `maret_${endYear}` },
+    { bulan: 'April', tahun: endYear, order: 10, semester: 'Genap', semesterNumber: 2, key: `april_${endYear}` },
+    { bulan: 'Mei', tahun: endYear, order: 11, semester: 'Genap', semesterNumber: 2, key: `mei_${endYear}` },
+    { bulan: 'Juni', tahun: endYear, order: 12, semester: 'Genap', semesterNumber: 2, key: `juni_${endYear}` },
+  ];
+};
 
 interface PaymentRecord {
   bulan: string;
@@ -44,12 +82,31 @@ interface StudentData {
 }
 
 export default function ParentSppCardView() {
-  const currentYear = new Date().getFullYear();
+  const defaultStartYear = getDefaultAcademicStartYear();
   const { userId } = useParams<{ userId?: string }>();
   const [searchParams] = useSearchParams();
 
   // ID Sekolah unik didapatkan dari URL path (/kartu-spp-ortu/:userId) atau query param (?sekolah=... / ?school=...)
   const schoolId = userId || searchParams.get('sekolah') || searchParams.get('school') || searchParams.get('id') || null;
+
+  // Tahun ajaran yang sedang dipilih (e.g. 2026 untuk TA 2026/2027)
+  const [academicStartYear, setAcademicStartYear] = useState<number>(() => {
+    const paramYear = searchParams.get('ta') || searchParams.get('tahun');
+    if (paramYear) {
+      const parsed = parseInt(paramYear.split('/')[0], 10);
+      if (!isNaN(parsed) && parsed > 2000 && parsed < 2100) return parsed;
+    }
+    return defaultStartYear;
+  });
+
+  // Opsi pilihan tahun ajaran (+1 tahun ke depan, tahun berjalan, dan 3 tahun sebelumnya)
+  const academicYearOptions = [
+    defaultStartYear + 1,
+    defaultStartYear,
+    defaultStartYear - 1,
+    defaultStartYear - 2,
+    defaultStartYear - 3,
+  ];
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [rememberPhone, setRememberPhone] = useState(true);
@@ -61,9 +118,9 @@ export default function ParentSppCardView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showSqlGuide, setShowSqlGuide] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [semesterFilter, setSemesterFilter] = useState<'all' | 'ganjil' | 'genap'>('all');
 
   // Normalisasi otomatis format nomor HP orang tua ke format 62xxxxxxxxxxx
-  // Mengubah awalan 08 / 0 / 8 menjadi 62, serta membersihkan tanda strip (-), spasi, dsb.
   const normalizeTo62Format = (input: string): string => {
     if (!input) return '';
     let digits = input.replace(/\D/g, '');
@@ -94,7 +151,7 @@ export default function ParentSppCardView() {
     return Array.from(variants);
   };
 
-  // Format tanggal Indonesia (contoh: 15 Januari 2026)
+  // Format tanggal Indonesia (contoh: 15 Juli 2026)
   const formatTanggalIndo = (dateStr?: string) => {
     if (!dateStr) return '-';
     try {
@@ -145,7 +202,7 @@ export default function ParentSppCardView() {
     if (hpFromUrl) {
       const normalized = normalizeTo62Format(hpFromUrl);
       setPhoneNumber(normalized);
-      executeSearch(normalized);
+      executeSearch(normalized, academicStartYear);
     } else if (savedPhone) {
       const normalized = normalizeTo62Format(savedPhone);
       setPhoneNumber(normalized);
@@ -160,10 +217,8 @@ export default function ParentSppCardView() {
       return;
     }
 
-    // Bersihkan karakter non-angka (menghapus tanda -, spasi, titik, dll)
     let clean = raw.replace(/\D/g, '');
 
-    // Jika diawali 08 (atau 0 dengan panjang >= 2), langsung transformasikan '0' menjadi '62'
     if (clean.startsWith('08')) {
       clean = '628' + clean.slice(2);
     } else if (clean.startsWith('0') && clean.length >= 2) {
@@ -195,7 +250,8 @@ export default function ParentSppCardView() {
     }
   };
 
-  const executeSearch = async (phoneToSearch: string) => {
+  // Eksekusi pencarian data siswa & riwayat pembayaran untuk Tahun Ajaran tertentu (Juli s/d Juni)
+  const executeSearch = async (phoneToSearch: string, startYearToUse = academicStartYear) => {
     const normalizedPhone = normalizeTo62Format(phoneToSearch);
     const cleanDigits = normalizedPhone || phoneToSearch.replace(/\D/g, '');
     if (cleanDigits.length < 8) {
@@ -213,29 +269,40 @@ export default function ParentSppCardView() {
     }
 
     const variants = getPhoneVariants(cleanDigits);
+    const endYearToUse = startYearToUse + 1;
 
     try {
       let matchedStudents: any[] = [];
       let matchedPayments: any[] = [];
 
-      // 1. Coba lewat RPC function get_parent_spp_card jika sudah terpasang
-      let rpcSuccess = false;
+      // 1. Coba lewat RPC function get_parent_spp_card (mengambil data untuk kedua tahun kalender TA berjalan)
       try {
-        const rpcParams: Record<string, any> = {
+        const rpcParamsStart: Record<string, any> = {
           p_phone: variants[0],
-          p_year: currentYear
+          p_year: startYearToUse
+        };
+        const rpcParamsEnd: Record<string, any> = {
+          p_phone: variants[0],
+          p_year: endYearToUse
         };
         if (schoolId) {
-          rpcParams.p_user_id = schoolId;
+          rpcParamsStart.p_user_id = schoolId;
+          rpcParamsEnd.p_user_id = schoolId;
         }
 
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_parent_spp_card', rpcParams);
+        const [rpcRes1, rpcRes2] = await Promise.all([
+          supabase.rpc('get_parent_spp_card', rpcParamsStart),
+          supabase.rpc('get_parent_spp_card', rpcParamsEnd)
+        ]);
 
-        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-          rpcSuccess = true;
-          // Format data dari RPC
+        const combinedRpcData = [
+          ...(Array.isArray(rpcRes1.data) ? rpcRes1.data : []),
+          ...(Array.isArray(rpcRes2.data) ? rpcRes2.data : [])
+        ];
+
+        if (combinedRpcData.length > 0) {
           const studentMap: Record<string, StudentData> = {};
-          rpcData.forEach((row: any) => {
+          combinedRpcData.forEach((row: any) => {
             if (!studentMap[row.student_id]) {
               studentMap[row.student_id] = {
                 id: row.student_id,
@@ -246,8 +313,9 @@ export default function ParentSppCardView() {
                 payments: {}
               };
             }
-            if (row.bulan) {
-              studentMap[row.student_id].payments[row.bulan] = {
+            if (row.bulan && row.tahun) {
+              const paymentKey = `${row.bulan.toLowerCase().trim()}_${row.tahun}`;
+              studentMap[row.student_id].payments[paymentKey] = {
                 bulan: row.bulan,
                 tahun: row.tahun,
                 tanggal_bayar: row.tanggal_bayar,
@@ -266,7 +334,7 @@ export default function ParentSppCardView() {
           return;
         }
       } catch (err) {
-        // Fallback ke direct query
+        // Fallback ke direct query di bawah
       }
 
       // 2. Fallback: Query tabel students langsung dengan nomor_whatsapp varian & isolasi per user_id sekolah
@@ -275,7 +343,6 @@ export default function ParentSppCardView() {
         .select('id, nama_lengkap, kelompok, nomor_whatsapp, user_id')
         .in('nomor_whatsapp', variants);
 
-      // KUNCI: Batasi hanya untuk sekolah yang bersangkutan agar data antar sekolah tidak tertukar/bercampur
       if (schoolId) {
         studentsQuery = studentsQuery.eq('user_id', schoolId);
       }
@@ -284,7 +351,6 @@ export default function ParentSppCardView() {
 
       if (studentsError) {
         console.warn('Students query error or RLS restricted:', studentsError);
-        // Cek apakah RLS belum dibuka
         setErrorMessage('Data tidak dapat diakses atau nomor belum terdaftar. Silakan hubungi pihak tata usaha sekolah.');
         setShowSqlGuide(true);
         setStudents([]);
@@ -303,12 +369,12 @@ export default function ParentSppCardView() {
       matchedStudents = studentsData;
       const studentIds = matchedStudents.map(s => s.id);
 
-      // 3. Query payments untuk siswa tersebut HANYA pada TAHUN BERJALAN (tanpa mengambil nominal)
+      // 3. Query payments untuk siswa tersebut KHUSUS Tahun Ajaran berjalan (mencakup startYear dan startYear + 1)
       let paymentsQuery = supabase
         .from('payments')
         .select('student_id, bulan, tahun, tanggal_bayar, waktu_bayar, user_id')
         .in('student_id', studentIds)
-        .eq('tahun', currentYear);
+        .in('tahun', [startYearToUse, endYearToUse]);
 
       if (schoolId) {
         paymentsQuery = paymentsQuery.eq('user_id', schoolId);
@@ -322,18 +388,21 @@ export default function ParentSppCardView() {
         matchedPayments = paymentsData;
       }
 
-      // 4. Susun struktur StudentData
+      // 4. Susun struktur StudentData dengan key pembayaran `bulan_tahun` unik
       const formattedList: StudentData[] = matchedStudents.map(student => {
         const studentPayments: Record<string, PaymentRecord> = {};
         matchedPayments
           .filter(p => p.student_id === student.id)
           .forEach(p => {
-            studentPayments[p.bulan] = {
-              bulan: p.bulan,
-              tahun: p.tahun,
-              tanggal_bayar: p.tanggal_bayar,
-              waktu_bayar: p.waktu_bayar
-            };
+            if (p.bulan && p.tahun) {
+              const paymentKey = `${p.bulan.toLowerCase().trim()}_${p.tahun}`;
+              studentPayments[paymentKey] = {
+                bulan: p.bulan,
+                tahun: p.tahun,
+                tanggal_bayar: p.tanggal_bayar,
+                waktu_bayar: p.waktu_bayar
+              };
+            }
           });
 
         return {
@@ -362,9 +431,15 @@ export default function ParentSppCardView() {
     }
   };
 
+  const handleAcademicYearChange = (newStartYear: number) => {
+    setAcademicStartYear(newStartYear);
+    if (phoneNumber.trim()) {
+      executeSearch(phoneNumber, newStartYear);
+    }
+  };
+
   const fetchSchoolInfo = async (userId: string) => {
     try {
-      // Cek cache lokal terlebih dahulu
       const cachedSchool = localStorage.getItem('schoolName_' + userId);
       const cachedLogo = localStorage.getItem('schoolLogo_' + userId);
       if (cachedSchool) {
@@ -391,7 +466,7 @@ export default function ParentSppCardView() {
         }
       }
     } catch (e) {
-      // Abaikan jika tidak ditemukan
+      // Abaikan jika gagal
     }
   };
 
@@ -400,19 +475,44 @@ export default function ParentSppCardView() {
     const normalized = normalizeTo62Format(phoneNumber);
     if (normalized) {
       setPhoneNumber(normalized);
-      executeSearch(normalized);
+      executeSearch(normalized, academicStartYear);
     } else {
-      executeSearch(phoneNumber);
+      executeSearch(phoneNumber, academicStartYear);
     }
   };
 
   const activeStudent = students[selectedStudentIndex] || null;
 
-  // Hitung statistik progress tahun berjalan
+  // Daftar 12 bulan dalam tahun ajaran terpilih (Juli s/d Juni)
+  const currentAcademicMonths = getAcademicMonthsList(academicStartYear);
+
+  // Helper untuk mengambil catatan pembayaran untuk bulan dan tahun ajaran tertentu
+  const getPaymentForMonth = (m: AcademicMonthInfo, student: StudentData | null): PaymentRecord | undefined => {
+    if (!student || !student.payments) return undefined;
+    const exactKey = `${m.bulan.toLowerCase().trim()}_${m.tahun}`;
+    return student.payments[exactKey];
+  };
+
+  // Filter semester
+  const filteredMonths = currentAcademicMonths.filter(m => {
+    if (semesterFilter === 'ganjil') return m.semester === 'Ganjil';
+    if (semesterFilter === 'genap') return m.semester === 'Genap';
+    return true;
+  });
+
+  // Hitung statistik progress 1 tahun ajaran (12 bulan: Juli - Juni)
   const totalLunasCount = activeStudent 
-    ? Object.keys(activeStudent.payments).length 
+    ? currentAcademicMonths.filter(m => !!getPaymentForMonth(m, activeStudent)).length 
     : 0;
   const progressPercent = Math.min(100, Math.round((totalLunasCount / 12) * 100));
+
+  // Hitung per semester
+  const lunasGanjilCount = activeStudent
+    ? currentAcademicMonths.filter(m => m.semester === 'Ganjil' && !!getPaymentForMonth(m, activeStudent)).length
+    : 0;
+  const lunasGenapCount = activeStudent
+    ? currentAcademicMonths.filter(m => m.semester === 'Genap' && !!getPaymentForMonth(m, activeStudent)).length
+    : 0;
 
   // Salin SQL bantuan jika admin membutuhkan setup di Supabase
   const copySqlToClipboard = () => {
@@ -422,45 +522,49 @@ export default function ParentSppCardView() {
     setTimeout(() => setCopiedSql(false), 2500);
   };
 
+  const academicYearLabel = `${academicStartYear}/${academicStartYear + 1}`;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
       {/* Top Header */}
       <header className="bg-indigo-900 text-white shadow-md border-b border-indigo-950 sticky top-0 z-20 print:hidden">
-        <div className="max-w-4xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-4xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {schoolInfo?.logo ? (
               <img 
                 src={schoolInfo.logo} 
                 alt="Logo Sekolah" 
-                className="w-10 h-10 rounded-xl object-contain bg-white p-1 border border-indigo-700 shadow-sm"
+                className="w-10 h-10 rounded-xl object-contain bg-white p-1 border border-indigo-700 shadow-sm shrink-0"
               />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-amber-400 text-indigo-950 flex items-center justify-center font-black shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-amber-400 text-indigo-950 flex items-center justify-center font-black shadow-sm shrink-0">
                 <School className="w-6 h-6" />
               </div>
             )}
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white leading-tight">
+                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white leading-tight truncate">
                   {schoolInfo?.name || 'Portal Kartu SPP Siswa'}
                 </h1>
                 {schoolId && (
-                  <span className="hidden xs:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-amber-400 text-indigo-950 rounded">
+                  <span className="hidden xs:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-amber-400 text-indigo-950 rounded shrink-0">
                     Khusus
                   </span>
                 )}
               </div>
-              <p className="text-[11px] sm:text-xs text-indigo-200">
-                {schoolId 
-                  ? `Laman Khusus Orang Tua • ${schoolInfo?.name || 'Sekolah Terdaftar'}`
+              <p className="text-[11px] sm:text-xs text-indigo-200 truncate">
+                {schoolInfo?.name 
+                  ? `Laman Khusus Orang Tua • ${schoolInfo.name}`
                   : 'Pemeriksaan Status Pembayaran SPP Orang Tua'}
               </p>
             </div>
           </div>
           
-          <div className="hidden sm:flex items-center gap-2 bg-indigo-800/80 px-3 py-1.5 rounded-full border border-indigo-700/60 text-xs font-semibold text-amber-300">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Tahun Berjalan: {currentYear}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden sm:flex items-center gap-1.5 bg-indigo-800/90 px-3 py-1.5 rounded-full border border-indigo-700/60 text-xs font-bold text-amber-300 shadow-sm">
+              <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+              <span>TA {academicYearLabel}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -496,21 +600,37 @@ export default function ParentSppCardView() {
             </div>
           ) : null}
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          {/* Heading & Tahun Ajaran Selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
             <div>
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-indigo-600" />
-                Cek Progres SPP Tahun {currentYear}
+                Cek Kartu SPP Siswa
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                {schoolInfo?.name 
-                  ? `Masukkan nomor WhatsApp orang tua yang terdaftar di ${schoolInfo.name}.`
-                  : 'Masukkan nomor HP / WhatsApp orang tua yang terdaftar di pihak sekolah.'}
+                Format Tahun Ajaran (Juli {academicStartYear} – Juni {academicStartYear + 1})
               </p>
             </div>
-            <span className="sm:hidden self-start px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">
-              Tahun {currentYear}
-            </span>
+
+            {/* Selector Tahun Ajaran */}
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200 self-start sm:self-auto">
+              <label htmlFor="academicYearSelect" className="text-xs font-bold text-slate-600 flex items-center gap-1 pl-1.5">
+                <CalendarRange className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Tahun Ajaran:</span>
+              </label>
+              <select
+                id="academicYearSelect"
+                value={academicStartYear}
+                onChange={(e) => handleAcademicYearChange(parseInt(e.target.value, 10))}
+                className="bg-white border border-slate-300 text-slate-800 text-xs sm:text-sm font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+              >
+                {academicYearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}/{year + 1} {year === defaultStartYear ? '(Berjalan)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <form onSubmit={handleSearchSubmit} className="space-y-3">
@@ -640,21 +760,53 @@ export default function ParentSppCardView() {
 
             {/* Profil Siswa & Ringkasan Kartu SPP */}
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+              {/* Header Khusus Print (Hanya Tampil saat Dicetak) */}
+              <div className="hidden print:flex items-center justify-between border-b-2 border-slate-800 pb-3 mb-2">
+                <div className="flex items-center gap-3">
+                  {schoolInfo?.logo && (
+                    <img 
+                      src={schoolInfo.logo} 
+                      alt="Logo Sekolah" 
+                      className="w-14 h-14 object-contain"
+                    />
+                  )}
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-wide">
+                      {schoolInfo?.name || 'SISTEM KARTU SPP DIGITAL'}
+                    </h2>
+                    <p className="text-xs font-semibold text-slate-600">
+                      KARTU STATUS PEMBAYARAN SPP SISWA
+                    </p>
+                    <p className="text-xs font-bold text-indigo-900 mt-0.5">
+                      Tahun Ajaran {academicYearLabel} (Juli {academicStartYear} – Juni {academicStartYear + 1})
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <p>Dicetak Pada:</p>
+                  <p className="font-bold text-slate-800">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+              </div>
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 font-black text-lg flex items-center justify-center border border-indigo-200 shadow-inner">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 font-black text-lg flex items-center justify-center border border-indigo-200 shadow-inner shrink-0">
                     {activeStudent.nama_lengkap.charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
                       {activeStudent.nama_lengkap}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
+                    <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
                       <span className="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
-                        Kelompok / Kelas: {activeStudent.kelompok}
+                        Kelas: {activeStudent.kelompok}
                       </span>
                       <span>•</span>
-                      <span>Tahun Kalender {currentYear}</span>
+                      <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        Tahun Ajaran {academicYearLabel}
+                      </span>
+                      <span className="hidden xs:inline">•</span>
+                      <span className="hidden xs:inline text-slate-400">Juli {academicStartYear} – Juni {academicStartYear + 1}</span>
                     </div>
                   </div>
                 </div>
@@ -662,7 +814,7 @@ export default function ParentSppCardView() {
                 <div className="flex items-center gap-2 self-end sm:self-auto print:hidden">
                   <button
                     onClick={() => window.print()}
-                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-slate-200 cursor-pointer"
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-slate-200 cursor-pointer shadow-xs"
                     title="Cetak Kartu SPP"
                   >
                     <Printer className="w-4 h-4 text-slate-600" />
@@ -671,14 +823,14 @@ export default function ParentSppCardView() {
                 </div>
               </div>
 
-              {/* Progress Bar Lunas SPP Tahun Berjalan */}
-              <div className="bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4 rounded-xl border border-indigo-100 space-y-2.5">
-                <div className="flex items-center justify-between text-xs sm:text-sm">
-                  <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                    Progres Pembayaran SPP Tahun {currentYear}
+              {/* Progress Bar Lunas SPP Tahun Ajaran Berjalan */}
+              <div className="bg-gradient-to-br from-slate-50 to-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-2.5">
+                <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-1 text-xs sm:text-sm">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                    Progres SPP Tahun Ajaran {academicYearLabel}
                   </span>
-                  <span className="font-extrabold text-indigo-700">
+                  <span className="font-black text-indigo-700">
                     {totalLunasCount} dari 12 Bulan Lunas ({progressPercent}%)
                   </span>
                 </div>
@@ -690,50 +842,110 @@ export default function ParentSppCardView() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
-                  <span>Sudah Lunas: <strong className="text-emerald-600">{totalLunasCount} Bulan</strong></span>
-                  <span>Belum Lunas: <strong className="text-amber-600">{12 - totalLunasCount} Bulan</strong></span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 pt-0.5">
+                  <div className="flex items-center gap-3">
+                    <span>Sudah Lunas: <strong className="text-emerald-600">{totalLunasCount} Bulan</strong></span>
+                    <span>Belum Lunas: <strong className="text-amber-600">{12 - totalLunasCount} Bulan</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 font-medium text-slate-500">
+                    <span className="bg-white/80 px-2 py-0.5 rounded border border-slate-200">
+                      Ganjil: <b className="text-slate-800">{lunasGanjilCount}/6</b>
+                    </span>
+                    <span className="bg-white/80 px-2 py-0.5 rounded border border-slate-200">
+                      Genap: <b className="text-slate-800">{lunasGenapCount}/6</b>
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Kartu Rincian 12 Bulan (Januari - Desember) */}
+            {/* Kartu Rincian 12 Bulan Tahun Ajaran (Juli s/d Juni) */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h4 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-indigo-600" />
-                  Catatan Pembayaran Bulanan ({currentYear})
-                </h4>
-                <span className="text-xs text-slate-400 font-medium">
-                  Januari s/d Desember
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                <div>
+                  <h4 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-indigo-600" />
+                    Rincian Pembayaran Per Tahun Ajaran ({academicYearLabel})
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Mulai Juli {academicStartYear} sampai dengan Juni {academicStartYear + 1}
+                  </p>
+                </div>
+
+                {/* Filter Tab Semester */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold print:hidden self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSemesterFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      semesterFilter === 'all'
+                        ? 'bg-white text-indigo-700 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Semua (12 Bulan)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSemesterFilter('ganjil')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      semesterFilter === 'ganjil'
+                        ? 'bg-white text-amber-700 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Sem. 1 / Ganjil
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSemesterFilter('genap')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      semesterFilter === 'genap'
+                        ? 'bg-white text-sky-700 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Sem. 2 / Genap
+                  </button>
+                </div>
               </div>
 
+              {/* Grid 12 Bulan */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {BULAN_LIST.map((bulanNama, idx) => {
-                  const payment = activeStudent.payments[bulanNama];
+                {filteredMonths.map((monthInfo) => {
+                  const payment = getPaymentForMonth(monthInfo, activeStudent);
                   const isLunas = !!payment;
 
                   return (
                     <div
-                      key={bulanNama}
+                      key={monthInfo.key}
                       className={`p-4 rounded-2xl border transition-all ${
                         isLunas
                           ? 'bg-white border-emerald-200 shadow-sm hover:border-emerald-300'
                           : 'bg-slate-50/70 border-slate-200/80 hover:bg-slate-50'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span className="font-black text-slate-800 text-sm">
-                          {String(idx + 1).padStart(2, '0')}. {bulanNama}
-                        </span>
+                      <div className="flex items-start justify-between gap-2 mb-2.5">
+                        <div>
+                          <div className="font-black text-slate-800 text-sm">
+                            {String(monthInfo.order).padStart(2, '0')}. {monthInfo.bulan} {monthInfo.tahun}
+                          </div>
+                          <span className={`inline-block text-[10px] font-bold mt-0.5 px-2 py-0.5 rounded ${
+                            monthInfo.semester === 'Ganjil'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200/80'
+                              : 'bg-sky-50 text-sky-800 border border-sky-200/80'
+                          }`}>
+                            Semester {monthInfo.semesterNumber} ({monthInfo.semester})
+                          </span>
+                        </div>
+
                         {isLunas ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 shadow-2xs">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             LUNAS
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-200/70 text-slate-600 border border-slate-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-200/70 text-slate-600 border border-slate-200 shrink-0">
                             <Clock className="w-3 h-3 text-slate-400" />
                             Belum Bayar
                           </span>
@@ -741,7 +953,7 @@ export default function ParentSppCardView() {
                       </div>
 
                       {isLunas ? (
-                        <div className="space-y-1 text-xs text-slate-600 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100/80">
+                        <div className="space-y-1 text-xs text-slate-600 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100/80">
                           <div className="flex items-center gap-1.5 text-emerald-950 font-medium">
                             <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             <span>{formatTanggalIndo(payment.tanggal_bayar)}</span>
@@ -765,14 +977,30 @@ export default function ParentSppCardView() {
             </div>
 
             {/* Note & Informasi Kontak */}
-            <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl text-xs text-indigo-900 space-y-1">
+            <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl text-xs text-indigo-900 space-y-1 print:hidden">
               <p className="font-bold flex items-center gap-1.5 text-indigo-950">
                 <School className="w-4 h-4 text-indigo-700" />
                 Catatan Penting untuk Orang Tua:
               </p>
               <p className="text-indigo-800/90 leading-relaxed">
-                Halaman ini menampilkan riwayat status lunas SPP untuk tahun berjalan ({currentYear}). Jika terdapat pembayaran yang belum tercatat atau membutuhkan klarifikasi kwitansi, silakan konfirmasi ke bendahara atau pihak administrasi sekolah.
+                Halaman ini menampilkan riwayat status lunas SPP untuk <strong>Tahun Ajaran {academicYearLabel}</strong> (mulai Juli {academicStartYear} hingga Juni {academicStartYear + 1}). Jika terdapat pembayaran yang belum tercatat atau membutuhkan klarifikasi kuitansi, silakan konfirmasi ke bendahara atau pihak tata usaha sekolah.
               </p>
+            </div>
+
+            {/* Tanda Tangan Khusus Print */}
+            <div className="hidden print:grid grid-cols-2 gap-8 pt-8 mt-6 border-t border-slate-300 text-xs">
+              <div className="text-center">
+                <p className="text-slate-500 mb-16">Mengetahui Orang Tua / Wali,</p>
+                <p className="font-bold border-t border-slate-400 inline-block px-8 pt-1">
+                  ( .................................................. )
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-slate-500 mb-16">Bendahara / Administrasi Sekolah,</p>
+                <p className="font-bold border-t border-slate-400 inline-block px-8 pt-1">
+                  ( .................................................. )
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -787,7 +1015,7 @@ export default function ParentSppCardView() {
               Cek Kartu Pembayaran SPP Ananda
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-              Silakan ketikkan nomor WhatsApp orang tua di atas untuk melihat bulan-bulan yang sudah lunas pada tahun {currentYear} beserta tanggal dan waktu pembayarannya.
+              Silakan ketikkan nomor WhatsApp orang tua di atas untuk melihat status pembayaran SPP per <strong>Tahun Ajaran {academicYearLabel}</strong> (periode Juli {academicStartYear} – Juni {academicStartYear + 1}).
             </p>
           </div>
         )}
@@ -796,7 +1024,7 @@ export default function ParentSppCardView() {
 
       {/* Footer */}
       <footer className="py-6 text-center text-xs text-slate-400 border-t border-slate-200 bg-white print:hidden">
-        <p>© {currentYear} {schoolInfo?.name || 'CATATOH'} • Sistem Informasi SPP Sekolah</p>
+        <p>© {academicStartYear}–{academicStartYear + 1} {schoolInfo?.name || 'CATATOH'} • Sistem Informasi SPP Sekolah</p>
       </footer>
     </div>
   );

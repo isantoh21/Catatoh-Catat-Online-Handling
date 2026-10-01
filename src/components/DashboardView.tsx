@@ -2113,7 +2113,7 @@ export default function DashboardView() {
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-sans leading-relaxed whitespace-pre-wrap">
 {`Kepada Yth. Bapak/Ibu Orang Tua / Wali Siswa ${currentSchoolName || ''},
 
-Untuk mengecek status lunas pembayaran SPP ananda tahun berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:
+Untuk mengecek status lunas pembayaran SPP ananda tahun ajaran berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:
 
 👉 https://${getSchoolParentUrl()}
 
@@ -2127,7 +2127,7 @@ Terima kasih atas perhatian dan kerja samanya.`}
                 <div className="mt-2 flex justify-end">
                   <button
                     onClick={async () => {
-                      const text = `Kepada Yth. Bapak/Ibu Orang Tua / Wali Siswa ${currentSchoolName || ''},\n\nUntuk mengecek status lunas pembayaran SPP ananda tahun berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:\n\n👉 https://${getSchoolParentUrl()}\n\nCara Cek:\n1. Klik tautan di atas\n2. Masukkan nomor WhatsApp yang terdaftar di sekolah\n3. Tekan "Cek Kartu SPP"\n\nTerima kasih atas perhatian dan kerja samanya.`;
+                      const text = `Kepada Yth. Bapak/Ibu Orang Tua / Wali Siswa ${currentSchoolName || ''},\n\nUntuk mengecek status lunas pembayaran SPP ananda tahun ajaran berjalan, Bapak/Ibu dapat mengakses portal resmi kartu SPP sekolah melalui link berikut:\n\n👉 https://${getSchoolParentUrl()}\n\nCara Cek:\n1. Klik tautan di atas\n2. Masukkan nomor WhatsApp yang terdaftar di sekolah\n3. Tekan "Cek Kartu SPP"\n\nTerima kasih atas perhatian dan kerja samanya.`;
                       await navigator.clipboard.writeText(text);
                       setCopiedShareBroadcast(true);
                       setTimeout(() => setCopiedShareBroadcast(false), 2500);

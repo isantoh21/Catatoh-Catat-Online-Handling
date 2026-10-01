@@ -216,7 +216,7 @@ BEGIN
     p.tanggal_bayar,
     p.waktu_bayar
   FROM students s
-  LEFT JOIN payments p ON p.student_id = s.id AND p.tahun = p_year
+  LEFT JOIN payments p ON p.student_id = s.id AND p.tahun IN (p_year, p_year + 1)
   WHERE 
     (p_user_id IS NULL OR s.user_id = p_user_id)
     AND (
