@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { History, Search, AlertCircle, Clock, CheckCircle2, XCircle, UserPlus, FileText } from 'lucide-react';
+import { purgeExcessActivityLogs } from '../lib/activityLogger';
+import { History, Search, AlertCircle, Clock, CheckCircle2, XCircle, UserPlus, FileText, Sparkles } from 'lucide-react';
 
 export default function ActivityLogsView() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -18,6 +19,9 @@ export default function ActivityLogsView() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
+
+      // Jalankan pembersihan auto-purge (hanya simpan 10 log teratas per user)
+      purgeExcessActivityLogs(session.user.id).catch(() => {});
 
       const { data, error } = await supabase.from('activity_logs')
         .select('*')
@@ -77,9 +81,11 @@ export default function ActivityLogsView() {
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can insert their own logs" ON activity_logs;
 DROP POLICY IF EXISTS "Users can view their own logs" ON activity_logs;
+DROP POLICY IF EXISTS "Users can delete their own logs" ON activity_logs;
 
 CREATE POLICY "Users can insert their own logs" ON activity_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can view their own logs" ON activity_logs FOR SELECT USING (auth.uid() = user_id);`}
+CREATE POLICY "Users can view their own logs" ON activity_logs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own logs" ON activity_logs FOR DELETE USING (auth.uid() = user_id);`}
           </pre>
         </div>
         <button 
@@ -96,11 +102,17 @@ CREATE POLICY "Users can view their own logs" ON activity_logs FOR SELECT USING 
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 font-sans">
       <div className="p-6 md:px-10 md:py-8 border-b border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <History className="w-6 h-6 text-indigo-600" />
-            Log Aktivitas
-          </h2>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-1">Jejak tindakan Anda di sistem</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <History className="w-6 h-6 text-indigo-600" />
+              Log Aktivitas
+            </h2>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+              <Sparkles className="w-3 h-3 text-emerald-600" />
+              Auto-Purge 10 Teratas Aktif
+            </span>
+          </div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-1">Jejak tindakan Anda di sistem (Maks. 10 aktivitas terbaru)</p>
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

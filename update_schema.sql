@@ -185,3 +185,50 @@ END;
 $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION get_all_users() TO authenticated, service_role;
+
+-- =========================================================================
+-- AUTO PURGE ACTIVITY LOGS (HANYA SIMPAN 10 LOG TERBARU PER USER)
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  description TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can insert their own logs" ON public.activity_logs;
+DROP POLICY IF EXISTS "Users can view their own logs" ON public.activity_logs;
+DROP POLICY IF EXISTS "Users can delete their own logs" ON public.activity_logs;
+
+CREATE POLICY "Users can insert their own logs" ON public.activity_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view their own logs" ON public.activity_logs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own logs" ON public.activity_logs FOR DELETE USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_created ON public.activity_logs(user_id, created_at DESC);
+
+-- Trigger database untuk auto-purge log aktivitas (hanya pertahankan 10 log terbaru per user)
+CREATE OR REPLACE FUNCTION purge_excess_activity_logs()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.activity_logs
+  WHERE user_id = NEW.user_id
+    AND id NOT IN (
+      SELECT id FROM public.activity_logs
+      WHERE user_id = NEW.user_id
+      ORDER BY created_at DESC
+      LIMIT 10
+    );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_purge_excess_activity_logs ON public.activity_logs;
+CREATE TRIGGER trg_purge_excess_activity_logs
+AFTER INSERT ON public.activity_logs
+FOR EACH ROW
+EXECUTE FUNCTION purge_excess_activity_logs();
+
