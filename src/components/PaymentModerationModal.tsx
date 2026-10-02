@@ -134,15 +134,15 @@ export default function PaymentModerationModal({
     }
   }, [isOpen, isPremium]);
 
-  // Auto-purge: Bersihkan bukti transfer berstatus 'approved' yang sudah berumur lebih dari 30 hari
+  // Auto-purge: Bersihkan bukti transfer berstatus 'approved' yang sudah berumur lebih dari 14 hari
   const purgeExpiredApprovedVerifications = async (items: PaymentVerification[], uid?: string) => {
-    const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+    const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
     const expiredApproved = items.filter(item => {
       if (item.status !== 'approved') return false;
       const recordDate = new Date(item.updated_at || item.created_at).getTime();
-      return (now - recordDate) > thirtyDaysInMs;
+      return (now - recordDate) > fourteenDaysInMs;
     });
 
     if (expiredApproved.length > 0) {
@@ -1116,18 +1116,18 @@ export default function PaymentModerationModal({
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-100/60">
-          {/* Banner Informasi Auto-Purge 30 Hari pada Tab Disetujui */}
+          {/* Banner Informasi Auto-Purge 14 Hari pada Tab Disetujui */}
           {filterTab === 'approved' && (
             <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between gap-2 shadow-2xs">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-600 shrink-0" />
                 <div>
-                  <span className="font-bold">Auto-Purge 30 Hari Aktif: </span>
-                  <span>Bukti transfer yang telah disetujui otomatis dibersihkan dari laman moderasi ini setelah 30 hari untuk menjaga performa. (Catatan pembayaran SPP siswa di laporan & kartu SPP tetap tersimpan aman).</span>
+                  <span className="font-bold">Auto-Purge 14 Hari Aktif: </span>
+                  <span>Bukti transfer yang telah disetujui otomatis dibersihkan dari laman moderasi ini setelah 14 hari untuk menjaga performa. (Catatan pembayaran SPP siswa di laporan & kartu SPP tetap tersimpan aman).</span>
                 </div>
               </div>
               <span className="hidden sm:inline-block px-2.5 py-0.5 bg-emerald-200/60 text-emerald-800 font-extrabold rounded-md text-[10px] uppercase tracking-wider shrink-0 border border-emerald-300">
-                Maksimal 30 Hari
+                Maksimal 14 Hari
               </span>
             </div>
           )}

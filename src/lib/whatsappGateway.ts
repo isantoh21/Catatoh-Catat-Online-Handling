@@ -376,7 +376,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
       .limit(50);
 
     if (!error && data) {
-      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+      const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
       const now = Date.now();
       const expiredApprovedIds: string[] = [];
 
@@ -385,10 +385,10 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
       })).filter((item: any) => {
-        // Auto-purge bukti bayar yang telah disetujui (approved) dan berumur lebih dari 30 hari
+        // Auto-purge bukti bayar yang telah disetujui (approved) dan berumur lebih dari 14 hari
         if (item.status === 'approved') {
           const itemTime = new Date(item.updated_at || item.created_at).getTime();
-          if (now - itemTime > thirtyDaysInMs) {
+          if (now - itemTime > fourteenDaysInMs) {
             expiredApprovedIds.push(item.id);
             return false;
           }
@@ -421,12 +421,12 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
         const now = Date.now();
         return json.data.filter((item: any) => {
           if (item.status === 'approved') {
             const itemTime = new Date(item.updated_at || item.created_at).getTime();
-            if (now - itemTime > thirtyDaysInMs) return false;
+            if (now - itemTime > fourteenDaysInMs) return false;
           }
           return isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId;
         });
@@ -443,12 +443,12 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     try {
       const parsed = JSON.parse(localList);
       if (Array.isArray(parsed)) {
-        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
         const now = Date.now();
         const validList = parsed.filter((item: any) => {
           if (item.status === 'approved') {
             const itemTime = new Date(item.updated_at || item.created_at).getTime();
-            if (now - itemTime > thirtyDaysInMs) return false;
+            if (now - itemTime > fourteenDaysInMs) return false;
           }
           return isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId;
         });

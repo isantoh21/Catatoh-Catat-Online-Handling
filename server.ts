@@ -895,14 +895,14 @@ app.post("/api/webhook/simulate", async (req, res) => {
 // =========================================================================
 app.get("/api/webhook/verifications", (req, res) => {
   const { userId } = req.query;
-  const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+  const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
   let list = memoryVerifications.filter(v => {
-    // Auto purge verifikasi berstatus approved yang berumur lebih dari 30 hari
+    // Auto purge verifikasi berstatus approved yang berumur lebih dari 14 hari
     if (v.status === 'approved') {
       const vTime = new Date(v.created_at).getTime();
-      if (now - vTime > thirtyDaysInMs) return false;
+      if (now - vTime > fourteenDaysInMs) return false;
     }
     return true;
   });

@@ -38,25 +38,25 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ success: true, data: [] });
       }
 
-      // Auto purge bukti bayar approved > 30 hari
-      const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Auto purge bukti bayar approved > 14 hari
+      const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       serverSupabase
         .from('payment_verifications')
         .delete()
         .eq('user_id', userId)
         .eq('status', 'approved')
-        .lt('created_at', thirtyDaysAgoIso)
+        .lt('created_at', fourteenDaysAgoIso)
         .then(() => {})
         .catch(() => {});
 
-      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+      const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
       const now = Date.now();
 
       const mapped = (data || [])
         .filter((item: any) => {
           if (item.status === 'approved') {
             const itemTime = new Date(item.updated_at || item.created_at).getTime();
-            if (now - itemTime > thirtyDaysInMs) return false;
+            if (now - itemTime > fourteenDaysInMs) return false;
           }
           return true;
         })
