@@ -11,7 +11,7 @@ import {
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal from './PaymentModerationModal';
-import { getPaymentVerifications, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
+import { getPaymentVerifications, getPendingVerificationsCount, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
 import { usePremiumStatus } from '../lib/premiumService';
 import PremiumLockModal from './PremiumLockModal';
 import WhatsAppTemplateModal from './WhatsAppTemplateModal';
@@ -174,7 +174,7 @@ export default function DashboardView() {
 
     const interval = setInterval(() => {
       refreshPendingCount();
-    }, 15000);
+    }, 60000); // refresh tiap 60 detik (fallback aman & hemat egress)
 
     return () => clearInterval(interval);
   }, []);
@@ -183,8 +183,7 @@ export default function DashboardView() {
     try {
       const sessionData = await supabase.auth.getSession();
       const uid = sessionData.data.session?.user?.id;
-      const list = await getPaymentVerifications(uid);
-      const pending = list.filter(item => item.status === 'pending').length;
+      const pending = await getPendingVerificationsCount(uid);
       setPendingVerificationsCount(pending);
     } catch (e) {
       // Abaikan jika offline / gagal
@@ -210,9 +209,17 @@ export default function DashboardView() {
       })
       .subscribe();
 
+    const verifChannel = supabase
+      .channel('realtime-verifications-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_verifications' }, () => {
+        refreshPendingCount();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(studentsChannel);
       supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(verifChannel);
     };
   }, [selectedBulan, selectedTahun]);
 

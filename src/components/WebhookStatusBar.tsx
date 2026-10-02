@@ -3,7 +3,7 @@ import {
   Radio, Check, Copy, RefreshCw, CheckCircle2, AlertCircle, 
   ExternalLink, Activity, ShieldCheck, Zap, Clock, Smartphone
 } from 'lucide-react';
-import { getPaymentVerifications, clearLocalVerifications, isRealTransferReceipt } from '../lib/whatsappGateway';
+import { getPendingVerificationsCount, clearLocalVerifications, isRealTransferReceipt } from '../lib/whatsappGateway';
 import { supabase } from '../lib/supabaseClient';
 
 interface WebhookStatusBarProps {
@@ -85,10 +85,9 @@ export default function WebhookStatusBar({
         setWaAccount(null);
       }
 
-      // 2. Fetch actual received verifications count from Supabase
+      // 2. Fetch actual received verifications count from Supabase (hemat egress dengan HEAD count)
       try {
-        const verifs = await getPaymentVerifications(currentUserId).catch(() => []);
-        const pendingCount = (verifs || []).filter(v => v.status === 'pending').length;
+        const pendingCount = await getPendingVerificationsCount(currentUserId);
         setVerificationsCount(pendingCount);
       } catch (_) {
         setVerificationsCount(0);
@@ -133,7 +132,7 @@ export default function WebhookStatusBar({
     checkWebhookHealth();
     const timer = setInterval(() => {
       checkWebhookHealth();
-    }, 15000); // refresh tiap 15 detik
+    }, 60000); // refresh tiap 60 detik (hemat egress)
     return () => clearInterval(timer);
   }, [currentUserId]);
 

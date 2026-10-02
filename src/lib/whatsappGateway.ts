@@ -296,6 +296,43 @@ export function isRealTransferReceipt(v: any): boolean {
   return true;
 }
 
+// Dapatkan JUMLAH antrean bukti pembayaran pending tanpa mendownload gambar / data (hemat egress ~99.9%)
+export async function getPendingVerificationsCount(userId?: string): Promise<number> {
+  let activeUserId = userId;
+  if (!activeUserId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    activeUserId = session?.user?.id;
+  }
+  if (!activeUserId) return 0;
+
+  try {
+    const { count, error } = await supabase
+      .from('payment_verifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', activeUserId)
+      .eq('status', 'pending');
+
+    if (!error && typeof count === 'number') {
+      return count;
+    }
+  } catch (err) {
+    // Fallback jika offline atau error
+  }
+
+  // Fallback lokal jika offline
+  try {
+    const localList = localStorage.getItem(getVerificationsStorageKey(activeUserId));
+    if (localList) {
+      const parsed = JSON.parse(localList);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item: any) => item.status === 'pending').length;
+      }
+    }
+  } catch (_) {}
+
+  return 0;
+}
+
 // Dapatkan daftar bukti pembayaran yang masuk untuk dimoderasi
 export async function getPaymentVerifications(userId?: string): Promise<PaymentVerification[]> {
   let activeUserId = userId;
@@ -323,7 +360,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     } catch (_) {}
   }
 
-  // 1. Coba dari tabel Supabase `payment_verifications` dengan filter KETAT per user_id
+  // 1. Coba dari tabel Supabase `payment_verifications` dengan filter KETAT per user_id & batasan limit 50
   try {
     const { data, error } = await supabase
       .from('payment_verifications')
@@ -335,7 +372,8 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         )
       `)
       .eq('user_id', activeUserId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (!error && data) {
       const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
