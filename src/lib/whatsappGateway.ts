@@ -284,8 +284,8 @@ export function isRealTransferReceipt(v: any): boolean {
   // 2. Tolak gambar placeholder Unsplash yang sering dipakai pengujian
   if (img.includes('unsplash.com')) return false;
 
-  // 3. Wajib ada gambar bukti nyata
-  if (!v.proof_image_url || v.proof_image_url.trim() === '') return false;
+  // 3. Wajib ada data verifikasi nyata (analisis Gemini Vision atau nominal)
+  if (!v.confidence_notes && !v.nominal && !v.proof_image_url) return false;
 
   // 4. Tolak jika catatan verifikasi menandai bukan bukti transfer
   if (notes.includes('bukan bukti transfer') || notes.includes('bukan struk') || notes.includes('kemungkinan bukan')) return false;
@@ -346,6 +346,19 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     return [];
   }
 
+  // Bersihkan data base64 warisan lama di Supabase di latar belakang agar database tetap ramping (< 5 MB)
+  if (activeUserId) {
+    try {
+      supabase
+        .from('payment_verifications')
+        .update({ proof_image_url: 'ai_detected' } as any)
+        .like('proof_image_url', 'data:%')
+        .eq('user_id', activeUserId)
+        .then(() => {})
+        .catch(() => {});
+    } catch (_) {}
+  }
+
   // Bersihkan cache localStorage yang over-quota jika terisi data base64 raksasa (>100KB)
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -361,11 +374,30 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
   }
 
   // 1. Coba dari tabel Supabase `payment_verifications` dengan filter KETAT per user_id & batasan limit 50
+  // PENTING: Jangan select `proof_image_url` untuk memangkas Egress PostgREST hingga 99.98%
   try {
     const { data, error } = await supabase
       .from('payment_verifications')
       .select(`
-        *,
+        id,
+        user_id,
+        student_id,
+        sender_phone,
+        sender_name,
+        message_text,
+        bulan,
+        tahun,
+        nominal,
+        tanggal_transfer,
+        waktu_transfer,
+        bank_pengirim,
+        bank_tujuan,
+        nama_rekening_pengirim,
+        confidence_notes,
+        status,
+        reject_reason,
+        created_at,
+        updated_at,
         students (
           nama_lengkap,
           kelompok
@@ -382,6 +414,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
 
       const mapped = data.map((item: any) => ({
         ...item,
+        proof_image_url: 'ai_detected',
         student_name: item.students?.nama_lengkap || item.sender_name || 'Belum Dipetakan',
         student_kelompok: item.students?.kelompok || '-'
       })).filter((item: any) => {

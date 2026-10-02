@@ -897,7 +897,7 @@ export default async function handler(req: any, res: any) {
         sender_phone: senderPhone || "",
         sender_name: resolvedSenderName,
         message_text: messageText || "",
-        proof_image_url: proofImageUrl,
+        proof_image_url: "ai_detected",
         bulan: detectedBulan,
         tahun: currentYear,
         nominal: Number(finalNominal) || 0,

@@ -17,7 +17,7 @@ export interface PaymentVerification {
   sender_phone: string;
   sender_name?: string;
   message_text?: string;
-  proof_image_url: string;
+  proof_image_url?: string;
   bulan: string;
   tahun: number;
   nominal: number;
