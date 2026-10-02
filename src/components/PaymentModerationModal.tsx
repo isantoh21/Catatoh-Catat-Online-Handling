@@ -169,7 +169,11 @@ export default function PaymentModerationModal({
       }
 
       const keptItems = items.filter(item => !expiredIds.includes(item.id));
-      saveLocalVerifications(keptItems, uid);
+      try {
+        saveLocalVerifications(keptItems, uid);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
       return keptItems;
     }
 
@@ -221,31 +225,76 @@ export default function PaymentModerationModal({
 
       // 1. Simpan ke tabel payments untuk SEMUA siswa terdeteksi (kakak-adik)
       if (targetStudents.length > 0) {
-        const paymentsToInsert = targetStudents.map((st, idx) => ({
-          user_id: uid,
-          student_id: st.id,
-          bulan: item.bulan,
-          tahun: item.tahun,
-          nominal_dibayar: perStudentNominal + (idx === 0 ? remainder : 0),
-          tanggal_bayar: tanggalBayar,
-          waktu_bayar: waktuBayar,
-        }));
-        const { error: insertPayError } = await supabase.from('payments').insert(paymentsToInsert);
-        if (insertPayError) {
-          console.warn('Gagal insert ke payments:', insertPayError);
+        for (let idx = 0; idx < targetStudents.length; idx++) {
+          const st = targetStudents[idx];
+          const nominalSiswa = perStudentNominal + (idx === 0 ? remainder : 0);
+
+          // Cek apakah sudah pernah tercatat (idempotent untuk mencegah duplikasi jika retry)
+          const { data: existingPay } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('user_id', uid)
+            .eq('student_id', st.id)
+            .eq('bulan', item.bulan)
+            .eq('tahun', item.tahun)
+            .maybeSingle();
+
+          if (existingPay?.id) {
+            await supabase
+              .from('payments')
+              .update({
+                nominal_dibayar: nominalSiswa,
+                tanggal_bayar: tanggalBayar,
+                waktu_bayar: waktuBayar,
+              })
+              .eq('id', existingPay.id);
+          } else {
+            const { error: insertPayError } = await supabase.from('payments').insert([{
+              user_id: uid,
+              student_id: st.id,
+              bulan: item.bulan,
+              tahun: item.tahun,
+              nominal_dibayar: nominalSiswa,
+              tanggal_bayar: tanggalBayar,
+              waktu_bayar: waktuBayar,
+            }]);
+            if (insertPayError) {
+              console.warn('Gagal insert ke payments:', insertPayError);
+            }
+          }
         }
       } else if (item.student_id) {
-        await supabase.from('payments').insert([
-          {
-            user_id: uid,
-            student_id: item.student_id,
-            bulan: item.bulan,
-            tahun: item.tahun,
-            nominal_dibayar: totalNominal,
-            tanggal_bayar: tanggalBayar,
-            waktu_bayar: waktuBayar,
-          }
-        ]);
+        const { data: existingPay } = await supabase
+          .from('payments')
+          .select('id')
+          .eq('user_id', uid)
+          .eq('student_id', item.student_id)
+          .eq('bulan', item.bulan)
+          .eq('tahun', item.tahun)
+          .maybeSingle();
+
+        if (existingPay?.id) {
+          await supabase
+            .from('payments')
+            .update({
+              nominal_dibayar: totalNominal,
+              tanggal_bayar: tanggalBayar,
+              waktu_bayar: waktuBayar,
+            })
+            .eq('id', existingPay.id);
+        } else {
+          await supabase.from('payments').insert([
+            {
+              user_id: uid,
+              student_id: item.student_id,
+              bulan: item.bulan,
+              tahun: item.tahun,
+              nominal_dibayar: totalNominal,
+              tanggal_bayar: tanggalBayar,
+              waktu_bayar: waktuBayar,
+            }
+          ]);
+        }
       }
 
       // 2. Perbarui status verifikasi di Supabase / server
@@ -317,7 +366,11 @@ export default function PaymentModerationModal({
 
       const updated = verifications.map(v => v.id === item.id ? { ...v, status: 'approved' as const } : v);
       setVerifications(updated);
-      saveLocalVerifications(updated, uid);
+      try {
+        saveLocalVerifications(updated, uid);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
 
       if (onPaymentApproved) {
         onPaymentApproved();
@@ -466,7 +519,11 @@ export default function PaymentModerationModal({
         reject_reason: finalReason 
       } : v);
       setVerifications(updated);
-      saveLocalVerifications(updated, uid);
+      try {
+        saveLocalVerifications(updated, uid);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
       setRejectingItem(null);
     } catch (err: any) {
       alert('Gagal menolak verifikasi: ' + err.message);
@@ -483,7 +540,11 @@ export default function PaymentModerationModal({
       await deletePaymentVerification(itemId, currentUserId);
       const updated = verifications.filter(v => v.id !== itemId);
       setVerifications(updated);
-      saveLocalVerifications(updated, currentUserId);
+      try {
+        saveLocalVerifications(updated, currentUserId);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
     } catch (e: any) {
       alert('Gagal menghapus bukti: ' + e.message);
     } finally {
@@ -688,7 +749,11 @@ export default function PaymentModerationModal({
       });
 
       setVerifications(updated);
-      saveLocalVerifications(updated, uid);
+      try {
+        saveLocalVerifications(updated, uid);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
 
       // 4. Log aktivitas perubahan
       await logActivity(
@@ -826,7 +891,11 @@ export default function PaymentModerationModal({
 
       // 3. Masukkan ke state antrean moderasi & local storage
       setVerifications(prev => [newRecord, ...prev.filter(v => v.id !== newRecord.id)]);
-      saveLocalVerifications([newRecord, ...verifications.filter(v => v.id !== newRecord.id)], currentUserId);
+      try {
+        saveLocalVerifications([newRecord, ...verifications.filter(v => v.id !== newRecord.id)], currentUserId);
+      } catch (cacheErr) {
+        console.warn('Gagal simpan verifikasi lokal (cache):', cacheErr);
+      }
       setIsSimulateModalOpen(false);
       setFilterTab('pending');
     } catch (e: any) {

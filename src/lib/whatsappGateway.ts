@@ -309,6 +309,20 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     return [];
   }
 
+  // Bersihkan cache localStorage yang over-quota jika terisi data base64 raksasa (>100KB)
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const storageKey = getVerificationsStorageKey(activeUserId);
+      const raw = localStorage.getItem(storageKey);
+      if (raw && raw.length > 100000) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          saveLocalVerifications(parsed, activeUserId);
+        }
+      }
+    } catch (_) {}
+  }
+
   // 1. Coba dari tabel Supabase `payment_verifications` dengan filter KETAT per user_id
   try {
     const { data, error } = await supabase
@@ -385,7 +399,8 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
   }
 
   // 3. Fallback dari LocalStorage HANYA untuk user yang bersangkutan
-  const localList = localStorage.getItem(getVerificationsStorageKey(activeUserId));
+  const storageKey = getVerificationsStorageKey(activeUserId);
+  const localList = localStorage.getItem(storageKey);
   if (localList) {
     try {
       const parsed = JSON.parse(localList);
@@ -399,7 +414,8 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
           }
           return isRealTransferReceipt(item) && Boolean(item.student_id) && item.user_id === activeUserId;
         });
-        if (validList.length !== parsed.length) {
+        // Auto-sanitize jika isi cache sebelumnya berukuran besar (>100KB) atau ada item yang difilter
+        if (localList.length > 100000 || validList.length !== parsed.length) {
           saveLocalVerifications(validList, activeUserId);
         }
         return validList;
@@ -413,10 +429,59 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
   return [];
 }
 
-// Simpan atau perbarui bukti verifikasi lokal
+// Simpan atau perbarui bukti verifikasi lokal (Aman dari QuotaExceededError)
 export function saveLocalVerifications(items: PaymentVerification[], userId?: string) {
-  // Hanya simpan item yang valid
-  localStorage.setItem(getVerificationsStorageKey(userId), JSON.stringify(items));
+  if (typeof window === 'undefined' || !window.localStorage) return;
+
+  const storageKey = getVerificationsStorageKey(userId);
+  try {
+    // 1. Sanitize items untuk hemat storage:
+    // Pangkas base64 raksasa (>500 karakter) menjadi placeholder transparan ringan 1x1
+    // agar tidak menghabiskan kuota 5MB browser localStorage
+    const sanitized = (items || []).slice(0, 50).map(item => {
+      let safeImg = item.proof_image_url;
+      if (safeImg && (safeImg.startsWith('data:') || safeImg.length > 500)) {
+        safeImg = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY44YAAAAASUVORK5CYII=';
+      }
+      return {
+        ...item,
+        proof_image_url: safeImg,
+      };
+    });
+
+    const serialized = JSON.stringify(sanitized);
+
+    // Hapus key lama sebelum setItem untuk mencegah QuotaExceededError browser
+    localStorage.removeItem(storageKey);
+    localStorage.setItem(storageKey, serialized);
+  } catch (err: any) {
+    console.warn('Gagal menyimpan cache verifikasi ke localStorage (kuota penuh / dibatasi):', err?.message || err);
+    // Penanganan darurat jika localStorage benar-benar penuh oleh data lain
+    try {
+      localStorage.removeItem(storageKey);
+
+      // Bersihkan key cache lama yang berawalan catatoh_wa_verifications
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('catatoh_wa_verifications') && k !== storageKey) {
+          localStorage.removeItem(k);
+        }
+      }
+
+      // Simpan hanya pending dengan data paling minimal
+      const minimal = (items || [])
+        .filter(v => v.status === 'pending')
+        .slice(0, 15)
+        .map(v => ({
+          ...v,
+          proof_image_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY44YAAAAASUVORK5CYII='
+        }));
+
+      localStorage.setItem(storageKey, JSON.stringify(minimal));
+    } catch (_) {
+      // Abaikan sepenuhnya, jangan pernah melempar exception ke proses bisnis transaksi pembayaran
+    }
+  }
 }
 
 // Hapus satu bukti verifikasi secara permanen
@@ -443,6 +508,7 @@ export async function deletePaymentVerification(id: string, userId?: string): Pr
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         const filtered = parsed.filter((v: any) => v.id !== id);
+        localStorage.removeItem(storageKey);
         localStorage.setItem(storageKey, JSON.stringify(filtered));
       }
     }
