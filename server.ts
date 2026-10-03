@@ -636,13 +636,47 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
 
           if (!matchedStudent && messageText && messageText.trim().length >= 3) {
             const lowerMsg = messageText.toLowerCase();
+            const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // Cocokkan nama HANYA dengan batas kata (word boundaries) agar kata seperti "aidan" tidak cocok di dalam "zaidan"
             const textMatches = students.filter((s: any) => {
               const name = (s.nama_lengkap || "").trim().toLowerCase();
-              return name.length >= 3 && lowerMsg.includes(name);
+              if (name.length < 3) return false;
+              const regex = new RegExp(`(?:^|[^a-zA-Z0-9])${escapeRegex(name)}(?:$|[^a-zA-Z0-9])`, 'i');
+              return regex.test(lowerMsg);
             });
-            if (textMatches.length > 0) {
-              matchedStudents = textMatches;
+
+            if (textMatches.length === 1) {
               matchedStudent = textMatches[0];
+              matchedStudents = [matchedStudent];
+            } else if (textMatches.length > 1) {
+              // Jika ada lebih dari 1 siswa yang cocok di teks:
+              // Periksa apakah mereka BENAR-BENAR saudara kandung (nomor WhatsApp orang tua sama)
+              const firstPhone = (textMatches[0].nomor_whatsapp || '').replace(/\D/g, '').slice(-8);
+              const areTrueSiblings = firstPhone.length >= 8 && textMatches.every((s: any) => {
+                const sPhone = (s.nomor_whatsapp || '').replace(/\D/g, '').slice(-8);
+                return sPhone === firstPhone;
+              });
+
+              if (areTrueSiblings) {
+                // Benar-benar kakak-adik dengan nomor HP keluarga yang sama
+                matchedStudents = textMatches;
+                matchedStudent = textMatches[0];
+              } else {
+                // BUKAN saudara kandung (nomor HP berbeda):
+                // Urutkan berdasarkan kemunculan paling awal di pesan (nama depan) dan panjang nama
+                const sortedByPosition = [...textMatches].sort((a: any, b: any) => {
+                  const nameA = (a.nama_lengkap || "").trim().toLowerCase();
+                  const nameB = (b.nama_lengkap || "").trim().toLowerCase();
+                  const posA = lowerMsg.indexOf(nameA);
+                  const posB = lowerMsg.indexOf(nameB);
+                  if (posA !== posB) return posA - posB;
+                  return nameB.length - nameA.length;
+                });
+
+                matchedStudent = sortedByPosition[0];
+                matchedStudents = [matchedStudent];
+              }
             }
           }
 
@@ -681,7 +715,12 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       } catch (_) {}
     }
 
-    const isSiblingTransfer = matchedStudents.length > 1;
+    // Transfer Kakak-Adik HANYA valid jika terdapat lebih dari 1 siswa DAN semuanya benar-benar berbagi nomor WhatsApp keluarga yang sama
+    const isSiblingTransfer = matchedStudents.length > 1 && matchedStudents.every((s: any, _: any, arr: any[]) => {
+      const p1 = (s.nomor_whatsapp || "").replace(/\D/g, "").slice(-8);
+      const p2 = (arr[0]?.nomor_whatsapp || "").replace(/\D/g, "").slice(-8);
+      return p1.length >= 8 && p1 === p2;
+    });
     const combinedSpp = matchedStudents.reduce((sum: number, s: any) => sum + (Number(s.nominal_spp) || 0), 0);
     const referenceSpp = combinedSpp > 0 ? combinedSpp : matchedStudent?.nominal_spp;
 
