@@ -204,74 +204,189 @@ const PAYMENT_KEYWORDS = [
   'transfer', 'bukti', 'spp', 'bayar', 'struk', 'tf', 'rekening', 'mutasi', 'setor', 'lunas', 'bca', 'bri', 'mandiri', 'bsi', 'dana', 'gopay', 'ovo', 'biaya'
 ];
 
-async function analyzeReceiptWithCustomProvider(
-  imagePart: { inlineData: { mimeType: string; data: string } },
-  prompt: string
-): Promise<ReceiptAnalysisResult | null> {
-  const customBaseUrl = (process.env.CUSTOM_AI_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, "");
-  const customApiKey = process.env.CUSTOM_AI_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng";
-  const customModels = [
+// Konfigurasi AI Provider Fallback:
+// 1. Prioritas Utama: Google Gemini Free Tier
+// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): GLM dari Sumopod
+// 3. Prioritas Ketiga (Fallback Terakhir jika GLM sibuk, menolak, atau out of budget): KoboldLLM
+
+const SUMOPOD_CONFIG = {
+  baseUrl: (process.env.SUMOPOD_BASE_URL || process.env.GLM_BASE_URL || "https://ai.sumopod.com/v1").replace(/\/+$/, ""),
+  apiKey: process.env.SUMOPOD_API_KEY || process.env.GLM_API_KEY || "sk-DFe4pA8Vmm2p4OIr01pwJw",
+  models: [
+    "glm-5.3-flash",
+    "deepseek-v4.1-flash:netra",
+    "glm-4v",
+    "glm-4"
+  ]
+};
+
+const KOBOILLM_CONFIG = {
+  baseUrl: (process.env.CUSTOM_AI_BASE_URL || process.env.KOBOILLM_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, ""),
+  apiKey: process.env.CUSTOM_AI_API_KEY || process.env.KOBOILLM_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng",
+  models: [
     "gemini/gemini-3.1-flash-lite",
     "vertex_ai/gemini-3.1-flash-lite",
     "gemini/gemini-2.5-flash-lite",
     "vertex_ai/gemini-2.5-flash-lite",
     "gemini-3.1-flash-lite"
-  ];
+  ]
+};
 
-  for (const model of customModels) {
+function isBudgetOrRejectionOrBusyError(status: number, errorText: string): boolean {
+  if ([400, 401, 402, 403, 429, 500, 502, 503, 504].includes(status)) return true;
+  const lower = (errorText || "").toLowerCase();
+  const keywords = [
+    "budget", "quota", "insufficient", "balance", "credit", "arrear", "payment required",
+    "rate limit", "too many requests", "busy", "overloaded", "rejected", "refusal", "refuse",
+    "capacity", "exhausted", "limit exceeded", "unauthorized", "forbidden"
+  ];
+  return keywords.some(k => lower.includes(k));
+}
+
+async function executeOpenAiCompatibleChat(
+  providerName: string,
+  baseUrl: string,
+  apiKey: string,
+  models: string[],
+  messages: any[],
+  temperature = 0.1
+): Promise<{ text: string | null; isBudgetOrRejection: boolean }> {
+  let isBudgetOrRejection = false;
+
+  for (const model of models) {
     try {
-      console.log(`[CUSTOM AI PROVIDER SERVER] Mencoba model fallback: ${model}`);
-      const res = await fetch(`${customBaseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${customApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
-                  }
-                }
-              ]
-            }
-          ],
-          temperature: 0.1
-        })
-      });
+      console.log(`[${providerName} SERVER] Mencoba model: ${model}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature
+          }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        console.warn(`[CUSTOM AI SERVER MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 150));
+        console.warn(`[${providerName} SERVER MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 200));
+        if (isBudgetOrRejectionOrBusyError(res.status, errText)) {
+          isBudgetOrRejection = true;
+          const lower = errText.toLowerCase();
+          if (res.status === 402 || res.status === 401 || res.status === 403 || lower.includes("budget") || lower.includes("quota") || lower.includes("balance") || lower.includes("insufficient")) {
+            console.warn(`[${providerName} SERVER OUT OF BUDGET / REJECTED] Akun menolak atau saldo habis, alihkan ke provider berikutnya.`);
+            return { text: null, isBudgetOrRejection: true };
+          }
+        }
         continue;
       }
 
       const data: any = await res.json();
-      const text = data.choices?.[0]?.message?.content || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.warn(`[CUSTOM AI SERVER MODEL ${model} NO JSON]`, text.slice(0, 150));
-        continue;
+      const content = data.choices?.[0]?.message?.content || "";
+      if (content) {
+        console.log(`[${providerName} SERVER SUCCESS] Berhasil via model ${model}`);
+        return { text: content, isBudgetOrRejection: false };
       }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
-      console.log(`[CUSTOM AI SERVER SUCCESS] Berhasil dianalisis via model ${model}`);
-      return parsed as ReceiptAnalysisResult;
     } catch (err: any) {
-      console.warn(`[CUSTOM AI SERVER MODEL ${model} ERROR]`, err.message || err);
+      console.warn(`[${providerName} SERVER MODEL ${model} ERROR]`, err.message || err);
+      if (err.name === 'AbortError' || isBudgetOrRejectionOrBusyError(0, err.message || '')) {
+        isBudgetOrRejection = true;
+      }
     }
   }
 
-  console.error("[CUSTOM AI SERVER ALL MODELS FAILED]");
+  return { text: null, isBudgetOrRejection };
+}
+
+async function analyzeReceiptWithMultiTierFallback(
+  imagePart: { inlineData: { mimeType: string; data: string } },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
+          }
+        }
+      ]
+    }
+  ];
+
+  // 1. Dulukan GLM dari Sumopod
+  console.log("[AI FALLBACK SERVER] Mencoba GLM dari Sumopod (Priority 1 Fallback)...");
+  try {
+    const sumopodRes = await executeOpenAiCompatibleChat(
+      "SUMOPOD GLM",
+      SUMOPOD_CONFIG.baseUrl,
+      SUMOPOD_CONFIG.apiKey,
+      SUMOPOD_CONFIG.models,
+      messages,
+      0.1
+    );
+
+    if (sumopodRes.text) {
+      const jsonMatch = sumopodRes.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
+        return parsed as ReceiptAnalysisResult;
+      }
+    }
+    console.warn("[AI FALLBACK SERVER] Sumopod GLM sibuk, menolak, atau out of budget. Beralih ke KoboldLLM...");
+  } catch (err: any) {
+    console.warn("[AI FALLBACK SERVER] Sumopod GLM error, beralih ke KoboldLLM:", err.message || err);
+  }
+
+  // 2. Fallback ke KoboldLLM
+  console.log("[AI FALLBACK SERVER] Mencoba KoboldLLM (Final Fallback)...");
+  try {
+    const koboldRes = await executeOpenAiCompatibleChat(
+      "KOBOILLM",
+      KOBOILLM_CONFIG.baseUrl,
+      KOBOILLM_CONFIG.apiKey,
+      KOBOILLM_CONFIG.models,
+      messages,
+      0.1
+    );
+
+    if (koboldRes.text) {
+      const jsonMatch = koboldRes.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
+        return parsed as ReceiptAnalysisResult;
+      }
+    }
+  } catch (err: any) {
+    console.error("[AI FALLBACK SERVER] KoboldLLM error:", err.message || err);
+  }
+
+  console.error("[AI FALLBACK SERVER ALL FAILED] Seluruh provider gagal menganalisis struk.");
   return null;
+}
+
+// Backward compatibility alias
+async function analyzeReceiptWithCustomProvider(
+  imagePart: { inlineData: { mimeType: string; data: string } },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  return await analyzeReceiptWithMultiTierFallback(imagePart, prompt);
 }
 
 async function analyzeReceiptWithGemini(imageUrl: string, messageCaption?: string): Promise<ReceiptAnalysisResult | null> {
@@ -1103,73 +1218,142 @@ Return strictly JSON adhering to the specified schema.
 
     parts.push({ text: promptText });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: { parts },
-      config: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isHumanFaceDetected: {
-              type: Type.BOOLEAN,
-              description: "Whether a clear human face was detected in the live camera image",
+    let result: any = null;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts },
+        config: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isHumanFaceDetected: {
+                type: Type.BOOLEAN,
+                description: "Whether a clear human face was detected in the live camera image",
+              },
+              isRealPerson: {
+                type: Type.BOOLEAN,
+                description: "Liveness check: true if real living person, false if photo/screen replay attack or invalid",
+              },
+              matched: {
+                type: Type.BOOLEAN,
+                description: "True if live face matches one of the registered candidates with >= 75% confidence",
+              },
+              matchedTeacherId: {
+                type: Type.STRING,
+                description: "The exact ID of the matched teacher, or empty string if not matched",
+              },
+              matchedTeacherName: {
+                type: Type.STRING,
+                description: "The name of the matched teacher, or empty string if not matched",
+              },
+              confidence: {
+                type: Type.NUMBER,
+                description: "Confidence percentage of the match (0 to 100)",
+              },
+              livenessReason: {
+                type: Type.STRING,
+                description: "Brief note or guidance in Indonesian (e.g. 'Wajah terdeteksi jelas', 'Posisikan wajah menghadap lurus')",
+              },
+              greeting: {
+                type: Type.STRING,
+                description: "Polite and cheerful Indonesian greeting to be spoken to the teacher",
+              },
             },
-            isRealPerson: {
-              type: Type.BOOLEAN,
-              description: "Liveness check: true if real living person, false if photo/screen replay attack or invalid",
-            },
-            matched: {
-              type: Type.BOOLEAN,
-              description: "True if live face matches one of the registered candidates with >= 75% confidence",
-            },
-            matchedTeacherId: {
-              type: Type.STRING,
-              description: "The exact ID of the matched teacher, or empty string if not matched",
-            },
-            matchedTeacherName: {
-              type: Type.STRING,
-              description: "The name of the matched teacher, or empty string if not matched",
-            },
-            confidence: {
-              type: Type.NUMBER,
-              description: "Confidence percentage of the match (0 to 100)",
-            },
-            livenessReason: {
-              type: Type.STRING,
-              description: "Brief note or guidance in Indonesian (e.g. 'Wajah terdeteksi jelas', 'Posisikan wajah menghadap lurus')",
-            },
-            greeting: {
-              type: Type.STRING,
-              description: "Polite and cheerful Indonesian greeting to be spoken to the teacher",
-            },
+            required: [
+              "isHumanFaceDetected",
+              "isRealPerson",
+              "matched",
+              "matchedTeacherId",
+              "matchedTeacherName",
+              "confidence",
+              "greeting",
+            ],
           },
-          required: [
-            "isHumanFaceDetected",
-            "isRealPerson",
-            "matched",
-            "matchedTeacherId",
-            "matchedTeacherName",
-            "confidence",
-            "greeting",
-          ],
         },
-      },
-    });
+      });
 
-    const rawText = response.text?.trim() || "{}";
-    const result = JSON.parse(rawText);
+      const rawText = response.text?.trim() || "{}";
+      result = JSON.parse(rawText);
+    } catch (geminiError: any) {
+      console.warn("[GEMINI ATTENDANCE VERIFY FAILED, ATTEMPTING SUMOPOD GLM -> KOBOILLM FALLBACK]:", geminiError.message || geminiError);
 
-    return res.json({
-      success: true,
-      data: result,
-    });
+      const contentParts: any[] = [
+        { type: "text", text: promptText },
+        {
+          type: "image_url",
+          image_url: { url: `data:${liveClean.mimeType};base64,${liveClean.data}` }
+        }
+      ];
+
+      for (const cand of candidates) {
+        const photoStr = cand.photo || cand.profile_picture;
+        if (photoStr && typeof photoStr === "string" && photoStr.length > 50) {
+          const refClean = cleanBase64(photoStr);
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${refClean.mimeType};base64,${refClean.data}` }
+          });
+        }
+      }
+
+      const openAiMessages = [{ role: "user", content: contentParts }];
+
+      // Fallback 1: Sumopod GLM
+      try {
+        const sumopodRes = await executeOpenAiCompatibleChat(
+          "SUMOPOD GLM VERIFY",
+          SUMOPOD_CONFIG.baseUrl,
+          SUMOPOD_CONFIG.apiKey,
+          SUMOPOD_CONFIG.models,
+          openAiMessages,
+          0.1
+        );
+        if (sumopodRes.text) {
+          const jsonMatch = sumopodRes.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+        }
+      } catch (sumoErr) {
+        console.warn("[SUMOPOD VERIFY ERROR]", sumoErr);
+      }
+
+      // Fallback 2: KoboldLLM
+      if (!result) {
+        console.warn("[SUMOPOD GLM VERIFY FAILED, ATTEMPTING KOBOILLM FALLBACK]");
+        try {
+          const koboldRes = await executeOpenAiCompatibleChat(
+            "KOBOILLM VERIFY",
+            KOBOILLM_CONFIG.baseUrl,
+            KOBOILLM_CONFIG.apiKey,
+            KOBOILLM_CONFIG.models,
+            openAiMessages,
+            0.1
+          );
+          if (koboldRes.text) {
+            const jsonMatch = koboldRes.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+          }
+        } catch (koboErr) {
+          console.error("[KOBOILLM VERIFY ERROR]", koboErr);
+        }
+      }
+    }
+
+    if (result) {
+      return res.json({
+        success: true,
+        data: result,
+      });
+    }
+
+    throw new Error("Semua provider AI (Gemini, Sumopod GLM, KoboldLLM) gagal memproses verifikasi kehadiran.");
   } catch (error: any) {
-    console.error("Gemini attendance verification error:", error);
+    console.error("Attendance verification error:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to process attendance with Gemini Vision",
+      error: error.message || "Failed to process attendance with AI Vision",
     });
   }
 });
@@ -1212,49 +1396,105 @@ Return strictly JSON adhering to the schema.
       },
     ];
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: { parts },
-      config: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isValidFace: {
-              type: Type.BOOLEAN,
-              description: "True if there is exactly 1 clear, well-lit human face suitable for attendance",
+    let result: any = null;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts },
+        config: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isValidFace: {
+                type: Type.BOOLEAN,
+                description: "True if there is exactly 1 clear, well-lit human face suitable for attendance",
+              },
+              faceCount: {
+                type: Type.INTEGER,
+                description: "Number of faces detected in the image",
+              },
+              feedback: {
+                type: Type.STRING,
+                description: "Indonesian feedback to display to the user",
+              },
+              visualProfile: {
+                type: Type.STRING,
+                description: "Brief visual characteristics description in Indonesian",
+              },
             },
-            faceCount: {
-              type: Type.INTEGER,
-              description: "Number of faces detected in the image",
-            },
-            feedback: {
-              type: Type.STRING,
-              description: "Indonesian feedback to display to the user",
-            },
-            visualProfile: {
-              type: Type.STRING,
-              description: "Brief visual characteristics description in Indonesian",
-            },
+            required: ["isValidFace", "faceCount", "feedback", "visualProfile"],
           },
-          required: ["isValidFace", "faceCount", "feedback", "visualProfile"],
         },
-      },
-    });
+      });
 
-    const rawText = response.text?.trim() || "{}";
-    const result = JSON.parse(rawText);
+      const rawText = response.text?.trim() || "{}";
+      result = JSON.parse(rawText);
+    } catch (geminiError: any) {
+      console.warn("[GEMINI REGISTER FACE FAILED, ATTEMPTING SUMOPOD GLM -> KOBOILLM FALLBACK]:", geminiError.message || geminiError);
+      const openAiMessages = [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: parts[1].text },
+            { type: "image_url", image_url: { url: `data:${cleanImg.mimeType};base64,${cleanImg.data}` } }
+          ]
+        }
+      ];
 
-    return res.json({
-      success: true,
-      data: result,
-    });
+      // Fallback 1: Sumopod GLM
+      try {
+        const sumopodRes = await executeOpenAiCompatibleChat(
+          "SUMOPOD GLM REGISTER",
+          SUMOPOD_CONFIG.baseUrl,
+          SUMOPOD_CONFIG.apiKey,
+          SUMOPOD_CONFIG.models,
+          openAiMessages,
+          0.1
+        );
+        if (sumopodRes.text) {
+          const jsonMatch = sumopodRes.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+        }
+      } catch (sumoErr) {
+        console.warn("[SUMOPOD REGISTER ERROR]", sumoErr);
+      }
+
+      // Fallback 2: KoboldLLM
+      if (!result) {
+        try {
+          const koboldRes = await executeOpenAiCompatibleChat(
+            "KOBOILLM REGISTER",
+            KOBOILLM_CONFIG.baseUrl,
+            KOBOILLM_CONFIG.apiKey,
+            KOBOILLM_CONFIG.models,
+            openAiMessages,
+            0.1
+          );
+          if (koboldRes.text) {
+            const jsonMatch = koboldRes.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+          }
+        } catch (koboErr) {
+          console.error("[KOBOILLM REGISTER ERROR]", koboErr);
+        }
+      }
+    }
+
+    if (result) {
+      return res.json({
+        success: true,
+        data: result,
+      });
+    }
+
+    throw new Error("Semua provider AI gagal menganalisis foto registrasi wajah.");
   } catch (error: any) {
-    console.error("Gemini register face error:", error);
+    console.error("Face registration error:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to analyze face photo with Gemini",
+      error: error.message || "Failed to analyze face photo with AI Vision",
     });
   }
 });
@@ -1290,13 +1530,48 @@ Ketentuan:
 Keluarkan teks sapaan saja secara langsung.
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.7,
-      },
-    });
+    let greetingText: string | null = null;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          temperature: 0.7,
+        },
+      });
+      greetingText = response.text?.trim() || null;
+    } catch (geminiError: any) {
+      console.warn("[GEMINI GREETING FAILED, ATTEMPTING SUMOPOD GLM -> KOBOILLM FALLBACK]:", geminiError.message || geminiError);
+      try {
+        const sumopodRes = await executeOpenAiCompatibleChat(
+          "SUMOPOD GLM GREETING",
+          SUMOPOD_CONFIG.baseUrl,
+          SUMOPOD_CONFIG.apiKey,
+          SUMOPOD_CONFIG.models,
+          [{ role: "user", content: prompt }],
+          0.7
+        );
+        if (sumopodRes.text) greetingText = sumopodRes.text.trim();
+      } catch (sumoErr) {
+        console.warn("[SUMOPOD GREETING ERROR]", sumoErr);
+      }
+
+      if (!greetingText) {
+        try {
+          const koboldRes = await executeOpenAiCompatibleChat(
+            "KOBOILLM GREETING",
+            KOBOILLM_CONFIG.baseUrl,
+            KOBOILLM_CONFIG.apiKey,
+            KOBOILLM_CONFIG.models,
+            [{ role: "user", content: prompt }],
+            0.7
+          );
+          if (koboldRes.text) greetingText = koboldRes.text.trim();
+        } catch (koboErr) {
+          console.error("[KOBOILLM GREETING ERROR]", koboErr);
+        }
+      }
+    }
 
     const defaultGreeting = isStudent
       ? (isDatang 
@@ -1306,14 +1581,14 @@ Keluarkan teks sapaan saja secara langsung.
           ? `Selamat datang ${name || "Bapak/Ibu Guru"}, absensi datang Anda berhasil dicatat. Selamat bertugas!` 
           : `Terima kasih ${name || "Bapak/Ibu Guru"}, absensi pulang berhasil dicatat. Selamat beristirahat dan hati-hati di jalan!`);
 
-    const greeting = response.text?.trim().replace(/^["']|["']$/g, "") || defaultGreeting;
+    const greeting = greetingText?.replace(/^["']|["']$/g, "") || defaultGreeting;
 
     return res.json({
       success: true,
       greeting,
     });
   } catch (error: any) {
-    console.error("Gemini generate-greeting error:", error);
+    console.error("Generate-greeting error:", error);
     const isDatang = req.body?.attendanceType === 'in';
     const isStudent = req.body?.role === 'student';
     const name = req.body?.name || (isStudent ? "Siswa" : "Bapak/Ibu Guru");

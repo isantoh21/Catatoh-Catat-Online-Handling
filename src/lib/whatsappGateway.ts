@@ -354,8 +354,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         .update({ proof_image_url: 'ai_detected' } as any)
         .like('proof_image_url', 'data:%')
         .eq('user_id', activeUserId)
-        .then(() => {})
-        .catch(() => {});
+        .then(() => {}, () => {});
     } catch (_) {}
   }
 
@@ -436,8 +435,7 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
           .delete()
           .in('id', expiredApprovedIds)
           .eq('user_id', activeUserId)
-          .then(() => {})
-          .catch(() => {});
+          .then(() => {}, () => {});
       }
 
       // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar milik akun ini

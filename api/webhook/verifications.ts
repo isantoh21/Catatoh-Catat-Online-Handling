@@ -46,8 +46,7 @@ export default async function handler(req: any, res: any) {
         .eq('user_id', userId)
         .eq('status', 'approved')
         .lt('created_at', fourteenDaysAgoIso)
-        .then(() => {})
-        .catch(() => {});
+        .then(() => {}, () => {});
 
       const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
       const now = Date.now();

@@ -313,52 +313,104 @@ async function resolveAndDownloadImage(rawUrl: string): Promise<{ dataUri: strin
   return null;
 }
 
-async function analyzeReceiptWithCustomProvider(
-  imageInfo: { mimeType: string; base64: string },
-  prompt: string
-): Promise<ReceiptAnalysisResult | null> {
-  const customBaseUrl = (process.env.CUSTOM_AI_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, "");
-  const customApiKey = process.env.CUSTOM_AI_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng";
-  const customModels = [
+// Konfigurasi AI Provider Fallback:
+// 1. Prioritas Utama: Google Gemini Free Tier
+// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): GLM dari Sumopod
+// 3. Prioritas Ketiga (Fallback Terakhir jika GLM sibuk, menolak, atau out of budget): KoboldLLM
+
+const SUMOPOD_CONFIG = {
+  baseUrl: (process.env.SUMOPOD_BASE_URL || process.env.GLM_BASE_URL || "https://ai.sumopod.com/v1").replace(/\/+$/, ""),
+  apiKey: process.env.SUMOPOD_API_KEY || process.env.GLM_API_KEY || "sk-DFe4pA8Vmm2p4OIr01pwJw",
+  models: [
+    "glm-5.3-flash",
+    "deepseek-v4.1-flash:netra",
+    "glm-4v",
+    "glm-4"
+  ]
+};
+
+const KOBOILLM_CONFIG = {
+  baseUrl: (process.env.CUSTOM_AI_BASE_URL || process.env.KOBOILLM_BASE_URL || "https://api.koboillm.com/v1").replace(/\/+$/, ""),
+  apiKey: process.env.CUSTOM_AI_API_KEY || process.env.KOBOILLM_API_KEY || "sk-wMaVBOWC1G69emLkQ5T9Ng",
+  models: [
     "gemini/gemini-3.1-flash-lite",
     "vertex_ai/gemini-3.1-flash-lite",
     "gemini/gemini-2.5-flash-lite",
     "vertex_ai/gemini-2.5-flash-lite",
     "gemini-3.1-flash-lite"
-  ];
+  ]
+};
 
-  for (const model of customModels) {
+function isBudgetOrRejectionOrBusyError(status: number, errorText: string): boolean {
+  if ([400, 401, 402, 403, 429, 500, 502, 503, 504].includes(status)) return true;
+  const lower = (errorText || "").toLowerCase();
+  const keywords = [
+    "budget", "quota", "insufficient", "balance", "credit", "arrear", "payment required",
+    "rate limit", "too many requests", "busy", "overloaded", "rejected", "refusal", "refuse",
+    "capacity", "exhausted", "limit exceeded", "unauthorized", "forbidden"
+  ];
+  return keywords.some(k => lower.includes(k));
+}
+
+async function analyzeReceiptWithOpenAiCompatible(
+  providerName: string,
+  baseUrl: string,
+  apiKey: string,
+  models: string[],
+  imageInfo: { mimeType: string; base64: string },
+  prompt: string
+): Promise<{ result: ReceiptAnalysisResult | null; hasBudgetOrRefusalError: boolean }> {
+  let hasBudgetOrRefusal = false;
+
+  for (const model of models) {
     try {
-      console.log(`[CUSTOM AI PROVIDER] Mencoba model fallback: ${model}`);
-      const res = await fetch(`${customBaseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${customApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${imageInfo.mimeType};base64,${imageInfo.base64}`
+      console.log(`[${providerName}] Mencoba analisis struk dengan model: ${model}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${imageInfo.mimeType};base64,${imageInfo.base64}`
+                    }
                   }
-                }
-              ]
-            }
-          ],
-          temperature: 0.1
-        })
-      });
+                ]
+              }
+            ],
+            temperature: 0.1
+          }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        console.warn(`[CUSTOM AI MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 150));
+        console.warn(`[${providerName} MODEL ${model} FAILED] HTTP ${res.status}:`, errText.slice(0, 200));
+        if (isBudgetOrRejectionOrBusyError(res.status, errText)) {
+          hasBudgetOrRefusal = true;
+          const lower = errText.toLowerCase();
+          if (res.status === 402 || res.status === 401 || res.status === 403 || lower.includes("budget") || lower.includes("quota") || lower.includes("balance") || lower.includes("insufficient")) {
+            console.warn(`[${providerName} OUT OF BUDGET / REJECTED] Akun menolak atau kehabisan budget/saldo. Langsung beralih ke provider berikutnya.`);
+            return { result: null, hasBudgetOrRefusalError: true };
+          }
+        }
         continue;
       }
 
@@ -366,21 +418,82 @@ async function analyzeReceiptWithCustomProvider(
       const text = data.choices?.[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.warn(`[CUSTOM AI MODEL ${model} NO JSON]`, text.slice(0, 150));
+        console.warn(`[${providerName} MODEL ${model} NO JSON]`, text.slice(0, 150));
         continue;
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
       parsed.isTransferReceipt = parsed.isTransferReceipt === true || String(parsed.isTransferReceipt).toLowerCase() === 'true';
-      console.log(`[CUSTOM AI PROVIDER SUCCESS] Berhasil dianalisis via model ${model}`);
-      return parsed as ReceiptAnalysisResult;
+      console.log(`[${providerName} SUCCESS] Berhasil dianalisis via model ${model}`);
+      return { result: parsed as ReceiptAnalysisResult, hasBudgetOrRefusalError: false };
     } catch (err: any) {
-      console.warn(`[CUSTOM AI MODEL ${model} ERROR]`, err.message || err);
+      console.warn(`[${providerName} MODEL ${model} ERROR]`, err.message || err);
+      if (err.name === 'AbortError' || isBudgetOrRejectionOrBusyError(0, err.message || '')) {
+        hasBudgetOrRefusal = true;
+      }
     }
   }
 
-  console.error("[CUSTOM AI PROVIDER ALL MODELS FAILED]");
+  return { result: null, hasBudgetOrRefusalError: hasBudgetOrRefusal };
+}
+
+// Fallback bertingkat:
+// 1. Jika Gemini sibuk/gagal -> Coba GLM dari Sumopod (https://ai.sumopod.com/v1)
+// 2. Jika GLM Sumopod sibuk, menolak, atau out of budget -> Langsung alihkan ke KoboldLLM (https://api.koboillm.com/v1)
+async function analyzeReceiptWithMultiTierFallback(
+  imageInfo: { mimeType: string; base64: string },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  // Level 1: GLM Sumopod
+  console.log("[AI FALLBACK] Mencoba GLM dari Sumopod (Priority 1 Fallback)...");
+  try {
+    const sumopodRes = await analyzeReceiptWithOpenAiCompatible(
+      "SUMOPOD GLM",
+      SUMOPOD_CONFIG.baseUrl,
+      SUMOPOD_CONFIG.apiKey,
+      SUMOPOD_CONFIG.models,
+      imageInfo,
+      prompt
+    );
+
+    if (sumopodRes.result) {
+      return sumopodRes.result;
+    }
+
+    console.warn("[AI FALLBACK] GLM Sumopod sibuk, menolak, atau out of budget. Langsung beralih ke KoboldLLM...");
+  } catch (err: any) {
+    console.warn("[AI FALLBACK] Sumopod GLM error, beralih ke KoboldLLM:", err.message || err);
+  }
+
+  // Level 2: KoboldLLM
+  console.log("[AI FALLBACK] Mencoba KoboldLLM (Final Fallback)...");
+  try {
+    const koboldRes = await analyzeReceiptWithOpenAiCompatible(
+      "KOBOILLM",
+      KOBOILLM_CONFIG.baseUrl,
+      KOBOILLM_CONFIG.apiKey,
+      KOBOILLM_CONFIG.models,
+      imageInfo,
+      prompt
+    );
+
+    if (koboldRes.result) {
+      return koboldRes.result;
+    }
+  } catch (err: any) {
+    console.error("[AI FALLBACK] KoboldLLM error:", err.message || err);
+  }
+
+  console.error("[AI FALLBACK ALL FAILED] Seluruh provider (Gemini, Sumopod GLM, KoboldLLM) gagal menganalisis struk.");
   return null;
+}
+
+// Alias untuk kompatibilitas
+async function analyzeReceiptWithCustomProvider(
+  imageInfo: { mimeType: string; base64: string },
+  prompt: string
+): Promise<ReceiptAnalysisResult | null> {
+  return await analyzeReceiptWithMultiTierFallback(imageInfo, prompt);
 }
 
 async function analyzeReceiptWithGemini(
