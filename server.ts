@@ -206,17 +206,17 @@ const PAYMENT_KEYWORDS = [
 
 // Konfigurasi AI Provider Fallback:
 // 1. Prioritas Utama: Google Gemini Free Tier
-// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): GLM dari Sumopod
-// 3. Prioritas Ketiga (Fallback Terakhir jika GLM sibuk, menolak, atau out of budget): KoboldLLM
+// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): Sumopod (GPT-5 Nano, fallback GPT-6 Luna)
+// 3. Prioritas Ketiga (Fallback Terakhir jika Sumopod sibuk, menolak, atau out of budget): KoboldLLM
 
 const SUMOPOD_CONFIG = {
   baseUrl: (process.env.SUMOPOD_BASE_URL || process.env.GLM_BASE_URL || "https://ai.sumopod.com/v1").replace(/\/+$/, ""),
   apiKey: process.env.SUMOPOD_API_KEY || process.env.GLM_API_KEY || "sk-DFe4pA8Vmm2p4OIr01pwJw",
   models: [
+    "gpt-5-nano",
+    "gpt-6-luna",
     "glm-5.3-flash",
-    "deepseek-v4.1-flash:netra",
-    "glm-4v",
-    "glm-4"
+    "deepseek-v4.1-flash:netra"
   ]
 };
 
