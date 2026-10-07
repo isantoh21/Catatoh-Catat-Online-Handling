@@ -1049,6 +1049,9 @@ export default async function handler(req: any, res: any) {
       if (isSiblingTransfer) {
         const siblingNames = matchedStudents.map((s: any) => `${s.nama_lengkap} (${s.kelompok || '-'})`).join(', ');
         confidenceNotes = `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${matchedStudents.length} Siswa): ${siblingNames}. ${confidenceNotes}`;
+      } else if (referenceSpp && finalNominal >= 2 * referenceSpp) {
+        const monthsCount = Math.floor(finalNominal / referenceSpp);
+        confidenceNotes = `⚡ Terdeteksi Pembayaran ${monthsCount} Bulan Sekaligus (@ Rp ${referenceSpp.toLocaleString('id-ID')}). ${confidenceNotes}`;
       }
 
       const resolvedSenderName = isSiblingTransfer
@@ -1057,6 +1060,68 @@ export default async function handler(req: any, res: any) {
           || senderName 
           || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa"));
 
+      // Deteksi Alokasi Bulan SPP Otomatis untuk Siswa Tunggal (Multi-Bulan & Bulan Lanjutan)
+      let allocatedBulanText = detectedBulan;
+      let waBulanLabel = detectedBulan;
+
+      if (!isSiblingTransfer && matchedStudent) {
+        try {
+          const studentSpp = Number(matchedStudent.nominal_spp) || 100000;
+          const { data: studentPayments } = await serverSupabase
+            .from("payments")
+            .select("bulan, tahun")
+            .eq("student_id", matchedStudent.id);
+
+          const isPaid = (b: string, y: number) => {
+            return (studentPayments || []).some((p: any) => p.bulan === b && Number(p.tahun) === Number(y));
+          };
+
+          const count = Math.max(1, Math.floor(finalNominal / studentSpp));
+          let currBulan = detectedBulan || INDONESIAN_MONTHS[new Date().getMonth()];
+          let currTahun = currentYear || new Date().getFullYear();
+
+          const skippedPaid: string[] = [];
+          let searchLimit = 0;
+          while (isPaid(currBulan, currTahun) && searchLimit < 24) {
+            skippedPaid.push(currBulan);
+            const idx = INDONESIAN_MONTHS.indexOf(currBulan);
+            if (idx === -1 || idx === 11) {
+              currBulan = INDONESIAN_MONTHS[0];
+              currTahun = currTahun + 1;
+            } else {
+              currBulan = INDONESIAN_MONTHS[idx + 1];
+            }
+            searchLimit++;
+          }
+
+          const allocMonths: string[] = [];
+          let allocLimit = 0;
+          while (allocMonths.length < count && allocLimit < 36) {
+            if (!isPaid(currBulan, currTahun)) {
+              allocMonths.push(currBulan);
+            }
+            const idx = INDONESIAN_MONTHS.indexOf(currBulan);
+            if (idx === -1 || idx === 11) {
+              currBulan = INDONESIAN_MONTHS[0];
+              currTahun = currTahun + 1;
+            } else {
+              currBulan = INDONESIAN_MONTHS[idx + 1];
+            }
+            allocLimit++;
+          }
+
+          if (allocMonths.length > 1) {
+            allocatedBulanText = allocMonths.join(' & ');
+            waBulanLabel = `${allocMonths.join(' & ')} (${allocMonths.length} Bulan Sekaligus)`;
+          } else if (allocMonths.length === 1) {
+            allocatedBulanText = allocMonths[0];
+            waBulanLabel = skippedPaid.length > 0 
+              ? `${allocMonths[0]} (Bulan Lanjutan)` 
+              : allocMonths[0];
+          }
+        } catch (_) {}
+      }
+
       const verificationPayload: Record<string, any> = {
         user_id: targetUserId || null,
         student_id: matchedStudent?.id || null,
@@ -1064,7 +1129,7 @@ export default async function handler(req: any, res: any) {
         sender_name: resolvedSenderName,
         message_text: messageText || "",
         proof_image_url: "ai_detected",
-        bulan: detectedBulan,
+        bulan: allocatedBulanText,
         tahun: currentYear,
         nominal: Number(finalNominal) || 0,
         tanggal_transfer: detectedDate,
@@ -1116,7 +1181,7 @@ export default async function handler(req: any, res: any) {
         if (customTemplate) {
           replyMsg = customTemplate
             .replace(/\[NAMA_SISWA\]/g, studentNameStr)
-            .replace(/\[BULAN\]/g, detectedBulan || "")
+            .replace(/\[BULAN\]/g, waBulanLabel || detectedBulan || "")
             .replace(/\[TAHUN\]/g, String(currentYear || new Date().getFullYear()))
             .replace(/\[NOMINAL\]/g, nominalVal)
             .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
@@ -1124,7 +1189,7 @@ export default async function handler(req: any, res: any) {
             .replace(/\[BANK\]/g, verificationPayload.bank_pengirim || "Bank / E-Wallet");
         } else {
           const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
-          replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${detectedBulan}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+          replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${waBulanLabel}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
         }
 
         // Kirim auto-reply langsung via Gateway VPS menggunakan sesi yang sesuai

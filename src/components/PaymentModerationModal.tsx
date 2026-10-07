@@ -79,6 +79,105 @@ export const getMatchedStudentsForItem = (item: PaymentVerification, allStudents
   return Array.from(uniqueMap.values());
 };
 
+export interface AllocatedMonth {
+  bulan: string;
+  tahun: number;
+  nominal: number;
+}
+
+export interface StudentPaymentAllocation {
+  allocatedMonths: AllocatedMonth[];
+  monthsCount: number;
+  perMonthNominal: number;
+  skippedPaidMonths: { bulan: string; tahun: number }[];
+  isMultiMonth: boolean;
+  isAdvanceForwarded: boolean;
+  totalNominal: number;
+  studentSpp: number;
+}
+
+export const getNextAcademicMonth = (bulan: string, tahun: number): { bulan: string; tahun: number } => {
+  const idx = BULAN_OPTIONS.indexOf(bulan);
+  if (idx === -1 || idx === 11) {
+    return { bulan: BULAN_OPTIONS[0], tahun: Number(tahun) + 1 };
+  }
+  return { bulan: BULAN_OPTIONS[idx + 1], tahun: Number(tahun) };
+};
+
+/**
+ * Menghitung alokasi bulan SPP untuk siswa tunggal (bukan kakak-adik):
+ * - Jika membayar 2x lipat (atau N-x lipat), dialokasikan ke bulan berjalan dan bulan-bulan selanjutnya.
+ * - Jika bulan yang bersangkutan sudah pernah terbayar lunas sebelumnya (misal bulan lalu sudah bayar 2 bulan),
+ *   maka otomatis dialokasikan ke bulan berikutnya yang belum terbayar, begitu seterusnya sampai 1 tahun ajaran lunas.
+ */
+export const getAllocatedMonthsForStudent = (
+  startBulan: string,
+  startTahun: number,
+  totalNominal: number,
+  studentSpp: number,
+  studentPayments: any[] = []
+): StudentPaymentAllocation => {
+  const spp = studentSpp > 0 ? studentSpp : 100000;
+  const count = Math.max(1, Math.floor(totalNominal / spp));
+  const perMonthNominal = Math.floor(totalNominal / count);
+  const remainder = totalNominal % count;
+
+  const isPaid = (b: string, y: number) => {
+    return (studentPayments || []).some(p => p.bulan === b && Number(p.tahun) === Number(y));
+  };
+
+  const skippedPaidMonths: { bulan: string; tahun: number }[] = [];
+  let currBulan = startBulan || BULAN_OPTIONS[new Date().getMonth()];
+  let currTahun = Number(startTahun) || new Date().getFullYear();
+
+  // 1. Lewati bulan-bulan yang sudah terbayar lunas sebelumnya
+  let searchLimit = 0;
+  while (isPaid(currBulan, currTahun) && searchLimit < 24) {
+    skippedPaidMonths.push({ bulan: currBulan, tahun: currTahun });
+    const next = getNextAcademicMonth(currBulan, currTahun);
+    currBulan = next.bulan;
+    currTahun = next.tahun;
+    searchLimit++;
+  }
+
+  // 2. Kumpulkan sebanyak `count` bulan yang belum terbayar
+  const allocatedMonths: AllocatedMonth[] = [];
+  let allocLimit = 0;
+  while (allocatedMonths.length < count && allocLimit < 36) {
+    if (!isPaid(currBulan, currTahun)) {
+      const idx = allocatedMonths.length;
+      allocatedMonths.push({
+        bulan: currBulan,
+        tahun: currTahun,
+        nominal: perMonthNominal + (idx === 0 ? remainder : 0)
+      });
+    }
+    const next = getNextAcademicMonth(currBulan, currTahun);
+    currBulan = next.bulan;
+    currTahun = next.tahun;
+    allocLimit++;
+  }
+
+  if (allocatedMonths.length === 0) {
+    allocatedMonths.push({
+      bulan: currBulan,
+      tahun: currTahun,
+      nominal: totalNominal
+    });
+  }
+
+  return {
+    allocatedMonths,
+    monthsCount: count,
+    perMonthNominal,
+    skippedPaidMonths,
+    isMultiMonth: count > 1,
+    isAdvanceForwarded: skippedPaidMonths.length > 0,
+    totalNominal,
+    studentSpp: spp
+  };
+};
+
 interface PaymentModerationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -95,6 +194,7 @@ export default function PaymentModerationModal({
   onOpenGatewaySettings
 }: PaymentModerationModalProps) {
   const [verifications, setVerifications] = useState<PaymentVerification[]>([]);
+  const [existingPayments, setExistingPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,6 +291,20 @@ export default function PaymentModerationModal({
       getPaymentVerifications(uid),
       getWhatsAppTemplates(uid)
     ]);
+
+    if (uid) {
+      try {
+        const { data: paymentsData } = await supabase
+          .from('payments')
+          .select('id, user_id, student_id, bulan, tahun, nominal_dibayar, tanggal_bayar, waktu_bayar')
+          .eq('user_id', uid);
+        if (paymentsData) {
+          setExistingPayments(paymentsData);
+        }
+      } catch (payErr) {
+        console.warn('Gagal memuat payments:', payErr);
+      }
+    }
     const purgedItems = await purgeExpiredApprovedVerifications(items, uid);
     setVerifications(purgedItems);
     setTemplates(loadedTemplates);
@@ -199,7 +313,7 @@ export default function PaymentModerationModal({
 
   if (!isOpen) return null;
 
-  // Handle Approve Payment (Mendukung Pembayaran Kakak-Adik / Multi Siswa)
+  // Handle Approve Payment (Mendukung Pembayaran Kakak-Adik & Pembayaran Multi-Bulan / Bulan Lanjutan)
   const handleApprove = async (item: PaymentVerification) => {
     setIsProcessingAction(true);
     try {
@@ -218,14 +332,19 @@ export default function PaymentModerationModal({
 
       const count = targetStudents.length || 1;
       const totalNominal = Number(item.nominal) || 0;
-      // Bagi rata nominal untuk seluruh siswa (misal: Rp 200.000 untuk 2 anak -> Rp 100.000 / anak)
-      const perStudentNominal = Math.floor(totalNominal / count);
-      const remainder = totalNominal % count;
       const tanggalBayar = item.tanggal_transfer || new Date().toISOString().split('T')[0];
       const waktuBayar = item.waktu_transfer || new Date().toTimeString().slice(0, 5);
 
-      // 1. Simpan ke tabel payments untuk SEMUA siswa terdeteksi (kakak-adik)
-      if (targetStudents.length > 0) {
+      // Kumpulan data alokasi untuk single student
+      let singleStudentAllocation: StudentPaymentAllocation | null = null;
+      let singleStudentObj: any = null;
+
+      // 1. Simpan ke tabel payments
+      if (targetStudents.length > 1) {
+        // Mode Kakak-Adik: Bagi rata nominal untuk seluruh siswa (misal: Rp 200.000 untuk 2 anak -> Rp 100.000 / anak)
+        const perStudentNominal = Math.floor(totalNominal / count);
+        const remainder = totalNominal % count;
+
         for (let idx = 0; idx < targetStudents.length; idx++) {
           const st = targetStudents[idx];
           const nominalSiswa = perStudentNominal + (idx === 0 ? remainder : 0);
@@ -264,37 +383,93 @@ export default function PaymentModerationModal({
             }
           }
         }
-      } else if (item.student_id) {
-        const { data: existingPay } = await supabase
-          .from('payments')
-          .select('id')
-          .eq('user_id', uid)
-          .eq('student_id', item.student_id)
-          .eq('bulan', item.bulan)
-          .eq('tahun', item.tahun)
-          .maybeSingle();
+      } else {
+        // Mode Siswa Tunggal: Logika Multi-Bulan (Bayar 2x lipat/lebih) & Bulan Lanjutan
+        singleStudentObj = targetStudents[0] || students.find(s => s.id === item.student_id);
+        const sppPerBulan = Number(singleStudentObj?.nominal_spp) || 100000;
 
-        if (existingPay?.id) {
-          await supabase
+        // Ambil riwayat pembayaran database terbaru siswa ini
+        let studentPayHistory = existingPayments.filter(p => p.student_id === singleStudentObj.id);
+        try {
+          const { data: latestDbPays } = await supabase
             .from('payments')
-            .update({
-              nominal_dibayar: totalNominal,
-              tanggal_bayar: tanggalBayar,
-              waktu_bayar: waktuBayar,
-            })
-            .eq('id', existingPay.id);
-        } else {
-          await supabase.from('payments').insert([
-            {
+            .select('id, bulan, tahun, nominal_dibayar')
+            .eq('user_id', uid)
+            .eq('student_id', singleStudentObj.id);
+          if (latestDbPays) {
+            studentPayHistory = latestDbPays;
+          }
+        } catch (_) {}
+
+        singleStudentAllocation = getAllocatedMonthsForStudent(
+          item.bulan,
+          item.tahun,
+          totalNominal,
+          sppPerBulan,
+          studentPayHistory
+        );
+
+        // Rekam pembayaran untuk SETIAP bulan yang dialokasikan
+        for (const alloc of singleStudentAllocation.allocatedMonths) {
+          const { data: existingPay } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('user_id', uid)
+            .eq('student_id', singleStudentObj.id)
+            .eq('bulan', alloc.bulan)
+            .eq('tahun', alloc.tahun)
+            .maybeSingle();
+
+          if (existingPay?.id) {
+            await supabase
+              .from('payments')
+              .update({
+                nominal_dibayar: alloc.nominal,
+                tanggal_bayar: tanggalBayar,
+                waktu_bayar: waktuBayar,
+              })
+              .eq('id', existingPay.id);
+          } else {
+            const { error: insertPayError } = await supabase.from('payments').insert([{
               user_id: uid,
-              student_id: item.student_id,
-              bulan: item.bulan,
-              tahun: item.tahun,
-              nominal_dibayar: totalNominal,
+              student_id: singleStudentObj.id,
+              bulan: alloc.bulan,
+              tahun: alloc.tahun,
+              nominal_dibayar: alloc.nominal,
               tanggal_bayar: tanggalBayar,
               waktu_bayar: waktuBayar,
+            }]);
+            if (insertPayError) {
+              console.warn('Gagal insert ke payments multi-bulan:', insertPayError);
             }
-          ]);
+          }
+        }
+
+        // Perbarui memory cache existingPayments
+        const newPaidEntries = singleStudentAllocation.allocatedMonths.map(alloc => ({
+          user_id: uid,
+          student_id: singleStudentObj.id,
+          bulan: alloc.bulan,
+          tahun: alloc.tahun,
+          nominal_dibayar: alloc.nominal,
+          tanggal_bayar: tanggalBayar,
+          waktu_bayar: waktuBayar
+        }));
+        setExistingPayments(prev => [
+          ...prev.filter(p => !(p.student_id === singleStudentObj.id && singleStudentAllocation!.allocatedMonths.some(m => m.bulan === p.bulan && m.tahun === p.tahun))),
+          ...newPaidEntries
+        ]);
+      }
+
+      // Tentukan label bulan & tahun untuk pencatatan verifikasi dan pesan konfirmasi WA
+      let approvedBulanText = item.bulan;
+      let approvedTahunText = item.tahun;
+      if (singleStudentAllocation) {
+        if (singleStudentAllocation.allocatedMonths.length > 1) {
+          approvedBulanText = singleStudentAllocation.allocatedMonths.map(m => m.bulan).join(' & ');
+        } else if (singleStudentAllocation.allocatedMonths.length === 1) {
+          approvedBulanText = singleStudentAllocation.allocatedMonths[0].bulan;
+          approvedTahunText = singleStudentAllocation.allocatedMonths[0].tahun;
         }
       }
 
@@ -302,7 +477,12 @@ export default function PaymentModerationModal({
       try {
         await supabase
           .from('payment_verifications')
-          .update({ status: 'approved', updated_at: new Date().toISOString() })
+          .update({ 
+            status: 'approved', 
+            bulan: approvedBulanText,
+            tahun: approvedTahunText,
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', item.id);
       } catch (e) {
         // Fallback
@@ -312,7 +492,11 @@ export default function PaymentModerationModal({
         const res = await fetch(`/api/webhook/verifications/${item.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'approved' })
+          body: JSON.stringify({ 
+            status: 'approved',
+            bulan: approvedBulanText,
+            tahun: approvedTahunText
+          })
         });
         if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
           await res.json();
@@ -331,10 +515,21 @@ export default function PaymentModerationModal({
         : (item.student_name || 'Siswa');
 
       if (targetPhone) {
+        let waBulanLabel = item.bulan;
+        if (targetStudents.length > 1) {
+          waBulanLabel = item.bulan;
+        } else if (singleStudentAllocation) {
+          if (singleStudentAllocation.allocatedMonths.length > 1) {
+            waBulanLabel = `${singleStudentAllocation.allocatedMonths.map(m => m.bulan).join(' & ')} (${singleStudentAllocation.allocatedMonths.length} Bulan Sekaligus)`;
+          } else if (singleStudentAllocation.allocatedMonths.length === 1) {
+            waBulanLabel = singleStudentAllocation.allocatedMonths[0].bulan;
+          }
+        }
+
         const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
           studentName: studentNames,
-          bulan: item.bulan,
-          tahun: item.tahun,
+          bulan: waBulanLabel,
+          tahun: approvedTahunText,
           nominal: totalNominal,
           tanggal: tanggalBayar,
           bank: item.bank_pengirim
@@ -359,13 +554,26 @@ export default function PaymentModerationModal({
       }
 
       // 4. Update UI & log activity
-      const logDesc = targetStudents.length > 1
-        ? `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} (${targetStudents.length} siswa kakak-adik @ Rp ${perStudentNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`
-        : `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} dari no ${item.sender_phone}`;
+      let logDesc = `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} dari no ${item.sender_phone}`;
+      if (targetStudents.length > 1) {
+        const perStudentNominal = Math.floor(totalNominal / count);
+        logDesc = `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} (${targetStudents.length} siswa kakak-adik @ Rp ${perStudentNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`;
+      } else if (singleStudentAllocation) {
+        if (singleStudentAllocation.allocatedMonths.length > 1) {
+          logDesc = `Menyetujui bukti transfer SPP ${singleStudentAllocation.allocatedMonths.length} bulan (${singleStudentAllocation.allocatedMonths.map(m => `${m.bulan} ${m.tahun}`).join(', ')}) untuk ${studentNames} (Total Rp ${totalNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`;
+        } else if (singleStudentAllocation.isAdvanceForwarded) {
+          logDesc = `Menyetujui bukti transfer SPP bulan lanjutan (${singleStudentAllocation.allocatedMonths[0]?.bulan} ${singleStudentAllocation.allocatedMonths[0]?.tahun}) untuk ${studentNames} dari no ${item.sender_phone}`;
+        }
+      }
 
       await logActivity('Verifikasi SPP via WhatsApp', logDesc);
 
-      const updated = verifications.map(v => v.id === item.id ? { ...v, status: 'approved' as const } : v);
+      const updated = verifications.map(v => v.id === item.id ? { 
+        ...v, 
+        status: 'approved' as const,
+        bulan: approvedBulanText,
+        tahun: approvedTahunText
+      } : v);
       setVerifications(updated);
       try {
         saveLocalVerifications(updated, uid);
@@ -377,9 +585,17 @@ export default function PaymentModerationModal({
         onPaymentApproved();
       }
 
-      const alertSuccessMsg = targetStudents.length > 1
-        ? `✅ Pembayaran untuk ananda ${studentNames} (${targetStudents.length} siswa kakak-adik) berhasil disetujui & dicatat LUNAS masing-masing Rp ${perStudentNominal.toLocaleString('id-ID')}.`
-        : `✅ Pembayaran ananda ${studentNames} berhasil disetujui & dicatat LUNAS.`;
+      let alertSuccessMsg = `✅ Pembayaran ananda ${studentNames} berhasil disetujui & dicatat LUNAS.`;
+      if (targetStudents.length > 1) {
+        const perStudentNominal = Math.floor(totalNominal / count);
+        alertSuccessMsg = `✅ Pembayaran untuk ananda ${studentNames} (${targetStudents.length} siswa kakak-adik) berhasil disetujui & dicatat LUNAS masing-masing Rp ${perStudentNominal.toLocaleString('id-ID')}.`;
+      } else if (singleStudentAllocation) {
+        if (singleStudentAllocation.allocatedMonths.length > 1) {
+          alertSuccessMsg = `✅ Pembayaran ananda ${studentNames} berhasil disetujui & dicatat LUNAS untuk ${singleStudentAllocation.allocatedMonths.length} bulan (${singleStudentAllocation.allocatedMonths.map(m => `${m.bulan} ${m.tahun}`).join(', ')}).`;
+        } else if (singleStudentAllocation.isAdvanceForwarded) {
+          alertSuccessMsg = `✅ Pembayaran ananda ${studentNames} dialihkan & dicatat LUNAS untuk bulan ${singleStudentAllocation.allocatedMonths[0]?.bulan} ${singleStudentAllocation.allocatedMonths[0]?.tahun} (karena bulan sebelumnya sudah lunas).`;
+        }
+      }
 
       if (waSuccess) {
         alert(`${alertSuccessMsg}\n\nPesan konfirmasi WhatsApp telah berhasil terkirim ke nomor ${targetPhone}.`);
@@ -797,9 +1013,15 @@ export default function PaymentModerationModal({
       const simCombinedName = isSimSibling ? simSiblings.map(s => s.nama_lengkap).join(' & ') : targetStudent.nama_lengkap;
       const simCombinedKelompok = isSimSibling ? simSiblings.map(s => s.kelompok || '-').join(', ') : (targetStudent.kelompok || '-');
 
-      const confNotes = isSimSibling
+      const simTargetNominal = Number(simNominal) || targetStudent.nominal_spp || 100000;
+      const simTargetSpp = targetStudent.nominal_spp || 100000;
+      let confNotes = isSimSibling
         ? `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${simSiblings.length} Siswa): ${simCombinedName}. Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision`
         : 'Struk BCA Mobile Berhasil terverifikasi oleh Gemini Vision';
+      if (!isSimSibling && simTargetNominal >= 2 * simTargetSpp) {
+        const monthsCount = Math.floor(simTargetNominal / simTargetSpp);
+        confNotes = `⚡ Terdeteksi Pembayaran ${monthsCount} Bulan Sekaligus (@ Rp ${simTargetSpp.toLocaleString('id-ID')}). ${confNotes}`;
+      }
 
       const newRecord: PaymentVerification = {
         id: generatedId,
@@ -1176,6 +1398,12 @@ export default function PaymentModerationModal({
               const count = matchedStudents.length || 1;
               const totalNominal = Number(item.nominal) || 0;
               const perStudentNominal = Math.floor(totalNominal / count);
+              const targetStudent = matchedStudents[0] || students.find(s => s.id === item.student_id);
+              const targetSpp = Number(targetStudent?.nominal_spp) || 100000;
+              const studentPayHistory = existingPayments.filter(p => p.student_id === targetStudent?.id);
+              const allocation = (!isSibling && targetStudent)
+                ? getAllocatedMonthsForStudent(item.bulan, item.tahun, totalNominal, targetSpp, studentPayHistory)
+                : null;
 
               const formattedDate = new Date(item.created_at).toLocaleString('id-ID', {
                 day: 'numeric',
@@ -1383,6 +1611,63 @@ export default function PaymentModerationModal({
                         </div>
                       )}
 
+                      {/* Siswa Tunggal: Banner Multi-Bulan (Bayar 2x Lipat / Lebih) & Bulan Lanjutan */}
+                      {!isSibling && targetStudent && allocation && (allocation.isMultiMonth || allocation.isAdvanceForwarded) && (
+                        <div className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-emerald-50/70 border border-indigo-200 rounded-xl space-y-2 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                                <Sparkles className="w-3 h-3 text-amber-300" />
+                                <span>{allocation.isMultiMonth ? `${allocation.monthsCount} Bulan Sekaligus` : 'Bulan Lanjutan'}</span>
+                              </span>
+                              <span className="font-bold text-slate-800 text-xs">
+                                {allocation.isMultiMonth 
+                                  ? `Nominal transfer (Rp ${totalNominal.toLocaleString('id-ID')}) mencakup ${allocation.monthsCount} bulan SPP ananda ${targetStudent.nama_lengkap}`
+                                  : `Bulan ${item.bulan} ${item.tahun} sudah lunas, otomatis dialihkan ke bulan berikutnya`}
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                              Total: <span className="text-emerald-700 font-extrabold">{allocation.monthsCount} Bulan Lunas</span>
+                            </div>
+                          </div>
+
+                          {/* Notifikasi jika bulan sebelumnya sudah lunas sehingga dialihkan */}
+                          {allocation.isAdvanceForwarded && (
+                            <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] flex items-start gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                              <span>
+                                <strong>Otomatis dialihkan:</strong> Bulan {allocation.skippedPaidMonths.map(m => `${m.bulan} ${m.tahun}`).join(', ')} sudah terbayar lunas sebelumnya (dari pembayaran multi-bulan). Pembayaran ini otomatis masuk ke bulan selanjutnya yang belum terbayar.
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Rincian kartu bulan-bulan yang akan dilunaskan */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-0.5">
+                            {allocation.allocatedMonths.map((m, idx) => (
+                              <div key={`${m.bulan}_${m.tahun}`} className="p-2 bg-white/95 rounded-lg border border-indigo-100 flex items-center justify-between shadow-2xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                    {idx + 1}
+                                  </div>
+                                  <div className="truncate">
+                                    <p className="font-bold text-slate-800 truncate">{m.bulan} {m.tahun}</p>
+                                    <p className="text-[10px] text-slate-500">SPP Bulanan</p>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0 ml-2">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Nominal</span>
+                                  <span className="font-extrabold text-emerald-600 text-xs">Rp {m.nominal.toLocaleString('id-ID')}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <p className="text-[10px] text-slate-500 italic">
+                            💡 Saat disetujui, sistem otomatis mencatat <strong>LUNAS</strong> untuk {allocation.monthsCount} bulan ({allocation.allocatedMonths.map(m => `${m.bulan} ${m.tahun}`).join(', ')}) di tabel pembayaran SPP.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Gemini Vision Detection Badge */}
                       {(item.bank_pengirim || item.tanggal_transfer || item.confidence_notes) && (
                         <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-950 flex flex-wrap items-center justify-between gap-2">
@@ -1561,6 +1846,10 @@ export default function PaymentModerationModal({
                           <span>
                             {isSibling 
                               ? `Setujui & Lunaskan ${matchedStudents.length} Siswa (Rp ${perStudentNominal.toLocaleString('id-ID')}/anak)`
+                              : allocation && allocation.isMultiMonth
+                              ? `Setujui & Lunaskan ${allocation.monthsCount} Bulan (${allocation.allocatedMonths.map(m => m.bulan).join(' & ')})`
+                              : allocation && allocation.isAdvanceForwarded
+                              ? `Setujui & Lunaskan Bulan ${allocation.allocatedMonths[0]?.bulan} ${allocation.allocatedMonths[0]?.tahun}`
                               : 'Setujui & Tandai Lunas'}
                           </span>
                         </button>
@@ -1574,6 +1863,10 @@ export default function PaymentModerationModal({
                           <span>
                             {isSibling 
                               ? `Telah Disetujui & Masuk Catatan SPP (${matchedStudents.length} Siswa LUNAS)`
+                              : allocation && allocation.isMultiMonth
+                              ? `Telah Disetujui & Masuk Catatan SPP (${allocation.monthsCount} Bulan LUNAS: ${allocation.allocatedMonths.map(m => m.bulan).join(', ')})`
+                              : allocation && allocation.isAdvanceForwarded
+                              ? `Telah Disetujui & Masuk Catatan SPP (LUNAS Bulan ${allocation.allocatedMonths[0]?.bulan} ${allocation.allocatedMonths[0]?.tahun})`
                               : 'Telah Disetujui & Masuk Catatan SPP'}
                           </span>
                         </span>
@@ -1784,6 +2077,58 @@ export default function PaymentModerationModal({
                     onChange={e => setSimNominal(e.target.value)}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                   />
+                  {(() => {
+                    const selectedSimStudent = students.find(s => s.id === simStudentId);
+                    const simSiblings = selectedSimStudent ? getMatchedStudentsForItem({ sender_phone: selectedSimStudent.nomor_whatsapp, student_id: selectedSimStudent.id } as any, students) : [];
+                    if (selectedSimStudent && simSiblings.length <= 1) {
+                      const baseSpp = selectedSimStudent.nominal_spp || 100000;
+                      return (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimNominal(String(baseSpp));
+                              setSimMessage(`Assalamualaikum bendahara, ini bukti transfer SPP ananda ${selectedSimStudent.nama_lengkap} 1 bulan.`);
+                            }}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold cursor-pointer"
+                          >
+                            1 Bulan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimNominal(String(baseSpp * 2));
+                              setSimMessage(`Assalamualaikum bendahara, ini bukti transfer SPP ananda ${selectedSimStudent.nama_lengkap} 2 bulan sekaligus.`);
+                            }}
+                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold cursor-pointer"
+                          >
+                            ⚡ 2 Bulan (2x)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimNominal(String(baseSpp * 3));
+                              setSimMessage(`Assalamualaikum bendahara, ini bukti transfer SPP ananda ${selectedSimStudent.nama_lengkap} 3 bulan.`);
+                            }}
+                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold cursor-pointer"
+                          >
+                            3 Bulan (3x)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSimNominal(String(baseSpp * 12));
+                              setSimMessage(`Assalamualaikum bendahara, ini bukti transfer SPP ananda ${selectedSimStudent.nama_lengkap} 1 tahun ajaran lunas.`);
+                            }}
+                            className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-bold cursor-pointer"
+                          >
+                            🎓 1 Tahun Lunas
+                          </button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 

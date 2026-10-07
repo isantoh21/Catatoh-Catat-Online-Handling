@@ -860,6 +860,71 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
     if (isSiblingTransfer) {
       const siblingNames = matchedStudents.map((s: any) => `${s.nama_lengkap} (${s.kelompok || '-'})`).join(', ');
       confNotes = `👨‍👩‍👧‍👦 Terdeteksi Transfer Kakak-Adik (${matchedStudents.length} Siswa): ${siblingNames}. ${confNotes || ''}`.trim();
+    } else if (referenceSpp && finalNominal >= 2 * referenceSpp) {
+      const monthsCount = Math.floor(finalNominal / referenceSpp);
+      confNotes = `⚡ Terdeteksi Pembayaran ${monthsCount} Bulan Sekaligus (@ Rp ${referenceSpp.toLocaleString('id-ID')}). ${confNotes || ''}`.trim();
+    }
+
+    // Deteksi Alokasi Bulan SPP Otomatis untuk Siswa Tunggal (Multi-Bulan & Bulan Lanjutan)
+    let allocatedBulanText = detectedBulan;
+    let waBulanLabel = detectedBulan;
+
+    if (!isSiblingTransfer && matchedStudent) {
+      try {
+        const studentSpp = Number(matchedStudent.nominal_spp) || 100000;
+        const { data: studentPayments } = await serverSupabase
+          .from("payments")
+          .select("bulan, tahun")
+          .eq("student_id", matchedStudent.id);
+
+        const isPaid = (b: string, y: number) => {
+          return (studentPayments || []).some((p: any) => p.bulan === b && Number(p.tahun) === Number(y));
+        };
+
+        const count = Math.max(1, Math.floor(finalNominal / studentSpp));
+        let currBulan = detectedBulan || INDONESIAN_MONTHS[new Date().getMonth()];
+        let currTahun = currentYear || new Date().getFullYear();
+
+        const skippedPaid: string[] = [];
+        let searchLimit = 0;
+        while (isPaid(currBulan, currTahun) && searchLimit < 24) {
+          skippedPaid.push(currBulan);
+          const idx = INDONESIAN_MONTHS.indexOf(currBulan);
+          if (idx === -1 || idx === 11) {
+            currBulan = INDONESIAN_MONTHS[0];
+            currTahun = currTahun + 1;
+          } else {
+            currBulan = INDONESIAN_MONTHS[idx + 1];
+          }
+          searchLimit++;
+        }
+
+        const allocMonths: string[] = [];
+        let allocLimit = 0;
+        while (allocMonths.length < count && allocLimit < 36) {
+          if (!isPaid(currBulan, currTahun)) {
+            allocMonths.push(currBulan);
+          }
+          const idx = INDONESIAN_MONTHS.indexOf(currBulan);
+          if (idx === -1 || idx === 11) {
+            currBulan = INDONESIAN_MONTHS[0];
+            currTahun = currTahun + 1;
+          } else {
+            currBulan = INDONESIAN_MONTHS[idx + 1];
+          }
+          allocLimit++;
+        }
+
+        if (allocMonths.length > 1) {
+          allocatedBulanText = allocMonths.join(' & ');
+          waBulanLabel = `${allocMonths.join(' & ')} (${allocMonths.length} Bulan Sekaligus)`;
+        } else if (allocMonths.length === 1) {
+          allocatedBulanText = allocMonths[0];
+          waBulanLabel = skippedPaid.length > 0 
+            ? `${allocMonths[0]} (Bulan Lanjutan)` 
+            : allocMonths[0];
+        }
+      } catch (_) {}
     }
 
     const verificationRecord: CachedVerification = {
@@ -872,7 +937,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       sender_name: isSiblingTransfer ? studentNamesCombined : senderName,
       message_text: messageText,
       proof_image_url: "ai_detected",
-      bulan: detectedBulan,
+      bulan: allocatedBulanText,
       tahun: currentYear,
       nominal: finalNominal,
       tanggal_transfer: detectedDate,
@@ -900,7 +965,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
             sender_name: verificationRecord.sender_name,
             message_text: messageText,
             proof_image_url: "ai_detected",
-            bulan: detectedBulan,
+            bulan: allocatedBulanText,
             tahun: currentYear,
             nominal: verificationRecord.nominal,
             tanggal_transfer: detectedDate,
@@ -932,7 +997,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       if (customTemplate) {
         replyMsg = customTemplate
           .replace(/\[NAMA_SISWA\]/g, studentNameStr)
-          .replace(/\[BULAN\]/g, detectedBulan || "")
+          .replace(/\[BULAN\]/g, waBulanLabel || detectedBulan || "")
           .replace(/\[TAHUN\]/g, String(currentYear || new Date().getFullYear()))
           .replace(/\[NOMINAL\]/g, nominalVal)
           .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
@@ -940,7 +1005,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
           .replace(/\[BANK\]/g, verificationRecord.bank_pengirim || "Bank / E-Wallet");
       } else {
         const nominalStr = verificationRecord.nominal > 0 ? ` sebesar Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
-        replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan ${detectedBulan}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${waBulanLabel}*${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
       }
 
       try {
