@@ -865,11 +865,34 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       confNotes = `⚡ Terdeteksi Pembayaran ${monthsCount} Bulan Sekaligus (@ Rp ${referenceSpp.toLocaleString('id-ID')}). ${confNotes || ''}`.trim();
     }
 
-    // Deteksi Alokasi Bulan SPP Otomatis untuk Siswa Tunggal (Multi-Bulan & Bulan Lanjutan)
+    // Deteksi Alokasi Bulan SPP Otomatis atau Program Daftar Ulang / Kelulusan
     let allocatedBulanText = detectedBulan;
     let waBulanLabel = detectedBulan;
+    let matchedProgramObj: any = null;
 
-    if (!isSiblingTransfer && matchedStudent) {
+    if (targetUserId && matchedStudent) {
+      try {
+        const { data: userProgs } = await serverSupabase
+          .from("re_registration_programs")
+          .select("*")
+          .eq("user_id", targetUserId);
+
+        if (userProgs && userProgs.length > 0) {
+          const studentId = matchedStudent.id;
+          matchedProgramObj = userProgs.find((p: any) =>
+            p.fee === finalNominal && (p.student_ids || []).includes(studentId)
+          ) || userProgs.find((p: any) => p.fee === finalNominal);
+
+          if (matchedProgramObj) {
+            allocatedBulanText = matchedProgramObj.name;
+            waBulanLabel = `${matchedProgramObj.name} (${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'})`;
+            confNotes = `🎓 Terdeteksi Tagihan ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'}: ${matchedProgramObj.name} (Rp ${matchedProgramObj.fee.toLocaleString('id-ID')}). ${confNotes || ''}`.trim();
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!matchedProgramObj && !isSiblingTransfer && matchedStudent) {
       try {
         const studentSpp = Number(matchedStudent.nominal_spp) || 100000;
         const { data: studentPayments } = await serverSupabase
@@ -1005,7 +1028,10 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
           .replace(/\[BANK\]/g, verificationRecord.bank_pengirim || "Bank / E-Wallet");
       } else {
         const nominalStr = verificationRecord.nominal > 0 ? ` sebesar Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
-        replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${waBulanLabel}*${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        const programLabel = matchedProgramObj
+          ? `biaya ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'} *${matchedProgramObj.name}*`
+          : `pembayaran SPP bulan *${waBulanLabel}*`;
+        replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
       }
 
       try {

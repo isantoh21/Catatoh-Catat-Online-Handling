@@ -6,7 +6,8 @@ import {
   Search, Calendar, DollarSign, X, MessageCircle, RefreshCw, CheckSquare, Square, Save, 
   CheckCircle2, Settings, Printer, Link2, Check, ExternalLink, Share2, ShieldCheck, 
   Building2, Copy, MessageSquare, Play, Pause, AlertTriangle, AlertCircle, XCircle, 
-  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert
+  Clock, Users, Info, Loader2, Send, StopCircle, ArrowRight, Filter, ShieldAlert,
+  GraduationCap
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
@@ -16,6 +17,11 @@ import { usePremiumStatus } from '../lib/premiumService';
 import PremiumLockModal from './PremiumLockModal';
 import WhatsAppTemplateModal from './WhatsAppTemplateModal';
 import { getWhatsAppTemplates } from '../lib/whatsappTemplates';
+import { 
+  ReRegistrationProgram, 
+  getReRegistrationPrograms, 
+  updateStudentRequirementStatus 
+} from '../lib/reRegistrationService';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -30,6 +36,8 @@ export default function DashboardView() {
   const [students, setStudents] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reRegistrationPrograms, setReRegistrationPrograms] = useState<ReRegistrationProgram[]>([]);
+  const [modalReqFulfilled, setModalReqFulfilled] = useState<boolean>(false);
 
   // Moderasi Pembayaran WhatsApp State
   const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
@@ -255,6 +263,12 @@ export default function DashboardView() {
       
     if (studentsData) setStudents(studentsData);
 
+    // Fetch re-registration & graduation programs
+    try {
+      const progs = await getReRegistrationPrograms(currentUser.id);
+      setReRegistrationPrograms(progs || []);
+    } catch (_) {}
+
     // Fetch payments for selected year
     let paymentsQuery = supabase
       .from('payments')
@@ -408,9 +422,18 @@ export default function DashboardView() {
   };
 
   const handleOpenModal = (student: any, explicitBulan?: string) => {
-    setSelectedModalBulan(explicitBulan || selectedBulan);
+    const targetB = explicitBulan || selectedBulan;
+    setSelectedModalBulan(targetB);
     setSelectedStudent(student);
-    setNominal(student.nominal_spp?.toString() || '100000');
+
+    const prog = reRegistrationPrograms.find(p => p.name === targetB);
+    if (prog) {
+      setNominal(prog.fee?.toString() || '150000');
+      setModalReqFulfilled(prog.student_requirements_status?.[student.id] || false);
+    } else {
+      setNominal(student.nominal_spp?.toString() || '100000');
+      setModalReqFulfilled(false);
+    }
     
     const now = new Date();
     setTanggalBayar(now.toISOString().split('T')[0]);
@@ -441,7 +464,7 @@ export default function DashboardView() {
       .maybeSingle();
       
     if (existingPayment) {
-      alert(`Pembayaran untuk ${selectedStudent.nama_lengkap} pada bulan ${targetBulan} ${targetTahun} sudah tercatat sebelumnya. Data tidak disimpan untuk menghindari duplikasi.`);
+      alert(`Pembayaran untuk ${selectedStudent.nama_lengkap} pada bulan/program ${targetBulan} ${targetTahun} sudah tercatat sebelumnya. Data tidak disimpan untuk menghindari duplikasi.`);
       setIsSubmitting(false);
       setIsModalOpen(false);
       return;
@@ -466,7 +489,17 @@ export default function DashboardView() {
       console.error('Error insert payment:', error);
       alert('Gagal menyimpan data pembayaran. Error: ' + error.message);
     } else {
-      await logActivity('Tandai Lunas SPP', `Menandai lunas SPP bulan ${targetBulan} ${targetTahun} untuk siswa ${selectedStudent.nama_lengkap}`);
+      // Jika ini adalah program kelulusan, perbarui juga status syarat khusus jika ada perubahan
+      const prog = reRegistrationPrograms.find(p => p.name === targetBulan);
+      if (prog && prog.type === 'lulus') {
+        try {
+          await updateStudentRequirementStatus(prog.id, selectedStudent.id, modalReqFulfilled, currentUser?.id);
+          const updatedProgs = await getReRegistrationPrograms(currentUser?.id);
+          setReRegistrationPrograms(updatedProgs);
+        } catch (_) {}
+      }
+
+      await logActivity('Tandai Lunas SPP', `Menandai lunas ${targetBulan} ${targetTahun} untuk siswa ${selectedStudent.nama_lengkap}`);
       setIsModalOpen(false);
       fetchData();
     }
@@ -524,6 +557,7 @@ export default function DashboardView() {
 
     const today = new Date().toISOString().split('T')[0];
     const currentUser = (await supabase.auth.getSession()).data.session?.user;
+    const targetProg = reRegistrationPrograms.find(p => p.name === targetBulan);
     const records = validIds.map(id => {
       const student = students.find(s => s.id === id);
       return {
@@ -531,7 +565,7 @@ export default function DashboardView() {
         student_id: id,
         bulan: targetBulan,
         tahun: targetTahun,
-        nominal_dibayar: student?.nominal_spp || 100000,
+        nominal_dibayar: targetProg ? targetProg.fee : (student?.nominal_spp || 100000),
         tanggal_bayar: today,
       };
     });
@@ -562,17 +596,23 @@ export default function DashboardView() {
 
   
   const uniqueKelompokList = Array.from(new Set(students.map(s => s.kelompok).filter(Boolean)));
+  const activeProgram = reRegistrationPrograms.find(p => p.name === selectedBulan);
 
   const baseFilteredStudents = students.filter(s => {
     const matchSearch = s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase());
     const matchKelompok = filterKelompok === 'Semua Kelompok' || s.kelompok === filterKelompok;
     
+    // Jika sedang memilih program Daftar Ulang / Kelulusan, hanya tampilkan siswa yang masuk ke kelompok program ini
+    if (activeProgram) {
+      if (!activeProgram.student_ids || !activeProgram.student_ids.includes(s.id)) {
+        return false;
+      }
+    }
+
     let matchPaymentStatus = true;
     if (filterPaymentStatus !== 'Semua Status') {
       let isLunas = false;
       if (selectedBulan === 'Semua Bulan') {
-        // If "Semua Bulan" is selected, we consider it lunas if there's any payment? 
-        // Or wait, maybe this logic is tricky. Let's just check if they have at least one payment in the selected year.
         isLunas = payments.some(p => p.student_id === s.id);
       } else {
         isLunas = payments.some(p => p.student_id === s.id && p.bulan === selectedBulan);
@@ -1057,14 +1097,25 @@ export default function DashboardView() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Sync
             </button>
           </div>
-          <div className="relative w-40">
+          <div className="relative w-48 sm:w-60">
             <select 
               value={selectedBulan}
               onChange={e => setSelectedBulan(e.target.value)}
-              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
+              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50 truncate"
             >
               <option value="Semua Bulan">Semua Bulan</option>
-              {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              <optgroup label="Bulan Reguler SPP">
+                {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              </optgroup>
+              {reRegistrationPrograms.length > 0 && (
+                <optgroup label="Kelompok Daftar Ulang & Kelulusan">
+                  {reRegistrationPrograms.map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.type === 'lulus' ? '🎓 [Lulus] ' : '📋 [Daftar Ulang] '}{p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <div className="relative w-32">
@@ -1081,7 +1132,43 @@ export default function DashboardView() {
         </div>
       </div>
 
-{/* Matrix / Regular Table Switch */}
+      {/* Active Program Info Banner */}
+      {activeProgram && (
+        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
+          activeProgram.type === 'lulus' 
+            ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+            : 'bg-indigo-50/80 border-indigo-200 text-indigo-950'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl shrink-0">{activeProgram.type === 'lulus' ? '🎓' : '📋'}</span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                  activeProgram.type === 'lulus' ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white'
+                }`}>
+                  {activeProgram.type === 'lulus' ? 'Program Kelulusan' : 'Program Daftar Ulang'}
+                </span>
+                <h3 className="font-extrabold text-sm">{activeProgram.name}</h3>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Biaya tagihan: <b className="text-emerald-700">Rp {Number(activeProgram.fee).toLocaleString('id-ID')}</b> / siswa
+                {activeProgram.type === 'lulus' && activeProgram.requirements && (
+                  <span> • Syarat: <b className="text-amber-900">{activeProgram.requirements}</b></span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {activeProgram.deadline && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl border border-slate-200 text-xs font-bold shrink-0 shadow-2xs">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <span>Batas Bayar: <b className="text-slate-800">{new Date(activeProgram.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</b></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Matrix / Regular Table Switch */}
       {selectedBulan === 'Semua Bulan' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden relative">
           <div className="overflow-x-auto">
@@ -1208,15 +1295,20 @@ export default function DashboardView() {
     Kelompok {sortConfig?.key === 'kelompok' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
   </th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Periode</th>
+                {activeProgram?.type === 'lulus' && (
+                  <th className="px-6 py-4 text-[10px] font-bold text-amber-800 uppercase tracking-widest whitespace-nowrap text-center bg-amber-50/60">
+                    Syarat Kelulusan
+                  </th>
+                )}
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">Memuat data...</td></tr>
+                <tr><td colSpan={activeProgram?.type === 'lulus' ? 7 : 6} className="px-6 py-8 text-center text-sm text-slate-500">Memuat data...</td></tr>
               ) : paginatedStudents.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">Tidak ada data siswa aktif.</td></tr>
+                <tr><td colSpan={activeProgram?.type === 'lulus' ? 7 : 6} className="px-6 py-8 text-center text-sm text-slate-500">Tidak ada data siswa aktif.</td></tr>
               ) : (
                 paginatedStudents.map(student => {
                   const payment = payments.find(p => p.student_id === student.id && p.bulan === selectedBulan);
@@ -1251,10 +1343,59 @@ export default function DashboardView() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                        <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                          activeProgram 
+                            ? activeProgram.type === 'lulus' 
+                              ? 'bg-amber-100 text-amber-900 border border-amber-200' 
+                              : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
                           {selectedBulan} {selectedTahun}
                         </span>
                       </td>
+                      {activeProgram?.type === 'lulus' && (
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const currentStatus = activeProgram.student_requirements_status?.[student.id] || false;
+                                const newStatus = !currentStatus;
+                                try {
+                                  const updated = await updateStudentRequirementStatus(activeProgram.id, student.id, newStatus, currentUserId);
+                                  if (updated) {
+                                    setReRegistrationPrograms(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                  }
+                                } catch (_) {}
+                              }}
+                              className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                                activeProgram.student_requirements_status?.[student.id]
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                              }`}
+                              title="Klik untuk ubah validasi syarat khusus"
+                            >
+                              {activeProgram.student_requirements_status?.[student.id] ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  Sudah Terpenuhi
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                  Belum Terpenuhi
+                                </>
+                              )}
+                            </button>
+                            {activeProgram.requirements && (
+                              <span className="text-[10px] text-slate-500 font-medium max-w-[170px] truncate" title={activeProgram.requirements}>
+                                {activeProgram.requirements}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-center">
                         {isLunas ? (
                           <div className="flex flex-col items-center gap-1">
@@ -1390,6 +1531,35 @@ export default function DashboardView() {
                     <input type="number" required value={nominal} onChange={e => setNominal(e.target.value)} className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-sm font-bold text-slate-700" />
                   </div>
                 </div>
+
+                {(() => {
+                  const modalProg = reRegistrationPrograms.find(p => p.name === (selectedModalBulan || selectedBulan));
+                  if (!modalProg || modalProg.type !== 'lulus') return null;
+                  return (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-amber-900 flex items-center gap-1.5 cursor-pointer">
+                          <GraduationCap className="w-4 h-4 text-amber-700" />
+                          Syarat Khusus Kelulusan
+                        </label>
+                        <input 
+                          type="checkbox"
+                          checked={modalReqFulfilled}
+                          onChange={e => setModalReqFulfilled(e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer"
+                        />
+                      </div>
+                      {modalProg.requirements && (
+                        <p className="text-[11px] text-amber-900">
+                          Syarat: <b>{modalProg.requirements}</b>
+                        </p>
+                      )}
+                      <p className="text-[10px] text-amber-800">
+                        Centang jika siswa sudah menyerahkan / memenuhi syarat khusus kelulusan.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="pt-2 flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">

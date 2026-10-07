@@ -20,8 +20,16 @@ import {
   ShieldCheck,
   Building2,
   CalendarRange,
-  GraduationCap
+  GraduationCap,
+  ClipboardCheck,
+  CheckCircle,
+  HelpCircle
 } from 'lucide-react';
+import { 
+  ReRegistrationProgram, 
+  getReRegistrationPrograms, 
+  getStudentPrograms 
+} from '../lib/reRegistrationService';
 
 export const BULAN_LIST = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -119,6 +127,7 @@ export default function ParentSppCardView() {
   const [showSqlGuide, setShowSqlGuide] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [semesterFilter, setSemesterFilter] = useState<'all' | 'ganjil' | 'genap'>('all');
+  const [reRegistrationPrograms, setReRegistrationPrograms] = useState<ReRegistrationProgram[]>([]);
 
   // Normalisasi otomatis format nomor HP orang tua ke format 62xxxxxxxxxxx
   const normalizeTo62Format = (input: string): string => {
@@ -369,12 +378,11 @@ export default function ParentSppCardView() {
       matchedStudents = studentsData;
       const studentIds = matchedStudents.map(s => s.id);
 
-      // 3. Query payments untuk siswa tersebut KHUSUS Tahun Ajaran berjalan (mencakup startYear dan startYear + 1)
+      // 3. Query payments untuk siswa tersebut (mencakup tahun ajaran berjalan & tagihan program)
       let paymentsQuery = supabase
         .from('payments')
         .select('student_id, bulan, tahun, tanggal_bayar, waktu_bayar, user_id')
-        .in('student_id', studentIds)
-        .in('tahun', [startYearToUse, endYearToUse]);
+        .in('student_id', studentIds);
 
       if (schoolId) {
         paymentsQuery = paymentsQuery.eq('user_id', schoolId);
@@ -388,20 +396,23 @@ export default function ParentSppCardView() {
         matchedPayments = paymentsData;
       }
 
-      // 4. Susun struktur StudentData dengan key pembayaran `bulan_tahun` unik
+      // 4. Susun struktur StudentData dengan key pembayaran unik
       const formattedList: StudentData[] = matchedStudents.map(student => {
         const studentPayments: Record<string, PaymentRecord> = {};
         matchedPayments
           .filter(p => p.student_id === student.id)
           .forEach(p => {
-            if (p.bulan && p.tahun) {
-              const paymentKey = `${p.bulan.toLowerCase().trim()}_${p.tahun}`;
-              studentPayments[paymentKey] = {
+            if (p.bulan) {
+              const paymentKey = `${p.bulan.toLowerCase().trim()}_${p.tahun || ''}`;
+              const simpleKey = p.bulan.toLowerCase().trim();
+              const rec = {
                 bulan: p.bulan,
                 tahun: p.tahun,
                 tanggal_bayar: p.tanggal_bayar,
                 waktu_bayar: p.waktu_bayar
               };
+              studentPayments[paymentKey] = rec;
+              studentPayments[simpleKey] = rec;
             }
           });
 
@@ -418,6 +429,13 @@ export default function ParentSppCardView() {
 
       setStudents(formattedList);
       setSelectedStudentIndex(0);
+
+      // Ambil program daftar ulang & kelulusan untuk siswa ini
+      try {
+        const targetUid = formattedList[0]?.user_id || schoolId;
+        const progs = await getReRegistrationPrograms(targetUid);
+        setReRegistrationPrograms(progs || []);
+      } catch (_) {}
 
       // Ambil branding sekolah dari admin user_id jika belum dimuat
       if (!schoolInfo && formattedList[0]?.user_id) {
@@ -869,6 +887,126 @@ export default function ParentSppCardView() {
                 </div>
               </div>
             </div>
+
+            {/* Tagihan Program Daftar Ulang & Kelulusan jika siswa terdaftar */}
+            {(() => {
+              const studentPrograms = getStudentPrograms(activeStudent.id, reRegistrationPrograms);
+              if (studentPrograms.length === 0) return null;
+
+              return (
+                <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <h4 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                        <GraduationCap className="w-5 h-5 text-indigo-600" />
+                        Tagihan Daftar Ulang & Kelulusan
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Rincian biaya tagihan dan status pemenuhan syarat khusus ananda
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200 self-start sm:self-auto">
+                      {studentPrograms.length} Kelompok Terdaftar
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {studentPrograms.map(prog => {
+                      const paymentEntry = Object.values(activeStudent.payments || {}).find(
+                        (p: any) => p.bulan?.toLowerCase().trim() === prog.name.toLowerCase().trim()
+                      );
+                      const isPaid = !!paymentEntry;
+                      const isReqFulfilled = prog.student_requirements_status?.[activeStudent.id] || false;
+
+                      return (
+                        <div 
+                          key={prog.id} 
+                          className={`p-4 rounded-xl border transition-all ${
+                            isPaid 
+                              ? 'bg-emerald-50/30 border-emerald-200' 
+                              : 'bg-slate-50/70 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase ${
+                                prog.type === 'lulus' 
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-200' 
+                                  : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                              }`}>
+                                {prog.type === 'lulus' ? '🎓 Kelulusan' : '📋 Daftar Ulang'}
+                              </span>
+                              <h5 className="font-bold text-slate-800 text-sm mt-1.5 leading-snug">{prog.name}</h5>
+                            </div>
+                            {isPaid ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                LUNAS
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                                <Clock className="w-3.5 h-3.5 text-rose-500" />
+                                BELUM BAYAR
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-baseline justify-between text-xs pt-2 border-t border-slate-200/60 mb-2">
+                            <span className="text-slate-500 font-medium">Biaya Tagihan:</span>
+                            <span className="font-black text-indigo-700 text-sm">
+                              Rp {Number(prog.fee).toLocaleString('id-ID')}
+                            </span>
+                          </div>
+
+                          {prog.deadline && (
+                            <div className="flex items-center justify-between text-xs mb-2 p-2 rounded-lg bg-white/80 border border-slate-200/80">
+                              <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                Batas Bayar:
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <b className="text-slate-800">{formatTanggalIndo(prog.deadline)}</b>
+                                {!isPaid && new Date(prog.deadline) < new Date() && (
+                                  <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                    Lewat Batas
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {isPaid && paymentEntry?.tanggal_bayar && (
+                            <div className="text-[11px] text-slate-500 mb-2">
+                              Tanggal Bayar: <b className="text-slate-700">{formatTanggalIndo(paymentEntry.tanggal_bayar)}</b>
+                              {paymentEntry.waktu_bayar && ` • ${formatWaktuIndo(paymentEntry.waktu_bayar)}`}
+                            </div>
+                          )}
+
+                          {prog.type === 'lulus' && prog.requirements && (
+                            <div className="mt-2 p-2.5 bg-amber-50/90 border border-amber-200 rounded-lg text-xs space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-amber-900 text-[10px] uppercase tracking-wider">Syarat Khusus:</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  isReqFulfilled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-200/80 text-amber-900'
+                                }`}>
+                                  {isReqFulfilled ? '✅ Sudah Terpenuhi' : '⏳ Belum Terpenuhi'}
+                                </span>
+                              </div>
+                              <p className="text-amber-950 font-medium">{prog.requirements}</p>
+                              {!isReqFulfilled && (
+                                <p className="text-[10px] text-amber-800 italic">
+                                  *Mohon untuk tidak lupa menyerahkan syarat khusus ini ke pihak sekolah.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Kartu Rincian 12 Bulan Tahun Ajaran (Juli s/d Juni) */}
             <div className="space-y-3">

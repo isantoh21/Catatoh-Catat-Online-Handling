@@ -232,3 +232,38 @@ AFTER INSERT ON public.activity_logs
 FOR EACH ROW
 EXECUTE FUNCTION purge_excess_activity_logs();
 
+-- =========================================================================
+-- TABEL KELOMPOK PROGRAM DAFTAR ULANG & KELULUSAN
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS public.re_registration_programs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('daftar_ulang', 'lulus')),
+  name TEXT NOT NULL,
+  fee NUMERIC NOT NULL DEFAULT 0,
+  deadline DATE,
+  requirements TEXT,
+  student_ids JSONB DEFAULT '[]'::jsonb,
+  student_requirements_status JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.re_registration_programs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Isolasi data re_registration_programs per user" ON public.re_registration_programs;
+CREATE POLICY "Isolasi data re_registration_programs per user" 
+ON public.re_registration_programs FOR ALL 
+TO authenticated 
+USING (auth.uid() = user_id) 
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Public membaca program daftar ulang untuk kartu spp ortu" ON public.re_registration_programs;
+CREATE POLICY "Public membaca program daftar ulang untuk kartu spp ortu" 
+ON public.re_registration_programs FOR SELECT 
+TO anon 
+USING (true);
+
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS re_registration_programs JSONB DEFAULT '[]'::jsonb;
+

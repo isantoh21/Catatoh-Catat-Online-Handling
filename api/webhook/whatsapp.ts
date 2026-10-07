@@ -1060,11 +1060,34 @@ export default async function handler(req: any, res: any) {
           || senderName 
           || (senderPhone ? `Pengirim ${senderPhone}` : "Wali Siswa"));
 
-      // Deteksi Alokasi Bulan SPP Otomatis untuk Siswa Tunggal (Multi-Bulan & Bulan Lanjutan)
+      // Deteksi Alokasi Bulan SPP Otomatis atau Program Daftar Ulang / Kelulusan
       let allocatedBulanText = detectedBulan;
       let waBulanLabel = detectedBulan;
+      let matchedProgramObj: any = null;
 
-      if (!isSiblingTransfer && matchedStudent) {
+      if (targetUserId && matchedStudent) {
+        try {
+          const { data: userProgs } = await serverSupabase
+            .from("re_registration_programs")
+            .select("*")
+            .eq("user_id", targetUserId);
+
+          if (userProgs && userProgs.length > 0) {
+            const studentId = matchedStudent.id;
+            matchedProgramObj = userProgs.find((p: any) =>
+              p.fee === finalNominal && (p.student_ids || []).includes(studentId)
+            ) || userProgs.find((p: any) => p.fee === finalNominal);
+
+            if (matchedProgramObj) {
+              allocatedBulanText = matchedProgramObj.name;
+              waBulanLabel = `${matchedProgramObj.name} (${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'})`;
+              confidenceNotes = `🎓 Terdeteksi Tagihan ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'}: ${matchedProgramObj.name} (Rp ${matchedProgramObj.fee.toLocaleString('id-ID')}). ${confidenceNotes}`;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!matchedProgramObj && !isSiblingTransfer && matchedStudent) {
         try {
           const studentSpp = Number(matchedStudent.nominal_spp) || 100000;
           const { data: studentPayments } = await serverSupabase
@@ -1189,7 +1212,10 @@ export default async function handler(req: any, res: any) {
             .replace(/\[BANK\]/g, verificationPayload.bank_pengirim || "Bank / E-Wallet");
         } else {
           const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
-          replyMsg = `Halo Ayah/Bunda, bukti pembayaran SPP ${studentNameStr} untuk bulan *${waBulanLabel}*${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+          const programLabel = matchedProgramObj
+            ? `biaya ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'} *${matchedProgramObj.name}*`
+            : `pembayaran SPP bulan *${waBulanLabel}*`;
+          replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
         }
 
         // Kirim auto-reply langsung via Gateway VPS menggunakan sesi yang sesuai

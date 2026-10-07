@@ -26,11 +26,47 @@ import {
   formatReceiptApprovedMessage, 
   formatReceiptRejectedMessage 
 } from '../lib/whatsappTemplates';
+import { 
+  ReRegistrationProgram, 
+  getReRegistrationPrograms 
+} from '../lib/reRegistrationService';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
+
+/**
+ * Mendeteksi program Daftar Ulang / Kelulusan yang cocok dengan item bukti bayar
+ */
+export const getDetectedProgramForItem = (
+  item: PaymentVerification,
+  matchedStudents: any[],
+  programs: ReRegistrationProgram[]
+): ReRegistrationProgram | null => {
+  if (!programs || programs.length === 0) return null;
+  const nominal = Number(item.nominal) || 0;
+  const studentIds = (matchedStudents || []).map(s => s.id);
+  if (item.student_id && !studentIds.includes(item.student_id)) {
+    studentIds.push(item.student_id);
+  }
+
+  // 1. Cek jika item.bulan cocok dengan nama program
+  const matchByName = programs.find(p => p.name.trim().toLowerCase() === (item.bulan || '').trim().toLowerCase());
+  if (matchByName) return matchByName;
+
+  // 2. Cek apakah ada program yang diikuti siswa ini dengan nominal persis sama
+  const matchByStudentAndFee = programs.find(p => 
+    p.fee === nominal && (p.student_ids || []).some(id => studentIds.includes(id))
+  );
+  if (matchByStudentAndFee) return matchByStudentAndFee;
+
+  // 3. Cek apakah nominal cocok dengan salah satu program yang ada
+  const matchByFeeOnly = programs.find(p => p.fee === nominal);
+  if (matchByFeeOnly) return matchByFeeOnly;
+
+  return null;
+};
 
 /**
  * Mendeteksi semua siswa yang terkait dengan bukti transfer.
@@ -226,6 +262,7 @@ export default function PaymentModerationModal({
   const { isPremium, loading: premiumLoading } = usePremiumStatus();
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [templates, setTemplates] = useState<WhatsAppTemplates>(DEFAULT_TEMPLATES);
+  const [reRegistrationPrograms, setReRegistrationPrograms] = useState<ReRegistrationProgram[]>([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [templateModalInitialTab, setTemplateModalInitialTab] = useState<'broadcast' | 'receiptReceived' | 'receiptApproved' | 'receiptRejected'>('receiptApproved');
 
@@ -287,10 +324,12 @@ export default function PaymentModerationModal({
     const uid = session?.user?.id;
     if (uid) setCurrentUserId(uid);
 
-    const [items, loadedTemplates] = await Promise.all([
+    const [items, loadedTemplates, loadedPrograms] = await Promise.all([
       getPaymentVerifications(uid),
-      getWhatsAppTemplates(uid)
+      getWhatsAppTemplates(uid),
+      getReRegistrationPrograms(uid)
     ]);
+    setReRegistrationPrograms(loadedPrograms);
 
     if (uid) {
       try {
@@ -339,8 +378,63 @@ export default function PaymentModerationModal({
       let singleStudentAllocation: StudentPaymentAllocation | null = null;
       let singleStudentObj: any = null;
 
+      // Cek apakah item adalah pembayaran Daftar Ulang atau Kelulusan
+      const matchedProg = getDetectedProgramForItem(item, targetStudents, reRegistrationPrograms)
+        || reRegistrationPrograms.find(p => p.name.trim().toLowerCase() === (item.bulan || '').trim().toLowerCase());
+
       // 1. Simpan ke tabel payments
-      if (targetStudents.length > 1) {
+      if (matchedProg) {
+        // Mode Pembayaran Program Daftar Ulang / Kelulusan
+        const perStudentNominal = targetStudents.length > 1 ? Math.floor(totalNominal / count) : totalNominal;
+        for (let idx = 0; idx < targetStudents.length; idx++) {
+          const st = targetStudents[idx];
+          const nominalSiswa = perStudentNominal + (idx === 0 && targetStudents.length > 1 ? (totalNominal % count) : 0);
+
+          const { data: existingPay } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('user_id', uid)
+            .eq('student_id', st.id)
+            .eq('bulan', matchedProg.name)
+            .eq('tahun', item.tahun)
+            .maybeSingle();
+
+          if (existingPay?.id) {
+            await supabase
+              .from('payments')
+              .update({
+                nominal_dibayar: nominalSiswa,
+                tanggal_bayar: tanggalBayar,
+                waktu_bayar: waktuBayar,
+              })
+              .eq('id', existingPay.id);
+          } else {
+            await supabase.from('payments').insert([{
+              user_id: uid,
+              student_id: st.id,
+              bulan: matchedProg.name,
+              tahun: item.tahun,
+              nominal_dibayar: nominalSiswa,
+              tanggal_bayar: tanggalBayar,
+              waktu_bayar: waktuBayar,
+            }]);
+          }
+        }
+
+        setExistingPayments(prev => [
+          ...prev.filter(p => !targetStudents.some(st => st.id === p.student_id && p.bulan === matchedProg.name && p.tahun === item.tahun)),
+          ...targetStudents.map(st => ({
+            user_id: uid,
+            student_id: st.id,
+            bulan: matchedProg.name,
+            tahun: item.tahun,
+            nominal_dibayar: perStudentNominal,
+            tanggal_bayar: tanggalBayar,
+            waktu_bayar: waktuBayar
+          }))
+        ]);
+        approvedBulanText = matchedProg.name;
+      } else if (targetStudents.length > 1) {
         // Mode Kakak-Adik: Bagi rata nominal untuk seluruh siswa (misal: Rp 200.000 untuk 2 anak -> Rp 100.000 / anak)
         const perStudentNominal = Math.floor(totalNominal / count);
         const remainder = totalNominal % count;
@@ -464,7 +558,9 @@ export default function PaymentModerationModal({
       // Tentukan label bulan & tahun untuk pencatatan verifikasi dan pesan konfirmasi WA
       let approvedBulanText = item.bulan;
       let approvedTahunText = item.tahun;
-      if (singleStudentAllocation) {
+      if (matchedProg) {
+        approvedBulanText = matchedProg.name;
+      } else if (singleStudentAllocation) {
         if (singleStudentAllocation.allocatedMonths.length > 1) {
           approvedBulanText = singleStudentAllocation.allocatedMonths.map(m => m.bulan).join(' & ');
         } else if (singleStudentAllocation.allocatedMonths.length === 1) {
@@ -516,7 +612,9 @@ export default function PaymentModerationModal({
 
       if (targetPhone) {
         let waBulanLabel = item.bulan;
-        if (targetStudents.length > 1) {
+        if (matchedProg) {
+          waBulanLabel = matchedProg.name;
+        } else if (targetStudents.length > 1) {
           waBulanLabel = item.bulan;
         } else if (singleStudentAllocation) {
           if (singleStudentAllocation.allocatedMonths.length > 1) {
@@ -526,7 +624,7 @@ export default function PaymentModerationModal({
           }
         }
 
-        const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
+        let approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
           studentName: studentNames,
           bulan: waBulanLabel,
           tahun: approvedTahunText,
@@ -534,6 +632,14 @@ export default function PaymentModerationModal({
           tanggal: tanggalBayar,
           bank: item.bank_pengirim
         });
+
+        // Pengingat khusus syarat kelulusan jika syarat belum divalidasi
+        if (matchedProg && matchedProg.type === 'graduation') {
+          const hasUnfulfilledReq = targetStudents.some(st => !matchedProg.requirement_statuses?.[st.id]);
+          if (hasUnfulfilledReq && matchedProg.requirements) {
+            approvalMsg += `\n\n⚠️ *Pemberitahuan Syarat Khusus Kelulusan:*\nAlhamdulillah pembayaran kelulusan ananda telah diverifikasi LUNAS. Namun, syarat kelulusan berikut belum terpenuhi/diserahkan:\n👉 *${matchedProg.requirements}*\nMohon untuk tidak lupa segera memenuhi dan menyerahkan syarat tersebut ke pihak sekolah. Terima kasih 🙏`;
+          }
+        }
 
         try {
           const config = await getWhatsAppGatewayConfig(uid);
@@ -555,7 +661,9 @@ export default function PaymentModerationModal({
 
       // 4. Update UI & log activity
       let logDesc = `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} dari no ${item.sender_phone}`;
-      if (targetStudents.length > 1) {
+      if (matchedProg) {
+        logDesc = `Menyetujui bukti transfer ${matchedProg.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'} (${matchedProg.name}) untuk ${studentNames} (Total Rp ${totalNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`;
+      } else if (targetStudents.length > 1) {
         const perStudentNominal = Math.floor(totalNominal / count);
         logDesc = `Menyetujui bukti transfer SPP bulan ${item.bulan} ${item.tahun} untuk ${studentNames} (${targetStudents.length} siswa kakak-adik @ Rp ${perStudentNominal.toLocaleString('id-ID')}) dari no ${item.sender_phone}`;
       } else if (singleStudentAllocation) {
@@ -1404,6 +1512,7 @@ export default function PaymentModerationModal({
               const allocation = (!isSibling && targetStudent)
                 ? getAllocatedMonthsForStudent(item.bulan, item.tahun, totalNominal, targetSpp, studentPayHistory)
                 : null;
+              const detectedProg = getDetectedProgramForItem(item, matchedStudents, reRegistrationPrograms);
 
               const formattedDate = new Date(item.created_at).toLocaleString('id-ID', {
                 day: 'numeric',
@@ -1668,6 +1777,63 @@ export default function PaymentModerationModal({
                         </div>
                       )}
 
+                      {/* Deteksi Program Daftar Ulang / Kelulusan */}
+                      {detectedProg && (
+                        <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs ${
+                          detectedProg.type === 'graduation'
+                            ? 'bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-pink-50/80 border-purple-200 text-purple-950'
+                            : 'bg-gradient-to-r from-teal-50/90 via-emerald-50/70 to-cyan-50/80 border-emerald-200 text-emerald-950'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base shrink-0">
+                              {detectedProg.type === 'graduation' ? '🎓' : '📋'}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                  detectedProg.type === 'graduation'
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-emerald-600 text-white'
+                                }`}>
+                                  {detectedProg.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'}
+                                </span>
+                                <span className="font-extrabold text-xs">
+                                  {detectedProg.name}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 mt-0.5">
+                                Tagihan program: <strong className="text-emerald-700">Rp {detectedProg.fee.toLocaleString('id-ID')}</strong> (Nominal struk cocok)
+                                {detectedProg.deadline && (
+                                  <span className="block sm:inline sm:ml-2 text-indigo-700 font-semibold">
+                                    • Batas: {new Date(detectedProg.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          {detectedProg.type === 'graduation' && detectedProg.requirements && (
+                            <div className="bg-white/95 p-2 rounded-lg border border-purple-200 text-[11px] shrink-0">
+                              <span className="font-bold text-purple-900 block">Syarat Khusus Kelulusan:</span>
+                              <span className="text-purple-800 font-medium">{detectedProg.requirements}</span>
+                              <div className="mt-1 flex items-center gap-1 font-bold text-[10px]">
+                                {matchedStudents.every(st => detectedProg.requirement_statuses?.[st.id]) ? (
+                                  <span className="text-emerald-600 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    Syarat Sudah Terpenuhi
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                                    Syarat Belum Terpenuhi (Akan Diingatkan via WA)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Gemini Vision Detection Badge */}
                       {(item.bank_pengirim || item.tanggal_transfer || item.confidence_notes) && (
                         <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-950 flex flex-wrap items-center justify-between gap-2">
@@ -1755,7 +1921,7 @@ export default function PaymentModerationModal({
 
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            Bulan SPP
+                            Bulan / Program
                           </label>
                           {item.status === 'pending' ? (
                             <select
@@ -1763,9 +1929,20 @@ export default function PaymentModerationModal({
                               onChange={e => handleUpdateItem(item.id, 'bulan', e.target.value)}
                               className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
                             >
-                              {BULAN_OPTIONS.map(b => (
-                                <option key={b} value={b}>{b}</option>
-                              ))}
+                              <optgroup label="Bulan SPP Reguler">
+                                {BULAN_OPTIONS.map(b => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                              </optgroup>
+                              {reRegistrationPrograms.length > 0 && (
+                                <optgroup label="Daftar Ulang & Kelulusan">
+                                  {reRegistrationPrograms.map(p => (
+                                    <option key={p.id} value={p.name}>
+                                      {p.type === 'graduation' ? '🎓 ' : '📋 '}{p.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
                             </select>
                           ) : (
                             <div className="text-xs font-bold text-slate-800 px-2 py-1 bg-slate-50 rounded-lg border border-slate-200">
@@ -1844,7 +2021,9 @@ export default function PaymentModerationModal({
                         >
                           <CheckCircle2 className="w-4 h-4" />
                           <span>
-                            {isSibling 
+                            {detectedProg
+                              ? `Setujui & Lunaskan ${detectedProg.name}`
+                              : isSibling 
                               ? `Setujui & Lunaskan ${matchedStudents.length} Siswa (Rp ${perStudentNominal.toLocaleString('id-ID')}/anak)`
                               : allocation && allocation.isMultiMonth
                               ? `Setujui & Lunaskan ${allocation.monthsCount} Bulan (${allocation.allocatedMonths.map(m => m.bulan).join(' & ')})`
@@ -2265,21 +2444,24 @@ export default function PaymentModerationModal({
                     </button>
                   )}
 
-                  {(() => {
-                    const targetSt = students.find(s => s.id === editingItem.student_id);
-                    if (targetSt?.nominal_spp && targetSt.nominal_spp !== Number(editNominal)) {
+                  {reRegistrationPrograms.map(p => {
+                    if (p.fee !== Number(editNominal)) {
                       return (
                         <button
+                          key={p.id}
                           type="button"
-                          onClick={() => setEditNominal(String(targetSt.nominal_spp))}
-                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setEditNominal(String(p.fee));
+                            setEditBulan(p.name);
+                          }}
+                          className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 text-[11px] font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
                         >
-                          Pakai SPP Siswa: Rp {targetSt.nominal_spp.toLocaleString('id-ID')}
+                          {p.type === 'graduation' ? '🎓 ' : '📋 '}Biaya {p.name}: Rp {p.fee.toLocaleString('id-ID')}
                         </button>
                       );
                     }
                     return null;
-                  })()}
+                  })}
                 </div>
               </div>
 
@@ -2287,16 +2469,27 @@ export default function PaymentModerationModal({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wider">
-                    Bulan SPP
+                    Bulan / Program
                   </label>
                   <select
                     value={editBulan}
                     onChange={e => setEditBulan(e.target.value)}
                     className="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-slate-800"
                   >
-                    {BULAN_OPTIONS.map(b => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
+                    <optgroup label="Bulan SPP Reguler">
+                      {BULAN_OPTIONS.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </optgroup>
+                    {reRegistrationPrograms.length > 0 && (
+                      <optgroup label="Daftar Ulang & Kelulusan">
+                        {reRegistrationPrograms.map(p => (
+                          <option key={p.id} value={p.name}>
+                            {p.type === 'graduation' ? '🎓 Kelulusan: ' : '📋 Daftar Ulang: '}{p.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
                 <div>
