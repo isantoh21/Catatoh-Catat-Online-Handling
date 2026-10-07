@@ -1,22 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle, ExternalLink, RefreshCw, Search, X } from 'lucide-react';
+import { 
+  Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, 
+  Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle, 
+  ExternalLink, RefreshCw, Search, X, FileText, FileDown, Table as TableIcon 
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
-import { saveAs } from 'file-saver';
-import { FileText, FileDown } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Papa from 'papaparse';
-import { Table as TableIcon } from 'lucide-react';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
+
+const saveAs = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
 export default function ReportsView() {
   

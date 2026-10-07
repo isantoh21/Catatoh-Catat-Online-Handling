@@ -3,7 +3,34 @@ import { supabase } from '../../lib/supabaseClient';
 import { CalendarDays, Loader2, Download, X, MapPin, Clock } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { formatInTimeZone } from 'date-fns-tz';
+
+function formatInTimeZone(date: Date, timeZone: string, fmt: string, options?: { locale?: any }): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timeZone || 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(date);
+    const map: Record<string, string> = {};
+    for (const p of parts) map[p.type] = p.value;
+    if (fmt === 'yyyy-MM-dd') return `${map.year}-${map.month}-${map.day}`;
+    if (fmt === 'HH:mm:ss') return `${map.hour}:${map.minute}:${map.second}`;
+    if (fmt === 'HH:mm') return `${map.hour}:${map.minute}`;
+    if (fmt === 'dd MMM yyyy') {
+      const idMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const mIdx = parseInt(map.month, 10) - 1;
+      return `${map.day} ${idMonths[mIdx] || map.month} ${map.year}`;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return format(date, fmt === 'dd MMM yyyy' ? 'dd MMM yyyy' : 'yyyy-MM-dd', options);
+}
 
 export default function AttendanceReports() {
   const [loading, setLoading] = useState(false);
