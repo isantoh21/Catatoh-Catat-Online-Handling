@@ -297,6 +297,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     autoTable(doc, {
       startY: startY,
       theme: 'grid',
+      showFoot: 'lastPage',
       headStyles: {
         fillColor: [49, 46, 129], // Indigo-900
         textColor: [255, 255, 255],
@@ -368,6 +369,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     autoTable(doc, {
       startY: startY,
       theme: 'grid',
+      showFoot: 'lastPage',
       headStyles: {
         fillColor: [16, 149, 107], // Emerald-700
         textColor: [255, 255, 255],
@@ -431,6 +433,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     autoTable(doc, {
       startY: startY,
       theme: 'grid',
+      showFoot: 'lastPage',
       headStyles: {
         fillColor: [159, 18, 57], // Rose-800
         textColor: [255, 255, 255],
@@ -496,6 +499,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     autoTable(doc, {
       startY: startY,
       theme: 'grid',
+      showFoot: 'lastPage',
       headStyles: {
         fillColor: [180, 83, 9], // Amber-700
         textColor: [255, 255, 255],
