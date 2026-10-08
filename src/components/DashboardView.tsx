@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/activityLogger';
@@ -576,37 +576,82 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   const uniqueKelompokList = Array.from(new Set(students.map(s => s.kelompok).filter(Boolean)));
   const activeProgram = reRegistrationPrograms.find(p => p.name === selectedBulan);
 
-  // Mendeteksi apakah ada bukti bayar (resi) WhatsApp yang berstatus 'pending' (menunggu verifikasi) untuk siswa & bulan tertentu
-  const getPendingVerificationForStudent = (studentId: string, bulan: string, tahunStr?: string) => {
-    const student = students.find(s => s.id === studentId);
-    if (!student || !pendingVerifications || pendingVerifications.length === 0) return null;
-    const targetTahun = tahunStr ? parseInt(tahunStr) : parseInt(selectedTahun);
-
-    return pendingVerifications.find(item => {
-      if (item.status !== 'pending') return false;
-
-      // Cek kesesuaian tahun jika tertera di bukti transfer
-      if (item.tahun && targetTahun && Number(item.tahun) !== targetTahun) {
-        return false;
+  // Pre-index payments into Map for O(1) cell lookup
+  const paymentsMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!payments) return map;
+    for (const p of payments) {
+      if (p.student_id && p.bulan) {
+        map.set(`${p.student_id}_${p.bulan.trim().toLowerCase()}`, p);
       }
+    }
+    return map;
+  }, [payments]);
 
-      // Cek kesesuaian bulan jika tertera di bukti transfer
-      if (item.bulan && item.bulan.trim()) {
-        const cleanItemBulan = item.bulan.trim().toLowerCase();
-        const cleanBulan = bulan.trim().toLowerCase();
-        if (cleanItemBulan !== cleanBulan) {
-          return false;
+  const studentWithPaymentsSet = useMemo(() => {
+    const set = new Set<string>();
+    if (!payments) return set;
+    for (const p of payments) {
+      if (p.student_id) set.add(p.student_id);
+    }
+    return set;
+  }, [payments]);
+
+  // Pre-index pending verifications per student & month for O(1) cell lookup
+  const pendingVerificationsMap = useMemo(() => {
+    const map = new Map<string, PaymentVerification>();
+    if (!pendingVerifications || pendingVerifications.length === 0 || !students || students.length === 0) {
+      return map;
+    }
+
+    for (const item of pendingVerifications) {
+      if (item.status !== 'pending') continue;
+      const matched = getMatchedStudentsForItem(item, students);
+      const cleanItemBulan = item.bulan ? item.bulan.trim().toLowerCase() : '';
+      const itemTahun = item.tahun ? String(Number(item.tahun)) : '';
+
+      for (const s of matched) {
+        if (cleanItemBulan) {
+          if (itemTahun) {
+            const k = `${s.id}_${cleanItemBulan}_${itemTahun}`;
+            if (!map.has(k)) map.set(k, item);
+          }
+          const kNoYear = `${s.id}_${cleanItemBulan}_all`;
+          if (!map.has(kNoYear)) map.set(kNoYear, item);
+        } else {
+          BULAN_OPTIONS.forEach(b => {
+            const cleanB = b.trim().toLowerCase();
+            if (itemTahun) {
+              const k = `${s.id}_${cleanB}_${itemTahun}`;
+              if (!map.has(k)) map.set(k, item);
+            }
+            const kNoYear = `${s.id}_${cleanB}_all`;
+            if (!map.has(kNoYear)) map.set(kNoYear, item);
+          });
         }
       }
+    }
+    return map;
+  }, [pendingVerifications, students]);
 
-      // Cek apakah item ini cocok dengan siswa (berdasarkan ID atau nomor WhatsApp orang tua)
-      const matched = getMatchedStudentsForItem(item, students);
-      return matched.some(s => s.id === studentId);
-    }) || null;
-  };
+  // Mendeteksi apakah ada bukti bayar (resi) WhatsApp yang berstatus 'pending' (menunggu verifikasi) untuk siswa & bulan tertentu
+  const getPendingVerificationForStudent = useCallback((studentId: string, bulan: string, tahunStr?: string) => {
+    if (pendingVerificationsMap.size === 0) return null;
+    const cleanBulan = (bulan || '').trim().toLowerCase();
+    const targetTahun = tahunStr ? String(parseInt(tahunStr)) : String(parseInt(selectedTahun));
+
+    const exact = pendingVerificationsMap.get(`${studentId}_${cleanBulan}_${targetTahun}`);
+    if (exact) return exact;
+
+    const noYear = pendingVerificationsMap.get(`${studentId}_${cleanBulan}_all`);
+    if (noYear && (!noYear.tahun || String(Number(noYear.tahun)) === targetTahun)) return noYear;
+
+    return null;
+  }, [pendingVerificationsMap, selectedTahun]);
 
   const baseFilteredStudents = students.filter(s => {
-    const matchSearch = s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase());
+    const sName = (s.nama_lengkap || '').toLowerCase();
+    const matchSearch = sName.includes(searchQuery.toLowerCase());
     const matchKelompok = filterKelompok === 'Semua Kelompok' || s.kelompok === filterKelompok;
     
     // Jika sedang memilih program Daftar Ulang / Kelulusan, hanya tampilkan siswa yang masuk ke kelompok program ini
@@ -621,10 +666,10 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       let isLunas = false;
       let hasPending = false;
       if (selectedBulan === 'Semua Bulan') {
-        isLunas = payments.some(p => p.student_id === s.id);
+        isLunas = studentWithPaymentsSet.has(s.id);
         hasPending = BULAN_OPTIONS.some(b => !!getPendingVerificationForStudent(s.id, b, selectedTahun));
       } else {
-        isLunas = payments.some(p => p.student_id === s.id && p.bulan === selectedBulan);
+        isLunas = !!paymentsMap.get(`${s.id}_${selectedBulan.trim().toLowerCase()}`);
         hasPending = !!getPendingVerificationForStudent(s.id, selectedBulan, selectedTahun);
       }
       
@@ -1248,7 +1293,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
     <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">{student.kelompok || '-'}</span>
   </td>
                       {BULAN_OPTIONS.map(b => {
-                        const payment = payments.find(p => p.student_id === student.id && p.bulan === b);
+                        const payment = paymentsMap.get(`${student.id}_${b.trim().toLowerCase()}`);
                         const pendingVerif = !payment ? getPendingVerificationForStudent(student.id, b, selectedTahun) : null;
                         return (
                           <td key={b} className="px-2 py-2 text-center">

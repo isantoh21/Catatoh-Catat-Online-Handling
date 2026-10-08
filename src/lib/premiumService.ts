@@ -9,6 +9,10 @@ export const DEFAULT_PREMIUM_EMAILS: string[] = [
   'beti1508@gmail.com',
 ];
 
+export const DEFAULT_PREMIUM_USER_IDS: string[] = [
+  'b68ebc60-867d-4ad8-8026-92a5a7f57b97',
+];
+
 export interface PremiumInfo {
   isPremium: boolean;
   plan: 'free' | 'monthly' | 'yearly';
@@ -126,7 +130,7 @@ export async function checkIsUserPremium(email?: string | null, userId?: string 
   }
 
   // 2. Cek default hardcoded (Lifetime VIP) jika tidak dicabut dan belum memiliki expiry khusus
-  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
+  if ((cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) || (cleanId && DEFAULT_PREMIUM_USER_IDS.includes(cleanId))) {
     if (cleanId) localStorage.setItem(`catatoh_is_premium_${cleanId}`, 'true');
     return true;
   }
@@ -193,7 +197,7 @@ export async function getUserSubscriptionDetails(userId?: string, userEmail?: st
   }
 
   // 2. Cek jika akun lifetime default (hanya jika TIDAK ada konfigurasi langganan berjangka)
-  if (cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) {
+  if ((cleanEmail && DEFAULT_PREMIUM_EMAILS.includes(cleanEmail)) || (cleanId && DEFAULT_PREMIUM_USER_IDS.includes(cleanId))) {
     return {
       isPremium: true,
       plan: 'yearly',

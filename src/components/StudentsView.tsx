@@ -17,12 +17,16 @@ import StudentAttendanceReports from './students/StudentAttendanceReports';
 import { usePremiumStatus } from '../lib/premiumService';
 import PremiumLockModal from './PremiumLockModal';
 
-export default function StudentsView() {
+interface StudentsViewProps {
+  currentUser?: any;
+}
+
+export default function StudentsView({ currentUser: propUser }: StudentsViewProps = {}) {
   const { isPremium } = usePremiumStatus();
   const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'students' | 'reports'>('students');
   const [students, setStudents] = useState<any[]>([]);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string>(propUser?.id || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFaceRegistrationOpen, setIsFaceRegistrationOpen] = useState(false);
   const [isAttendanceKioskOpen, setIsAttendanceKioskOpen] = useState(false);
@@ -59,12 +63,19 @@ export default function StudentsView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user?.id) {
-        setCurrentUserId(data.session.user.id);
+    if (propUser?.id) {
+      setCurrentUserId(propUser.id);
+      fetchStudents(propUser);
+    } else {
+      fetchStudents();
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setCurrentUserId(session.user.id);
+        fetchStudents(session.user);
       }
     });
-    fetchStudents();
 
     const channel = supabase
       .channel('realtime-students')
@@ -75,40 +86,56 @@ export default function StudentsView() {
       .subscribe();
 
     return () => {
+      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [propUser]);
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (userParam?: any) => {
     setLoading(true);
-    const currentUser = (await supabase.auth.getSession()).data.session?.user;
-    if (!currentUser) {
-      setStudents([]);
-      setLoading(false);
-      return;
-    }
-    setCurrentUserId(currentUser.id);
-
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
-    
-    if (data) {
-      setStudents(data);
-      // Auto-heal data siswa lama yang kolom status_aktif nya masih NULL/undefined menjadi true (aktif)
-      const nullStatusStudents = data.filter(s => s.status_aktif === null || s.status_aktif === undefined);
-      if (nullStatusStudents.length > 0) {
-        supabase
-          .from('students')
-          .update({ status_aktif: true })
-          .in('id', nullStatusStudents.map(s => s.id))
-          .eq('user_id', currentUser.id)
-          .then(() => {});
+    try {
+      let activeUser = userParam || propUser;
+      if (!activeUser) {
+        const sessionRes = await supabase.auth.getSession();
+        activeUser = sessionRes.data.session?.user;
       }
+      if (!activeUser) {
+        await new Promise(r => setTimeout(r, 400));
+        const retrySession = await supabase.auth.getSession();
+        activeUser = retrySession.data.session?.user;
+      }
+      if (!activeUser) {
+        setStudents([]);
+        return;
+      }
+      setCurrentUserId(activeUser.id);
+
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('user_id', activeUser.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching students:', error);
+      } else if (data) {
+        setStudents(data);
+        // Auto-heal data siswa lama yang kolom status_aktif nya masih NULL/undefined menjadi true (aktif)
+        const nullStatusStudents = data.filter(s => s.status_aktif === null || s.status_aktif === undefined);
+        if (nullStatusStudents.length > 0) {
+          supabase
+            .from('students')
+            .update({ status_aktif: true })
+            .in('id', nullStatusStudents.map(s => s.id))
+            .eq('user_id', activeUser.id)
+            .then(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('Exception in fetchStudents:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const getAttendanceKioskUrl = () => {
@@ -541,8 +568,10 @@ export default function StudentsView() {
   const baseFilteredStudents = students.filter(s => {
     const isAktif = s.status_aktif !== false;
     const isAktifMatch = activeStatusTab === 'aktif' ? isAktif : !isAktif;
-    const matchSearch = s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        s.nomor_whatsapp.includes(searchQuery);
+    const sName = (s.nama_lengkap || '').toLowerCase();
+    const sPhone = (s.nomor_whatsapp || '').toString();
+    const q = (searchQuery || '').toLowerCase();
+    const matchSearch = sName.includes(q) || sPhone.includes(searchQuery);
     const matchKelompok = filterKelompok === 'Semua Kelompok' || s.kelompok === filterKelompok;
     return matchSearch && matchKelompok && isAktifMatch;
   });

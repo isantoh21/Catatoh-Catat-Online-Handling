@@ -59,7 +59,7 @@ export default function App() {
 
   const fetchUserSettings = async (userId: string) => {
     try {
-      const { data, error } = await supabase.from('user_settings').select('school_name, school_logo').eq('user_id', userId).single();
+      const { data, error } = await supabase.from('user_settings').select('school_name, school_logo, admin_name, city_name').eq('user_id', userId).maybeSingle();
       if (!error && data) {
         if (data.school_name) {
           setSchoolName(data.school_name);
@@ -69,34 +69,44 @@ export default function App() {
           setSchoolLogo(data.school_logo);
           localStorage.setItem('schoolLogo_' + userId, data.school_logo);
         }
-        return data.school_name || '';
+        return data;
       } else {
         const cached = localStorage.getItem('schoolName_' + userId) || '';
         setSchoolName(cached);
         setSchoolLogo(localStorage.getItem('schoolLogo_' + userId) || '');
-        return cached;
+        return { school_name: cached };
       }
     } catch (err) {
       const cached = localStorage.getItem('schoolName_' + userId) || '';
       setSchoolName(cached);
       setSchoolLogo(localStorage.getItem('schoolLogo_' + userId) || '');
-      return cached;
+      return { school_name: cached };
     }
   };
 
-  const checkProfileRequirements = (user: any, loadedSchool?: string) => {
+  const checkProfileRequirements = (user: any, loadedSettings?: any) => {
     if (!user) {
       setShowMandatoryProfileModal(false);
       return false;
     }
 
-    const rawAdmin = (user.user_metadata?.full_name || user.user_metadata?.admin_name || '').trim();
+    const rawAdmin = (
+      user.user_metadata?.full_name || 
+      user.user_metadata?.admin_name || 
+      (typeof loadedSettings === 'object' ? loadedSettings?.admin_name : '') ||
+      ''
+    ).trim();
     const isAdminValid = rawAdmin.length >= 2 && rawAdmin !== 'Belum Diatur';
 
+    const loadedSchool = typeof loadedSettings === 'string' ? loadedSettings : loadedSettings?.school_name;
     const sName = (loadedSchool || localStorage.getItem('schoolName_' + user.id) || user.user_metadata?.school_name || schoolName || '').trim();
     const isSchoolValid = sName.length >= 2 && sName !== 'Aplikasi Pencatatan SPP Gratis' && sName !== 'CATATOH';
 
-    const rawCity = (user.user_metadata?.city || '').trim();
+    const rawCity = (
+      user.user_metadata?.city || 
+      (typeof loadedSettings === 'object' ? loadedSettings?.city_name : '') ||
+      ''
+    ).trim();
     const isCityValid = rawCity.length > 0;
 
     setMandatoryAdminName(rawAdmin);
@@ -868,7 +878,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
           <Routes>
             <Route path="/" element={<DashboardView currentUser={currentUser} />} />
-            <Route path="/siswa" element={<StudentsView />} />
+            <Route path="/siswa" element={<StudentsView currentUser={currentUser} />} />
             <Route path="/kelompok" element={<GroupsView />} />
             <Route path="/pengeluaran" element={<ExpensesView />} />
             <Route path="/pemasukan-lain" element={<OtherIncomeView />} />
