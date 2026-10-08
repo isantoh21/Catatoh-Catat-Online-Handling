@@ -280,7 +280,6 @@ export default function App() {
 
   const handleLogin = async (user?: any) => {
     setIsLoggedIn(true);
-    navigate('/');
 
     let activeUser = user;
     if (!activeUser) {
@@ -290,12 +289,14 @@ export default function App() {
 
     if (activeUser) {
       setCurrentUser(activeUser);
-      const { data } = await supabase.auth.getSession();
+      setUserEmail(activeUser.email || '');
+      setDbStatus('connected');
+      checkDb(1);
       fetchUserSettings(activeUser.id).then((loadedSchool) => {
-        const isComplete = checkProfileRequirements(activeUser, loadedSchool);
-        
+        checkProfileRequirements(activeUser, loadedSchool);
       });
     }
+    navigate('/');
   };
 
   const handleLogout = async () => {
@@ -866,7 +867,7 @@ export default function App() {
 
         <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
           <Routes>
-            <Route path="/" element={<DashboardView />} />
+            <Route path="/" element={<DashboardView currentUser={currentUser} />} />
             <Route path="/siswa" element={<StudentsView />} />
             <Route path="/kelompok" element={<GroupsView />} />
             <Route path="/pengeluaran" element={<ExpensesView />} />

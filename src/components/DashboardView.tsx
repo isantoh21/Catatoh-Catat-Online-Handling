@@ -31,7 +31,7 @@ const BULAN_OPTIONS = [
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
 
-export default function DashboardView() {
+export default function DashboardView({ currentUser: propUser }: { currentUser?: any } = {}) {
   const navigate = useNavigate();
   const { isPremium } = usePremiumStatus();
   const [premiumLockFeature, setPremiumLockFeature] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export default function DashboardView() {
   const [copiedParentLink, setCopiedParentLink] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedShareBroadcast, setCopiedShareBroadcast] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string>(propUser?.id || '');
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
 
   const getSchoolParentUrl = () => {
@@ -143,8 +143,11 @@ export default function DashboardView() {
   // Use a separate useEffect just for loading user identity and WA template
   useEffect(() => {
     const loadUserData = async () => {
-      const sessionData = await supabase.auth.getSession();
-      const currentUser = sessionData.data.session?.user;
+      let currentUser = propUser;
+      if (!currentUser) {
+        const sessionData = await supabase.auth.getSession();
+        currentUser = sessionData.data.session?.user;
+      }
       if (currentUser) {
         setCurrentUserId(currentUser.id);
 
@@ -184,17 +187,30 @@ export default function DashboardView() {
     loadUserData();
     refreshPendingCount();
 
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setCurrentUserId(session.user.id);
+        fetchData(session.user);
+      }
+    });
+
     const interval = setInterval(() => {
       refreshPendingCount();
     }, 60000); // refresh tiap 60 detik (fallback aman & hemat egress)
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      authSub.unsubscribe();
+      clearInterval(interval);
+    };
+  }, [propUser]);
 
   const refreshPendingCount = async () => {
     try {
-      const sessionData = await supabase.auth.getSession();
-      const uid = sessionData.data.session?.user?.id;
+      let uid = currentUserId || propUser?.id;
+      if (!uid) {
+        const sessionData = await supabase.auth.getSession();
+        uid = sessionData.data.session?.user?.id;
+      }
       if (uid) {
         const verifs = await getPaymentVerifications(uid);
         const pendings = (verifs || []).filter(v => v.status === 'pending');
@@ -209,8 +225,9 @@ export default function DashboardView() {
   useEffect(() => {
     fetchData();
 
+    const channelId = currentUserId || 'global';
     const studentsChannel = supabase
-      .channel('realtime-students')
+      .channel(`realtime-students-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
         console.log('Real-time update on students:', payload);
         fetchData();
@@ -218,7 +235,7 @@ export default function DashboardView() {
       .subscribe();
       
     const paymentsChannel = supabase
-      .channel('realtime-payments')
+      .channel(`realtime-payments-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, (payload) => {
         console.log('Real-time update on payments:', payload);
         fetchData();
@@ -226,7 +243,7 @@ export default function DashboardView() {
       .subscribe();
 
     const verifChannel = supabase
-      .channel('realtime-verifications-dashboard')
+      .channel(`realtime-verifs-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_verifications' }, () => {
         refreshPendingCount();
         fetchData();
@@ -238,7 +255,7 @@ export default function DashboardView() {
       supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(verifChannel);
     };
-  }, [selectedBulan, selectedTahun]);
+  }, [selectedBulan, selectedTahun, currentUserId]);
 
   const handleSaveTemplate = async () => {
     const sessionData = await supabase.auth.getSession();
@@ -257,50 +274,61 @@ export default function DashboardView() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (explicitUser?: any) => {
     setLoading(true);
-    
-    // Fetch active students
-    const currentUser = (await supabase.auth.getSession()).data.session?.user;
-    if (!currentUser) return;
-    const { data: studentsData } = await supabase
-      .from('students')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .neq('status_aktif', false)
-      .order('nama_lengkap', { ascending: true });
-      
-    if (studentsData) setStudents(studentsData);
-
-    // Fetch re-registration & graduation programs
     try {
-      const progs = await getReRegistrationPrograms(currentUser.id);
-      setReRegistrationPrograms(progs || []);
-    } catch (_) {}
+      let activeUser = explicitUser || propUser;
+      if (!activeUser) {
+        const sessionData = await supabase.auth.getSession();
+        activeUser = sessionData.data.session?.user;
+      }
+      if (!activeUser) {
+        await new Promise(r => setTimeout(r, 400));
+        const retrySession = await supabase.auth.getSession();
+        activeUser = retrySession.data.session?.user;
+      }
+      if (!activeUser) {
+        return;
+      }
 
-    // Fetch payments for selected year
-    let paymentsQuery = supabase
-      .from('payments')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .eq('tahun', parseInt(selectedTahun));
-      
-    if (selectedBulan !== 'Semua Bulan') {
-      paymentsQuery = paymentsQuery.eq('bulan', selectedBulan);
+      setCurrentUserId(activeUser.id);
+
+      // Jalankan query siswa, pembayaran, program, dan moderasi secara paralel
+      let paymentsQuery = supabase
+        .from('payments')
+        .select('*')
+        .eq('user_id', activeUser.id)
+        .eq('tahun', parseInt(selectedTahun));
+        
+      if (selectedBulan !== 'Semua Bulan') {
+        paymentsQuery = paymentsQuery.eq('bulan', selectedBulan);
+      }
+
+      const [studentsRes, paymentsRes, progsRes, verifsRes] = await Promise.all([
+        supabase
+          .from('students')
+          .select('*')
+          .eq('user_id', activeUser.id)
+          .neq('status_aktif', false)
+          .order('nama_lengkap', { ascending: true }),
+        paymentsQuery,
+        getReRegistrationPrograms(activeUser.id).catch(() => []),
+        getPaymentVerifications(activeUser.id).catch(() => [])
+      ]);
+
+      if (studentsRes?.data) setStudents(studentsRes.data);
+      if (paymentsRes?.data) setPayments(paymentsRes.data);
+      if (progsRes) setReRegistrationPrograms(progsRes);
+      if (verifsRes) {
+        const pendings = (verifsRes || []).filter(v => v.status === 'pending');
+        setPendingVerifications(pendings);
+        setPendingVerificationsCount(pendings.length);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat data dashboard:', err);
+    } finally {
+      setLoading(false);
     }
-    const { data: paymentsData } = await paymentsQuery;
-      
-    if (paymentsData) setPayments(paymentsData);
-    
-    // Fetch pending verifications
-    try {
-      const verifs = await getPaymentVerifications(currentUser.id);
-      const pendings = (verifs || []).filter(v => v.status === 'pending');
-      setPendingVerifications(pendings);
-      setPendingVerificationsCount(pendings.length);
-    } catch (_) {}
-
-    setLoading(false);
   };
 
   
