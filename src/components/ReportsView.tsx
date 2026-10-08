@@ -3,19 +3,14 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, 
   Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle, 
-  ExternalLink, RefreshCw, Search, X, FileText, FileDown, Table as TableIcon,
+  ExternalLink, RefreshCw, Search, X,
   Printer, Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ConfirmModal from './ConfirmModal';
 import ExportReportModal from './ExportReportModal';
-import { 
-  ReportExportData, 
-  exportProfessionalPDF, 
-  exportProfessionalCSV, 
-  exportProfessionalDOCX 
-} from '../lib/reportExporter';
+import { ReportExportData } from '../lib/reportExporter';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -427,19 +422,6 @@ export default function ReportsView() {
     }))
   });
 
-  const handleExportPDF = () => {
-    exportProfessionalPDF(getFullReportData());
-  };
-
-  const handleExportCSV = () => {
-    exportProfessionalCSV(getFullReportData());
-  };
-
-  const handleExportDOCX = async () => {
-    await exportProfessionalDOCX(getFullReportData());
-  };
-
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 font-sans">
       <div className="p-4 sm:p-6 md:px-10 md:py-8 border-b border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -463,15 +445,6 @@ export default function ReportsView() {
                   <Printer className="w-4 h-4 text-indigo-200" />
                   <span>Export Laporan Resmi</span>
                   <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">⭐</span>
-                </button>
-                <button onClick={handleExportPDF} className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download PDF">
-                  <FileDown className="w-3.5 h-3.5" /> Export PDF
-                </button>
-                <button onClick={handleExportCSV} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download Excel/CSV">
-                  <TableIcon className="w-3.5 h-3.5" /> Export Excel
-                </button>
-                <button onClick={handleExportDOCX} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download Word">
-                  <FileText className="w-3.5 h-3.5" /> Export DOCX
                 </button>
                 <button onClick={handleCheckDuplicates} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
                   <AlertTriangle className="w-3.5 h-3.5" /> Cek Data Dobel
