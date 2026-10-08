@@ -302,7 +302,8 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         textColor: [255, 255, 255],
         fontStyle: 'bold',
         fontSize: 8,
-        halign: 'left',
+        halign: 'center',
+        valign: 'middle',
         cellPadding: 2.5
       },
       alternateRowStyles: {
@@ -317,7 +318,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
       },
       head: [
         [
-          { content: 'BAGIAN I: RINCIAN PENERIMAAN SPP SISWA', colSpan: 6, styles: { fillColor: [30, 27, 75], halign: 'left' } }
+          { content: 'BAGIAN I: RINCIAN PENERIMAAN SPP SISWA', colSpan: 6, styles: { fillColor: [30, 27, 75], halign: 'center', valign: 'middle', fontStyle: 'bold' } }
         ],
         ['No', 'Nama Siswa', 'Kelas / Kelompok', 'Tanggal Bayar', 'Waktu', 'Nominal (Rp)']
       ],
@@ -345,6 +346,12 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         4: { halign: 'center', cellWidth: 18 },
         5: { halign: 'right', cellWidth: 32 }
       },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          data.cell.styles.halign = 'center';
+          data.cell.styles.valign = 'middle';
+        }
+      },
       margin: { left: marginX, right: marginX }
     });
 
@@ -366,7 +373,8 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         textColor: [255, 255, 255],
         fontStyle: 'bold',
         fontSize: 8,
-        halign: 'left',
+        halign: 'center',
+        valign: 'middle',
         cellPadding: 2.5
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -379,7 +387,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
       },
       head: [
         [
-          { content: 'BAGIAN II: RINCIAN PEMASUKAN LAIN-LAIN / KAS MASUK', colSpan: 4, styles: { fillColor: [6, 95, 70], halign: 'left' } }
+          { content: 'BAGIAN II: RINCIAN PEMASUKAN LAIN-LAIN / KAS MASUK', colSpan: 4, styles: { fillColor: [6, 95, 70], halign: 'center', valign: 'middle', fontStyle: 'bold' } }
         ],
         ['No', 'Uraian / Sumber Pemasukan', 'Tanggal', 'Nominal (Rp)']
       ],
@@ -400,6 +408,12 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         1: { cellWidth: 'auto', fontStyle: 'bold' },
         2: { halign: 'center', cellWidth: 35 },
         3: { halign: 'right', cellWidth: 35 }
+      },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          data.cell.styles.halign = 'center';
+          data.cell.styles.valign = 'middle';
+        }
       },
       margin: { left: marginX, right: marginX }
     });
@@ -422,7 +436,8 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         textColor: [255, 255, 255],
         fontStyle: 'bold',
         fontSize: 8,
-        halign: 'left',
+        halign: 'center',
+        valign: 'middle',
         cellPadding: 2.5
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -435,7 +450,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
       },
       head: [
         [
-          { content: 'BAGIAN III: RINCIAN PENGELUARAN KAS & OPERASIONAL', colSpan: 4, styles: { fillColor: [136, 19, 55], halign: 'left' } }
+          { content: 'BAGIAN III: RINCIAN PENGELUARAN KAS & OPERASIONAL', colSpan: 4, styles: { fillColor: [136, 19, 55], halign: 'center', valign: 'middle', fontStyle: 'bold' } }
         ],
         ['No', 'Keperluan / Keterangan Pengeluaran', 'Tanggal', 'Nominal (Rp)']
       ],
@@ -459,6 +474,12 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         2: { halign: 'center', cellWidth: 35 },
         3: { halign: 'right', cellWidth: 35 }
       },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          data.cell.styles.halign = 'center';
+          data.cell.styles.valign = 'middle';
+        }
+      },
       margin: { left: marginX, right: marginX }
     });
 
@@ -480,7 +501,8 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         textColor: [255, 255, 255],
         fontStyle: 'bold',
         fontSize: 8,
-        halign: 'left',
+        halign: 'center',
+        valign: 'middle',
         cellPadding: 2.5
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -493,7 +515,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
       },
       head: [
         [
-          { content: 'BAGIAN IV: DAFTAR SISWA MENUNGGAK / BELUM LUNAS SPP', colSpan: 5, styles: { fillColor: [146, 64, 14], halign: 'left' } }
+          { content: 'BAGIAN IV: DAFTAR SISWA MENUNGGAK / BELUM LUNAS SPP', colSpan: 5, styles: { fillColor: [146, 64, 14], halign: 'center', valign: 'middle', fontStyle: 'bold' } }
         ],
         ['No', 'Nama Siswa', 'Kelas / Kelompok', 'No. WhatsApp Orang Tua', 'Nominal Tagihan (Rp)']
       ],
@@ -516,6 +538,12 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
         2: { halign: 'center', cellWidth: 32 },
         3: { halign: 'center', cellWidth: 35 },
         4: { halign: 'right', cellWidth: 35 }
+      },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          data.cell.styles.halign = 'center';
+          data.cell.styles.valign = 'middle';
+        }
       },
       margin: { left: marginX, right: marginX }
     });
@@ -825,9 +853,9 @@ export const exportProfessionalDOCX = async (data: ReportExportData) => {
               new TableRow({
                 tableHeader: true,
                 children: [
-                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ children: [new TextRun({ text: 'Komponen Finansial', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ children: [new TextRun({ text: 'Rincian / Volume', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ children: [new TextRun({ text: 'Nominal (Rp)', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Komponen Finansial', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Rincian / Volume', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '1e1b4b' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Nominal (Rp)', color: 'ffffff', bold: true })] })] }),
                 ]
               }),
               new TableRow({
@@ -888,11 +916,11 @@ export const exportProfessionalDOCX = async (data: ReportExportData) => {
               new TableRow({
                 tableHeader: true,
                 children: [
-                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ children: [new TextRun({ text: 'No', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ children: [new TextRun({ text: 'Nama Siswa', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ children: [new TextRun({ text: 'Kelompok', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ children: [new TextRun({ text: 'Tanggal', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ children: [new TextRun({ text: 'Nominal', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'No', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Nama Siswa', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Kelompok', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Tanggal', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '312e81' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Nominal', color: 'ffffff', bold: true })] })] }),
                 ]
               }),
               ...data.sppTransactions.map((t, idx) => (
@@ -935,10 +963,10 @@ export const exportProfessionalDOCX = async (data: ReportExportData) => {
               new TableRow({
                 tableHeader: true,
                 children: [
-                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ children: [new TextRun({ text: 'No', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ children: [new TextRun({ text: 'Uraian Pengeluaran', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ children: [new TextRun({ text: 'Tanggal', color: 'ffffff', bold: true })] })] }),
-                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ children: [new TextRun({ text: 'Nominal', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'No', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Uraian Pengeluaran', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Tanggal', color: 'ffffff', bold: true })] })] }),
+                  new TableCell({ shading: { fill: '881337' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Nominal', color: 'ffffff', bold: true })] })] }),
                 ]
               }),
               ...data.expenses.map((e, idx) => (
