@@ -391,29 +391,6 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
   doc.text('2. Harap disimpan dengan baik sebagai arsip bukti pembayaran yang sah.', leftX, sigY + 7.5);
   doc.text('3. Diterbitkan secara resmi melalui Sistem Informasi Keuangan Catatoh.', leftX, sigY + 11);
 
-  // Stempel Digital Bulat (Official Verification Seal)
-  const stampCenterX = marginX + 100;
-  const stampCenterY = sigY + 10;
-
-  doc.setDrawColor(16, 185, 129); // Emerald-500
-  doc.setLineWidth(0.4);
-  doc.circle(stampCenterX, stampCenterY, 9.5, 'S');
-
-  doc.setDrawColor(16, 185, 129);
-  doc.setLineWidth(0.15);
-  doc.circle(stampCenterX, stampCenterY, 8.5, 'S');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5);
-  doc.setTextColor(5, 150, 105);
-  doc.text('PEMBAYARAN SPP', stampCenterX, stampCenterY - 4.5, { align: 'center' });
-  
-  doc.setFontSize(7.5);
-  doc.text('LUNAS', stampCenterX, stampCenterY, { align: 'center' });
-  
-  doc.setFontSize(4.8);
-  doc.text('TERVERIFIKASI SISTEM', stampCenterX, stampCenterY + 4, { align: 'center' });
-
   // Sisi Kanan: Titimangsa & TTD Penerima
   const rightSigCenterX = pageWidth - marginX - 32;
 
@@ -684,24 +661,6 @@ export const exportOtherIncomeReceiptPDF = (data: OtherIncomeReceiptData) => {
   doc.setTextColor(100, 116, 139);
   doc.text('1. Bukti penerimaan kas ini sah dan diakui dalam pembukuan keuangan lembaga.', leftX, sigY + 4);
   doc.text('2. Disimpan sebagai dokumen pertanggungjawaban arus kas masuk resmi.', leftX, sigY + 7.5);
-
-  // Stempel Digital
-  const stampCenterX = marginX + 100;
-  const stampCenterY = sigY + 10;
-  doc.setDrawColor(6, 95, 70);
-  doc.setLineWidth(0.4);
-  doc.circle(stampCenterX, stampCenterY, 9.5, 'S');
-  doc.setLineWidth(0.15);
-  doc.circle(stampCenterX, stampCenterY, 8.5, 'S');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5);
-  doc.setTextColor(6, 95, 70);
-  doc.text('KAS MASUK', stampCenterX, stampCenterY - 4.5, { align: 'center' });
-  doc.setFontSize(7.5);
-  doc.text('DITERIMA', stampCenterX, stampCenterY, { align: 'center' });
-  doc.setFontSize(4.8);
-  doc.text('TERVERIFIKASI', stampCenterX, stampCenterY + 4, { align: 'center' });
 
   // Sisi Kanan: Titimangsa & TTD
   const rightSigCenterX = pageWidth - marginX - 32;
