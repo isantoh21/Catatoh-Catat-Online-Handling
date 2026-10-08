@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   Users, Search, FolderPlus, Folder, Check, Trash2, UserMinus, 
   ChevronRight, UserPlus, GraduationCap, Plus, Edit2, AlertCircle, 
-  CheckCircle2, Clock, DollarSign, BookOpen, Sparkles, Filter, X
+  CheckCircle2, Clock, DollarSign, BookOpen, Sparkles, Filter, X,
+  Calendar
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { 
