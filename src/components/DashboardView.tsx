@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ConfirmModal from './ConfirmModal';
-import PaymentModerationModal from './PaymentModerationModal';
+import PaymentModerationModal, { getMatchedStudentsForItem } from './PaymentModerationModal';
 import { getPaymentVerifications, getPendingVerificationsCount, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
+import { PaymentVerification } from '../types/whatsapp';
 import { usePremiumStatus } from '../lib/premiumService';
 import PremiumLockModal from './PremiumLockModal';
 import WhatsAppTemplateModal from './WhatsAppTemplateModal';
@@ -42,6 +43,7 @@ export default function DashboardView() {
   // Moderasi Pembayaran WhatsApp State
   const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
   const [pendingVerificationsCount, setPendingVerificationsCount] = useState(0);
+  const [pendingVerifications, setPendingVerifications] = useState<PaymentVerification[]>([]);
   
   // Filter state
   const currentDate = new Date();
@@ -192,8 +194,12 @@ export default function DashboardView() {
     try {
       const sessionData = await supabase.auth.getSession();
       const uid = sessionData.data.session?.user?.id;
-      const pending = await getPendingVerificationsCount(uid);
-      setPendingVerificationsCount(pending);
+      if (uid) {
+        const verifs = await getPaymentVerifications(uid);
+        const pendings = (verifs || []).filter(v => v.status === 'pending');
+        setPendingVerifications(pendings);
+        setPendingVerificationsCount(pendings.length);
+      }
     } catch (e) {
       // Abaikan jika offline / gagal
     }
@@ -222,6 +228,7 @@ export default function DashboardView() {
       .channel('realtime-verifications-dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_verifications' }, () => {
         refreshPendingCount();
+        fetchData();
       })
       .subscribe();
 
@@ -284,6 +291,14 @@ export default function DashboardView() {
       
     if (paymentsData) setPayments(paymentsData);
     
+    // Fetch pending verifications
+    try {
+      const verifs = await getPaymentVerifications(currentUser.id);
+      const pendings = (verifs || []).filter(v => v.status === 'pending');
+      setPendingVerifications(pendings);
+      setPendingVerificationsCount(pendings.length);
+    } catch (_) {}
+
     setLoading(false);
   };
 
@@ -599,6 +614,35 @@ export default function DashboardView() {
   const uniqueKelompokList = Array.from(new Set(students.map(s => s.kelompok).filter(Boolean)));
   const activeProgram = reRegistrationPrograms.find(p => p.name === selectedBulan);
 
+  // Mendeteksi apakah ada bukti bayar (resi) WhatsApp yang berstatus 'pending' (menunggu verifikasi) untuk siswa & bulan tertentu
+  const getPendingVerificationForStudent = (studentId: string, bulan: string, tahunStr?: string) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student || !pendingVerifications || pendingVerifications.length === 0) return null;
+    const targetTahun = tahunStr ? parseInt(tahunStr) : parseInt(selectedTahun);
+
+    return pendingVerifications.find(item => {
+      if (item.status !== 'pending') return false;
+
+      // Cek kesesuaian tahun jika tertera di bukti transfer
+      if (item.tahun && targetTahun && Number(item.tahun) !== targetTahun) {
+        return false;
+      }
+
+      // Cek kesesuaian bulan jika tertera di bukti transfer
+      if (item.bulan && item.bulan.trim()) {
+        const cleanItemBulan = item.bulan.trim().toLowerCase();
+        const cleanBulan = bulan.trim().toLowerCase();
+        if (cleanItemBulan !== cleanBulan) {
+          return false;
+        }
+      }
+
+      // Cek apakah item ini cocok dengan siswa (berdasarkan ID atau nomor WhatsApp orang tua)
+      const matched = getMatchedStudentsForItem(item, students);
+      return matched.some(s => s.id === studentId);
+    }) || null;
+  };
+
   const baseFilteredStudents = students.filter(s => {
     const matchSearch = s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase());
     const matchKelompok = filterKelompok === 'Semua Kelompok' || s.kelompok === filterKelompok;
@@ -613,14 +657,18 @@ export default function DashboardView() {
     let matchPaymentStatus = true;
     if (filterPaymentStatus !== 'Semua Status') {
       let isLunas = false;
+      let hasPending = false;
       if (selectedBulan === 'Semua Bulan') {
         isLunas = payments.some(p => p.student_id === s.id);
+        hasPending = BULAN_OPTIONS.some(b => !!getPendingVerificationForStudent(s.id, b, selectedTahun));
       } else {
         isLunas = payments.some(p => p.student_id === s.id && p.bulan === selectedBulan);
+        hasPending = !!getPendingVerificationForStudent(s.id, selectedBulan, selectedTahun);
       }
       
       if (filterPaymentStatus === 'Lunas' && !isLunas) matchPaymentStatus = false;
-      if (filterPaymentStatus === 'Belum Lunas' && isLunas) matchPaymentStatus = false;
+      if (filterPaymentStatus === 'Menunggu Verifikasi' && (isLunas || !hasPending)) matchPaymentStatus = false;
+      if (filterPaymentStatus === 'Belum Lunas' && (isLunas || hasPending)) matchPaymentStatus = false;
     }
     
     return matchSearch && matchKelompok && matchPaymentStatus;
@@ -1067,7 +1115,7 @@ export default function DashboardView() {
               ))}
             </select>
           </div>
-          <div className="w-full sm:w-40 relative">
+          <div className="w-full sm:w-48 relative">
             <select
               value={filterPaymentStatus}
               onChange={e => { setFilterPaymentStatus(e.target.value); setCurrentPage(1); }}
@@ -1075,7 +1123,8 @@ export default function DashboardView() {
             >
               <option value="Semua Status">Semua Status</option>
               <option value="Lunas">Sudah Lunas</option>
-              <option value="Belum Lunas">Belum Lunas</option>
+              <option value="Menunggu Verifikasi">Menunggu Verifikasi (Resi Masuk)</option>
+              <option value="Belum Lunas">Belum Bayar</option>
             </select>
           </div>
         </div>
@@ -1169,6 +1218,31 @@ export default function DashboardView() {
         </div>
       )}
 
+      {/* Banner Resi Transfer Menunggu Verifikasi */}
+      {pendingVerificationsCount > 0 && (
+        <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-950 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-200/80 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5 text-amber-800" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-900">
+                Ada {pendingVerificationsCount} Bukti Transfer Menunggu Moderasi
+              </p>
+              <p className="text-[11px] text-amber-800/90 mt-0.5">
+                Resi transfer yang masuk via WhatsApp berstatus <strong>Menunggu Verifikasi</strong>. Setelah diverifikasi dan disetujui di laman moderasi, status siswa otomatis berubah menjadi <strong>Lunas</strong>.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleOpenModerasiModal}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 shrink-0 justify-center cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4" /> Buka Laman Moderasi
+          </button>
+        </div>
+      )}
+
       {/* Matrix / Regular Table Switch */}
       {selectedBulan === 'Semua Bulan' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden relative">
@@ -1201,6 +1275,7 @@ export default function DashboardView() {
   </td>
                       {BULAN_OPTIONS.map(b => {
                         const payment = payments.find(p => p.student_id === student.id && p.bulan === b);
+                        const pendingVerif = !payment ? getPendingVerificationForStudent(student.id, b, selectedTahun) : null;
                         return (
                           <td key={b} className="px-2 py-2 text-center">
                             {payment ? (
@@ -1221,6 +1296,14 @@ export default function DashboardView() {
                                   <X className="w-3 h-3 hidden group-hover:block" />
                                 </button>
                               </div>
+                            ) : pendingVerif ? (
+                              <button 
+                                onClick={handleOpenModerasiModal}
+                                className="w-7 h-7 mx-auto bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 rounded flex items-center justify-center transition-all animate-pulse"
+                                title={`Resi Masuk (${b}): Menunggu Verifikasi di Moderasi`}
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              </button>
                             ) : (
                               <button 
                                 onClick={() => handleOpenModal(student, b)}
@@ -1314,6 +1397,7 @@ export default function DashboardView() {
                 paginatedStudents.map(student => {
                   const payment = payments.find(p => p.student_id === student.id && p.bulan === selectedBulan);
                   const isLunas = !!payment;
+                  const pendingVerif = !isLunas ? getPendingVerificationForStudent(student.id, selectedBulan, selectedTahun) : null;
 
                   return (
                     <tr key={student.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(student.id) ? 'bg-indigo-50/30' : ''}`}>
@@ -1410,6 +1494,15 @@ export default function DashboardView() {
                               </span>
                             )}
                           </div>
+                        ) : pendingVerif ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-[10px] font-black uppercase tracking-wider animate-pulse">
+                              <Clock className="w-3 h-3 text-amber-600" /> Menunggu Verifikasi
+                            </span>
+                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Resi Masuk {pendingVerif.nominal ? `• ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(pendingVerif.nominal)}` : ''}
+                            </span>
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-100 text-rose-700 rounded-md text-[10px] font-black uppercase tracking-wider">
                             <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span> Belum Bayar
@@ -1439,6 +1532,24 @@ export default function DashboardView() {
                               title="Batalkan Lunas"
                             >
                               Batal
+                            </button>
+                          </div>
+                        ) : pendingVerif ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={handleOpenModerasiModal}
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer animate-pulse hover:animate-none"
+                              title="Buka Moderasi untuk verifikasi struk transfer"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" /> Verifikasi Resi
+                            </button>
+                            <button 
+                              onClick={() => handleOpenModal(student)}
+                              disabled={isSubmitting}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-semibold transition-colors"
+                              title="Tandai lunas manual tanpa menunggu moderasi"
+                            >
+                              Manual
                             </button>
                           </div>
                         ) : (
@@ -2346,6 +2457,7 @@ Terima kasih atas perhatian dan kerja samanya.`}
         onClose={() => {
           setIsModerationModalOpen(false);
           refreshPendingCount();
+          fetchData();
         }}
         students={students}
         onPaymentApproved={() => {
