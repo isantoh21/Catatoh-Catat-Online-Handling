@@ -1509,7 +1509,7 @@ export default function PaymentModerationModal({
               const targetStudent = matchedStudents[0] || students.find(s => s.id === item.student_id);
               const targetSpp = Number(targetStudent?.nominal_spp) || 100000;
               const studentPayHistory = existingPayments.filter(p => p.student_id === targetStudent?.id);
-              const allocation = (!isSibling && targetStudent)
+              const allocation = (item.status === 'pending' && !isSibling && targetStudent)
                 ? getAllocatedMonthsForStudent(item.bulan, item.tahun, totalNominal, targetSpp, studentPayHistory)
                 : null;
               const detectedProg = getDetectedProgramForItem(item, matchedStudents, reRegistrationPrograms);
@@ -1721,7 +1721,7 @@ export default function PaymentModerationModal({
                       )}
 
                       {/* Siswa Tunggal: Banner Multi-Bulan (Bayar 2x Lipat / Lebih) & Bulan Lanjutan */}
-                      {!isSibling && targetStudent && allocation && (allocation.isMultiMonth || allocation.isAdvanceForwarded) && (
+                      {item.status === 'pending' && !isSibling && targetStudent && allocation && (allocation.isMultiMonth || allocation.isAdvanceForwarded) && (
                         <div className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-emerald-50/70 border border-indigo-200 rounded-xl space-y-2 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-1.5">
                             <div className="flex items-center gap-2">
@@ -2042,11 +2042,7 @@ export default function PaymentModerationModal({
                           <span>
                             {isSibling 
                               ? `Telah Disetujui & Masuk Catatan SPP (${matchedStudents.length} Siswa LUNAS)`
-                              : allocation && allocation.isMultiMonth
-                              ? `Telah Disetujui & Masuk Catatan SPP (${allocation.monthsCount} Bulan LUNAS: ${allocation.allocatedMonths.map(m => m.bulan).join(', ')})`
-                              : allocation && allocation.isAdvanceForwarded
-                              ? `Telah Disetujui & Masuk Catatan SPP (LUNAS Bulan ${allocation.allocatedMonths[0]?.bulan} ${allocation.allocatedMonths[0]?.tahun})`
-                              : 'Telah Disetujui & Masuk Catatan SPP'}
+                              : `Telah Disetujui & Masuk Catatan SPP (LUNAS: ${item.bulan} ${item.tahun})`}
                           </span>
                         </span>
                         <div className="flex items-center gap-2">
