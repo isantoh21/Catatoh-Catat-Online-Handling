@@ -592,10 +592,6 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
     doc.text(`(  ${data.principalName || '...........................................'}  )`, colLeftX, nameY, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('NIP / Tanda Tangan & Cap Lembaga', colLeftX, nameY + 4.5, { align: 'center' });
 
     // Nama Bendahara (Kanan)
     doc.setFont('helvetica', 'bold');
@@ -1017,7 +1013,6 @@ export const exportProfessionalDOCX = async (data: ReportExportData) => {
                       new Paragraph({ children: [new TextRun({ text: 'Kepala Sekolah / Pimpinan', bold: true })] }),
                       new Paragraph({ text: '', spacing: { after: 600 } }),
                       new Paragraph({ children: [new TextRun({ text: `( ${data.principalName || '...........................................'} )`, bold: true })] }),
-                      new Paragraph({ children: [new TextRun({ text: 'NIP / Stempel Lembaga' })] }),
                     ]
                   }),
                   new TableCell({
