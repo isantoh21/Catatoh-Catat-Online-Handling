@@ -22,7 +22,7 @@ export default function ImageCropModal({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imgNaturalSize, setImgNaturalSize] = useState({ width: 0, height: 0 });
-  const [bgColor, setBgColor] = useState<'#FFFFFF' | '#F8FAFC' | '#0F172A'>('#FFFFFF');
+  const [bgColor, setBgColor] = useState<'transparent' | '#FFFFFF' | '#F8FAFC' | '#0F172A'>('transparent');
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -134,9 +134,14 @@ export default function ImageCropModal({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Fill background color
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    // Bersihkan canvas agar area transparan tetap transparan penuh (alpha = 0)
+    ctx.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+
+    // Fill background color hanya jika bukan transparan
+    if (bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    }
 
     ctx.save();
 
@@ -185,8 +190,9 @@ export default function ImageCropModal({
 
     ctx.restore();
 
-    // Export as high quality JPEG
-    const croppedBase64 = canvas.toDataURL('image/jpeg', 0.90);
+    // Export sebagai PNG jika transparent atau gambar asal adalah PNG agar tidak menjadi hitam
+    const isJpeg = bgColor !== 'transparent' && imageSrc.startsWith('data:image/jpeg');
+    const croppedBase64 = canvas.toDataURL(isJpeg ? 'image/jpeg' : 'image/png', isJpeg ? 0.90 : undefined);
     onSave(croppedBase64);
     onClose();
   }, [pan, zoom, rotation, bgColor, calculateFitScale, imgNaturalSize, onClose, onSave]);
@@ -238,9 +244,13 @@ export default function ImageCropModal({
             style={{ 
               width: `${VIEWPORT_SIZE}px`, 
               height: `${VIEWPORT_SIZE}px`,
-              backgroundColor: bgColor 
+              backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor 
             }}
             className={`relative rounded-2xl overflow-hidden border-2 border-indigo-400 shadow-2xl touch-none ${
+              bgColor === 'transparent' 
+                ? 'bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%),linear-gradient(-45deg,#f1f5f9_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f1f5f9_75%),linear-gradient(-45deg,transparent_75%,#f1f5f9_75%)] bg-[size:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0]' 
+                : ''
+            } ${
               isDragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
           >
@@ -393,6 +403,17 @@ export default function ImageCropModal({
             {/* Background Color for margins */}
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-slate-500">Latar:</span>
+              <button
+                type="button"
+                onClick={() => setBgColor('transparent')}
+                className={`px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                  bgColor === 'transparent' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-300' : 'border-slate-300 bg-white text-slate-600'
+                }`}
+                title="Latar Transparan (Bawaan PNG)"
+              >
+                <span className="w-3.5 h-3.5 rounded border border-slate-300 bg-[linear-gradient(45deg,#ccc_25%,transparent_25%),linear-gradient(-45deg,#ccc_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#ccc_75%),linear-gradient(-45deg,transparent_75%,#ccc_75%)] bg-[size:6px_6px] bg-[position:0_0,0_3px,3px_-3px,-3px_0]" />
+                <span>Transparan</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setBgColor('#FFFFFF')}

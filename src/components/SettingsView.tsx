@@ -213,7 +213,7 @@ export default function SettingsView({
     }
   };
 
-  // Helper untuk optimasi gambar dengan tetap mempertahankan rasio/proporsi asli penuh (tanpa terpotong)
+  // Helper untuk optimasi gambar dengan tetap mempertahankan rasio/proporsi asli penuh dan transparansi PNG
   const optimizeImage = (dataUrl: string, maxDim = 800, quality = 0.9): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -234,10 +234,19 @@ export default function SettingsView({
         canvas.height = h;
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          // Bersihkan canvas agar background transparan (alpha = 0)
+          ctx.clearRect(0, 0, w, h);
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', quality));
+          
+          // Jika format asal adalah PNG / SVG / WEBP, jangan ubah ke JPEG agar latar transparan tidak berubah hitam!
+          const isJpeg = dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg');
+          if (isJpeg) {
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else {
+            resolve(canvas.toDataURL('image/png'));
+          }
         } else {
           resolve(dataUrl);
         }
@@ -245,6 +254,97 @@ export default function SettingsView({
       img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
     });
+  };
+
+  // Helper untuk menghapus latar belakang hitam dari logo dan menjadikannya transparan murni
+  const handleMakeLogoTransparent = async () => {
+    if (!localLogo) return;
+    try {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // Flood fill dari batas luar untuk mendeteksi warna latar hitam tanpa merusak teks/objek di tengah
+        const visited = new Uint8Array(w * h);
+        const queue: number[] = [];
+
+        const isBlackColor = (idx: number) => {
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          // Toleransi warna hitam hingga abu gelap (misal kompresi jpeg)
+          return r <= 45 && g <= 45 && b <= 45;
+        };
+
+        for (let x = 0; x < w; x++) {
+          const topIdx = (0 * w + x) * 4;
+          if (isBlackColor(topIdx) && !visited[0 * w + x]) {
+            queue.push(0 * w + x);
+            visited[0 * w + x] = 1;
+          }
+          const botIdx = ((h - 1) * w + x) * 4;
+          if (isBlackColor(botIdx) && !visited[(h - 1) * w + x]) {
+            queue.push((h - 1) * w + x);
+            visited[(h - 1) * w + x] = 1;
+          }
+        }
+        for (let y = 0; y < h; y++) {
+          const leftIdx = (y * w + 0) * 4;
+          if (isBlackColor(leftIdx) && !visited[y * w + 0]) {
+            queue.push(y * w + 0);
+            visited[y * w + 0] = 1;
+          }
+          const rightIdx = (y * w + (w - 1)) * 4;
+          if (isBlackColor(rightIdx) && !visited[y * w + (w - 1)]) {
+            queue.push(y * w + (w - 1));
+            visited[y * w + (w - 1)] = 1;
+          }
+        }
+
+        let head = 0;
+        while (head < queue.length) {
+          const pos = queue[head++];
+          const px = pos % w;
+          const py = Math.floor(pos / w);
+          const idx = pos * 4;
+
+          data[idx + 3] = 0; // Transparan penuh
+
+          const neighbors = [
+            px > 0 ? pos - 1 : -1,
+            px < w - 1 ? pos + 1 : -1,
+            py > 0 ? pos - w : -1,
+            py < h - 1 ? pos + w : -1
+          ];
+
+          for (const n of neighbors) {
+            if (n >= 0 && !visited[n] && isBlackColor(n * 4)) {
+              visited[n] = 1;
+              queue.push(n);
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        const transparentPngUrl = canvas.toDataURL('image/png');
+        await handleCroppedSave(transparentPngUrl);
+        setPhotoMessage({ type: 'success', text: 'Latar belakang hitam berhasil dihapus menjadi transparan!' });
+        setTimeout(() => setPhotoMessage({ type: '', text: '' }), 3000);
+      };
+      img.src = localLogo;
+    } catch (err) {
+      console.error('Gagal membuat background transparan:', err);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,8 +358,9 @@ export default function SettingsView({
       const reader = new FileReader();
       reader.onloadend = async () => {
         const rawBase64 = reader.result as string;
-        // Simpan langsung gambar penuh dengan proporsi asli agar di kwitansi tampil FULL
-        const fullOptimized = await optimizeImage(rawBase64);
+        // Prioritaskan simpan sebagai PNG transparan penuh
+        const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png') || rawBase64.startsWith('data:image/png');
+        const fullOptimized = isPng ? await optimizePngImage(rawBase64) : await optimizeImage(rawBase64);
         await handleCroppedSave(fullOptimized);
 
         setImageToCrop(rawBase64);
@@ -549,7 +650,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                 </h3>
                 
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                  <div className="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-indigo-200 flex items-center justify-center overflow-hidden shrink-0 relative group p-1 shadow-xs">
+                  <div className="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-indigo-200 flex items-center justify-center overflow-hidden shrink-0 relative group p-1 shadow-xs bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%),linear-gradient(-45deg,#f1f5f9_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f1f5f9_75%),linear-gradient(-45deg,transparent_75%,#f1f5f9_75%)] bg-[size:10px_10px] bg-[position:0_0,0_5px,5px_-5px,-5px_0]">
                     {localLogo ? (
                       <img src={localLogo} alt="School Logo" className="w-full h-full object-contain" />
                     ) : (
@@ -583,18 +684,29 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                         Pilih Gambar
                       </button>
                       {localLogo && (
-                        <button 
-                          type="button"
-                          onClick={handleOpenAdjustCurrent}
-                          className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-                          title="Atur ulang posisi, zoom, dan rotasi foto"
-                        >
-                          <Crop className="w-4 h-4" />
-                          <span>Atur Posisi Foto</span>
-                        </button>
+                        <>
+                          <button 
+                            type="button"
+                            onClick={handleOpenAdjustCurrent}
+                            className="px-3 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            title="Atur ulang posisi, zoom, dan rotasi foto"
+                          >
+                            <Crop className="w-3.5 h-3.5" />
+                            <span>Atur Posisi Foto</span>
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={handleMakeLogoTransparent}
+                            className="px-3 py-2 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            title="Hapus latar belakang hitam dan ubah menjadi transparan murni"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Hapus Background Hitam</span>
+                          </button>
+                        </>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Foto tampil pas di panel admin dan tampil utuh/penuh di kwitansi.</p>
+                    <p className="text-xs text-slate-500">Format: JPG, PNG, WEBP. Transparansi file PNG dipertahankan penuh tanpa berubah menjadi hitam.</p>
                     {photoMessage.text && (
                       <div className={`p-2.5 rounded-xl text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
                         photoMessage.type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'

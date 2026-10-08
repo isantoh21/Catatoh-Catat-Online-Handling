@@ -157,7 +157,8 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
         // Fallback default
       }
 
-      doc.addImage(data.schoolLogo, logoX, logoY, logoW, logoH);
+      const logoFormat = (data.schoolLogo.startsWith('data:image/png') || !data.schoolLogo.startsWith('data:image/jpeg')) ? 'PNG' : 'JPEG';
+      doc.addImage(data.schoolLogo, logoFormat, logoX, logoY, logoW, logoH, undefined, 'FAST');
       textStartX = logoX + logoW + 5;
     } catch (e) {
       console.warn('Gagal memuat logo sekolah di kwitansi:', e);
@@ -579,7 +580,8 @@ export const exportOtherIncomeReceiptPDF = (data: OtherIncomeReceiptData) => {
           logoY = 11 + (maxH - logoH) / 2;
         }
       } catch {}
-      doc.addImage(data.schoolLogo, logoX, logoY, logoW, logoH);
+      const logoFormat = (data.schoolLogo.startsWith('data:image/png') || !data.schoolLogo.startsWith('data:image/jpeg')) ? 'PNG' : 'JPEG';
+      doc.addImage(data.schoolLogo, logoFormat, logoX, logoY, logoW, logoH, undefined, 'FAST');
       textStartX = logoX + logoW + 5;
     } catch (e) {
       console.warn('Gagal memuat logo sekolah:', e);
