@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import PublicNavbar from './public/PublicNavbar';
 import { 
   GraduationCap,
   ScanFace,
@@ -43,6 +45,8 @@ export default function LoginView({
     schoolName?: string; 
     schoolLogo?: string; 
   }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,6 +62,22 @@ export default function LoginView({
   // Register Tier & Subscription Selection
   const [selectedTier, setSelectedTier] = useState<'free' | 'premium'>('free');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+
+  useEffect(() => {
+    const qMode = searchParams.get('mode');
+    const qTier = searchParams.get('tier');
+    const qCycle = searchParams.get('cycle');
+
+    if (qMode === 'register' || qMode === 'login' || qMode === 'forgot') {
+      setMode(qMode);
+    }
+    if (qTier === 'free' || qTier === 'premium') {
+      setSelectedTier(qTier);
+    }
+    if (qCycle === 'monthly' || qCycle === 'yearly') {
+      setBillingCycle(qCycle);
+    }
+  }, [searchParams]);
 
   // Modal konfirmasi pembayaran & instruksi WhatsApp setelah registrasi Premium
   const [registeredPremiumPending, setRegisteredPremiumPending] = useState<{
@@ -224,11 +244,13 @@ export default function LoginView({
   ];
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row font-sans selection:bg-blue-600 selection:text-white">
-      
-      {/* Kolom Kiri: Showcase & Daftar Lengkap Fitur Unggulan CATATOH (Interaktif dengan Modal Use Case) */}
-      <div 
-        className="w-full lg:w-[52%] xl:w-[54%] p-6 sm:p-10 lg:p-14 flex flex-col justify-between relative order-2 lg:order-1 border-t lg:border-t-0 lg:border-r border-blue-100/80 overflow-y-auto"
+    <div className="min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white bg-slate-950">
+      <PublicNavbar schoolName={schoolName} schoolLogo={schoolLogo} />
+
+      <div className="flex-1 flex flex-col lg:flex-row pt-16 sm:pt-20">
+        {/* Kolom Kiri: Showcase & Daftar Lengkap Fitur Unggulan CATATOH (Interaktif dengan Modal Use Case) */}
+        <div 
+          className="w-full lg:w-[52%] xl:w-[54%] p-6 sm:p-10 lg:p-14 flex flex-col justify-between relative order-2 lg:order-1 border-t lg:border-t-0 lg:border-r border-blue-100/80 overflow-y-auto"
         style={{
           backgroundColor: '#edf4fe',
           backgroundImage: `
@@ -330,6 +352,21 @@ export default function LoginView({
       >
         <div className={`w-full ${mode === 'register' ? 'max-w-2xl' : 'max-w-md'} bg-[#fffdfa] rounded-3xl p-6 sm:p-8 shadow-xl shadow-amber-950/5 border border-amber-200/50 relative transition-all duration-300`}>
           
+          {/* Back to Home Navigation Link */}
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => {
+                navigate('/');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors cursor-pointer group"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Kembali ke Beranda (Home)</span>
+            </button>
+          </div>
+
           {/* Form Header */}
           <div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">
@@ -738,6 +775,7 @@ export default function LoginView({
           </div>
 
         </div>
+      </div>
       </div>
 
       {/* MODAL POP-UP USE CASE FITUR (SEBELUM VS SETELAH PAKAI CATATOH) */}

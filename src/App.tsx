@@ -9,6 +9,8 @@ import DashboardView from './components/DashboardView';
 import ReportsView from './components/ReportsView';
 import ActivityLogsView from './components/ActivityLogsView';
 import LoginView from './components/LoginView';
+import HomeView from './components/public/HomeView';
+import PricingView from './components/public/PricingView';
 import DefaultLogo from './components/DefaultLogo';
 import MandatoryProfileModal from './components/MandatoryProfileModal';
 import { BookOpen, Users, LayoutDashboard, FileText, MessageCircle, Settings, LogOut, Database, Wifi, WifiOff, Receipt, FolderPlus, Menu, X, MapPin, CheckCircle2, History, KeyRound, Lock, Sparkles, Crown, Clock } from 'lucide-react';
@@ -459,15 +461,52 @@ export default function App() {
     return <SuperAdminView />;
   }
 
-  if (!isLoggedIn || showResetPasswordModal) {
+  if (!isLoggedIn) {
+    if (showResetPasswordModal) {
+      return (
+        <Routes>
+          <Route path="*" element={
+            <>
+              <LoginView onLogin={handleLogin} schoolName={schoolName} schoolLogo={schoolLogo} />
+              {renderAuthModals()}
+            </>
+          } />
+        </Routes>
+      );
+    }
+
     return (
       <Routes>
-        <Route path="*" element={
+        <Route path="/" element={<HomeView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+        <Route path="/home" element={<HomeView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+        <Route path="/beranda" element={<HomeView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+        <Route path="/pricing" element={<PricingView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+        <Route path="/harga" element={<PricingView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+        <Route path="/login" element={
           <>
             <LoginView onLogin={handleLogin} schoolName={schoolName} schoolLogo={schoolLogo} />
             {renderAuthModals()}
           </>
         } />
+        <Route path="/masuk" element={
+          <>
+            <LoginView onLogin={handleLogin} schoolName={schoolName} schoolLogo={schoolLogo} />
+            {renderAuthModals()}
+          </>
+        } />
+        <Route path="/register" element={
+          <>
+            <LoginView onLogin={handleLogin} schoolName={schoolName} schoolLogo={schoolLogo} />
+            {renderAuthModals()}
+          </>
+        } />
+        <Route path="/daftar" element={
+          <>
+            <LoginView onLogin={handleLogin} schoolName={schoolName} schoolLogo={schoolLogo} />
+            {renderAuthModals()}
+          </>
+        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }
@@ -805,6 +844,8 @@ export default function App() {
               } 
             />
             <Route path="/guru" element={<TeachersView />} />
+            <Route path="/home" element={<HomeView schoolName={schoolName} schoolLogo={schoolLogo} />} />
+            <Route path="/pricing" element={<PricingView schoolName={schoolName} schoolLogo={schoolLogo} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
