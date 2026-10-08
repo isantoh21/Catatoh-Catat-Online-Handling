@@ -120,8 +120,13 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
   const marginX = 14;
   const contentWidth = pageWidth - (marginX * 2);
   
-  const currentDate = new Date().toLocaleDateString('id-ID', {
+  const printDateWithDay = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  const signDate = new Date().toLocaleDateString('id-ID', {
     day: 'numeric',
     month: 'long',
     year: 'numeric'
@@ -190,7 +195,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Dicetak secara resmi pada: ${currentDate}, Pukul ${currentTime} WIB • Dokumen Sah`, pageWidth / 2, startY, { align: 'center' });
+  doc.text(`Dicetak secara resmi pada: ${printDateWithDay}, Pukul ${currentTime} WIB • Dokumen Sah`, pageWidth / 2, startY, { align: 'center' });
 
   startY += 5;
 
@@ -520,14 +525,17 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
 
   // 8. LEMBAR PENGESAHAN RESMI (SIGNATURE BLOCK)
   if (opts.includeSignatures) {
-    if (startY > pageHeight - 45) {
+    if (startY > pageHeight - 55) {
       doc.addPage();
-      startY = 20;
+      startY = 25;
+    } else {
+      startY += 8;
     }
 
-    const sigY = startY + 4;
-    const colLeftX = marginX + 15;
-    const colRightX = pageWidth - marginX - 60;
+    const sigY = startY;
+    // Exactly centered at 25% and 75% of printable area width (45.5mm from margins and center)
+    const colLeftX = marginX + (contentWidth * 0.25);
+    const colRightX = marginX + (contentWidth * 0.75);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
@@ -536,36 +544,36 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
     // Kiri: Mengetahui Kepala Sekolah
     doc.text('Mengetahui,', colLeftX, sigY, { align: 'center' });
     doc.setFont('helvetica', 'bold');
-    doc.text('Kepala Sekolah / Pimpinan Lembaga', colLeftX, sigY + 4.5, { align: 'center' });
+    doc.text('Kepala Sekolah / Pimpinan Lembaga', colLeftX, sigY + 5, { align: 'center' });
 
-    // Kanan: Bendahara
+    // Kanan: Bendahara (format tanggal standar: Kota, Tanggal Bulan Tahun)
     doc.setFont('helvetica', 'normal');
-    doc.text(`${data.city || 'Indonesia'}, ${currentDate}`, colRightX, sigY, { align: 'center' });
+    doc.text(`${data.city || 'Indonesia'}, ${signDate}`, colRightX, sigY, { align: 'center' });
     doc.setFont('helvetica', 'bold');
-    doc.text('Bendahara / Petugas Keuangan', colRightX, sigY + 4.5, { align: 'center' });
+    doc.text('Bendahara / Petugas Keuangan', colRightX, sigY + 5, { align: 'center' });
 
-    // Tempat TTD & Stempel
-    const nameY = sigY + 28;
+    // Tempat TTD & Stempel (space 25mm bersih)
+    const nameY = sigY + 30;
     
     // Nama Kepala Sekolah (Kiri)
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
     doc.text(`(  ${data.principalName || '...........................................'}  )`, colLeftX, nameY, { align: 'center' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('NIP / Tanda Tangan & Cap Lembaga', colLeftX, nameY + 4, { align: 'center' });
+    doc.text('NIP / Tanda Tangan & Cap Lembaga', colLeftX, nameY + 4.5, { align: 'center' });
 
     // Nama Bendahara (Kanan)
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
     doc.text(`(  ${data.treasurerName || '...........................................'}  )`, colRightX, nameY, { align: 'center' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('Bagian Keuangan & Administrasi', colRightX, nameY + 4, { align: 'center' });
+    doc.text('Bagian Keuangan & Administrasi', colRightX, nameY + 4.5, { align: 'center' });
   }
 
   // 9. FOOTER DI SETIAP HALAMAN (PAGE NUMBERING & IDENTITY)
