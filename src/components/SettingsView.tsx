@@ -860,7 +860,7 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                   <p className="text-[11px] text-slate-500 font-medium">
                     {city || 'Nama Kota'}, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
-                  <p className="text-xs font-bold text-slate-800 mt-0.5">Petugas Kasir / Bendahara,</p>
+                  <p className="text-xs font-bold text-slate-800 mt-0.5">Penerima,</p>
 
                   {/* Area Kombinasi Tanda Tangan + Stempel Menindih dari Kiri */}
                   <div className="relative h-24 my-2 flex items-center justify-center">

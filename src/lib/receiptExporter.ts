@@ -405,7 +405,7 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
   doc.text(signDateStr, rightSigCenterX, sigY, { align: 'center' });
 
   doc.setFont('helvetica', 'bold');
-  doc.text('Petugas Kasir / Penerima,', rightSigCenterX, sigY + 4.5, { align: 'center' });
+  doc.text('Penerima,', rightSigCenterX, sigY + 4.5, { align: 'center' });
 
   // Ruang Tanda Tangan Admin & Stempel Sekolah Resmi
   const sigBoxW = 34;
