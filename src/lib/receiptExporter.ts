@@ -7,6 +7,8 @@ export interface SppReceiptData {
   city?: string;
   principalName?: string;
   treasurerName: string;
+  adminSignature?: string | null;
+  schoolStamp?: string | null;
   
   student: {
     id: string;
@@ -30,6 +32,8 @@ export interface OtherIncomeReceiptData {
   schoolLogo?: string | null;
   city?: string;
   treasurerName: string;
+  adminSignature?: string | null;
+  schoolStamp?: string | null;
   otherIncome: {
     id: string;
     nama_pemasukan: string;
@@ -403,6 +407,60 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
   doc.setFont('helvetica', 'bold');
   doc.text('Petugas Kasir / Penerima,', rightSigCenterX, sigY + 4.5, { align: 'center' });
 
+  // Ruang Tanda Tangan Admin & Stempel Sekolah Resmi
+  const sigBoxW = 34;
+  const sigBoxH = 15;
+  let sigW = sigBoxW;
+  let sigH = sigBoxH;
+  const sigCenterY = sigY + 13;
+
+  if (data.adminSignature) {
+    try {
+      const imgProps = (doc as any).getImageProperties(data.adminSignature);
+      if (imgProps?.width && imgProps?.height) {
+        const aspect = imgProps.width / imgProps.height;
+        if (aspect > sigBoxW / sigBoxH) {
+          sigW = sigBoxW;
+          sigH = sigBoxW / aspect;
+        } else {
+          sigH = sigBoxH;
+          sigW = sigBoxH * aspect;
+        }
+      }
+      const sigX = rightSigCenterX - (sigW / 2);
+      const sigTopY = sigCenterY - (sigH / 2);
+      doc.addImage(data.adminSignature, 'PNG', sigX, sigTopY, sigW, sigH, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Gagal memuat tanda tangan admin di kwitansi:', e);
+    }
+  }
+
+  if (data.schoolStamp) {
+    try {
+      const stampBoxDim = 22;
+      let stampW = stampBoxDim;
+      let stampH = stampBoxDim;
+      const imgProps = (doc as any).getImageProperties(data.schoolStamp);
+      if (imgProps?.width && imgProps?.height) {
+        const aspect = imgProps.width / imgProps.height;
+        if (aspect >= 1) {
+          stampW = stampBoxDim;
+          stampH = stampBoxDim / aspect;
+        } else {
+          stampH = stampBoxDim;
+          stampW = stampBoxDim * aspect;
+        }
+      }
+      // Stempel sedikit menindih tanda tangan dari sebelah kiri
+      const refLeft = data.adminSignature ? (rightSigCenterX - (sigW / 2)) : (rightSigCenterX - 11);
+      const stampX = refLeft - (stampW * 0.42);
+      const stampTopY = sigCenterY - (stampH / 2);
+      doc.addImage(data.schoolStamp, 'PNG', stampX, stampTopY, stampW, stampH, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Gagal memuat stempel sekolah di kwitansi:', e);
+    }
+  }
+
   // Ruang Tanda Tangan & Nama Terang
   const nameY = sigY + 22;
   doc.setFont('helvetica', 'bold');
@@ -671,6 +729,60 @@ export const exportOtherIncomeReceiptPDF = (data: OtherIncomeReceiptData) => {
 
   doc.setFont('helvetica', 'bold');
   doc.text('Bendahara / Penerima Kas,', rightSigCenterX, sigY + 4.5, { align: 'center' });
+
+  // Ruang Tanda Tangan Admin & Stempel Sekolah Resmi
+  const otherSigBoxW = 34;
+  const otherSigBoxH = 15;
+  let otherSigW = otherSigBoxW;
+  let otherSigH = otherSigBoxH;
+  const otherSigCenterY = sigY + 13;
+
+  if (data.adminSignature) {
+    try {
+      const imgProps = (doc as any).getImageProperties(data.adminSignature);
+      if (imgProps?.width && imgProps?.height) {
+        const aspect = imgProps.width / imgProps.height;
+        if (aspect > otherSigBoxW / otherSigBoxH) {
+          otherSigW = otherSigBoxW;
+          otherSigH = otherSigBoxW / aspect;
+        } else {
+          otherSigH = otherSigBoxH;
+          otherSigW = otherSigBoxH * aspect;
+        }
+      }
+      const sigX = rightSigCenterX - (otherSigW / 2);
+      const sigTopY = otherSigCenterY - (otherSigH / 2);
+      doc.addImage(data.adminSignature, 'PNG', sigX, sigTopY, otherSigW, otherSigH, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Gagal memuat tanda tangan admin di kwitansi:', e);
+    }
+  }
+
+  if (data.schoolStamp) {
+    try {
+      const stampBoxDim = 22;
+      let otherStampW = stampBoxDim;
+      let otherStampH = stampBoxDim;
+      const imgProps = (doc as any).getImageProperties(data.schoolStamp);
+      if (imgProps?.width && imgProps?.height) {
+        const aspect = imgProps.width / imgProps.height;
+        if (aspect >= 1) {
+          otherStampW = stampBoxDim;
+          otherStampH = stampBoxDim / aspect;
+        } else {
+          otherStampH = stampBoxDim;
+          otherStampW = stampBoxDim * aspect;
+        }
+      }
+      // Stempel sedikit menindih tanda tangan dari sebelah kiri
+      const refLeft = data.adminSignature ? (rightSigCenterX - (otherSigW / 2)) : (rightSigCenterX - 11);
+      const stampX = refLeft - (otherStampW * 0.42);
+      const stampTopY = otherSigCenterY - (otherStampH / 2);
+      doc.addImage(data.schoolStamp, 'PNG', stampX, stampTopY, otherStampW, otherStampH, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Gagal memuat stempel sekolah di kwitansi:', e);
+    }
+  }
 
   const nameY = sigY + 22;
   doc.setFont('helvetica', 'bold');

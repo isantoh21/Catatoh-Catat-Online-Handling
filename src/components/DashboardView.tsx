@@ -321,6 +321,8 @@ export default function DashboardView() {
       const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
       const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
       const principalName = currentUser?.user_metadata?.principal_name || (currentUser ? localStorage.getItem('principalName_' + currentUser.id) : null) || '';
+      const adminSignature = currentUser?.user_metadata?.admin_signature || (currentUser ? localStorage.getItem('adminSignature_' + currentUser.id) : null) || null;
+      const schoolStamp = currentUser?.user_metadata?.school_stamp || (currentUser ? localStorage.getItem('schoolStamp_' + currentUser.id) : null) || null;
 
       exportSppReceiptPDF({
         schoolName: schoolName || 'Lembaga Pendidikan',
@@ -328,6 +330,8 @@ export default function DashboardView() {
         city,
         principalName,
         treasurerName: formattedUserName,
+        adminSignature,
+        schoolStamp,
         student,
         payment,
         bulan

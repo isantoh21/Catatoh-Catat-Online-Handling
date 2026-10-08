@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, UserCheck, Sparkles, Crop, Crown } from 'lucide-react';
+import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, UserCheck, Sparkles, Crop, Crown, FileSignature, Stamp, Trash2 } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
@@ -28,12 +28,17 @@ export default function SettingsView({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [adminName, setAdminName] = useState('');
   const [principalName, setPrincipalName] = useState('');
+  const [adminSignature, setAdminSignature] = useState('');
+  const [schoolStamp, setSchoolStamp] = useState('');
+  const [sigMessage, setSigMessage] = useState({ type: '', text: '' });
   const [city, setCity] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [cityChangeCount, setCityChangeCount] = useState(0);
   const [isSavingCity, setIsSavingCity] = useState(false);
   const [cityMessage, setCityMessage] = useState({ type: '', text: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sigFileInputRef = useRef<HTMLInputElement>(null);
+  const stampFileInputRef = useRef<HTMLInputElement>(null);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -62,9 +67,151 @@ export default function SettingsView({
           localStorage.getItem('principalName_' + session.user.id) ||
           ''
         );
+        setAdminSignature(
+          session.user.user_metadata?.admin_signature ||
+          localStorage.getItem('adminSignature_' + session.user.id) ||
+          ''
+        );
+        setSchoolStamp(
+          session.user.user_metadata?.school_stamp ||
+          localStorage.getItem('schoolStamp_' + session.user.id) ||
+          ''
+        );
       }
     });
   }, []);
+
+  // Helper untuk optimasi gambar PNG (mempertahankan latar transparan & kualitas HD tanpa terpotong)
+  const optimizePngImage = (dataUrl: string, maxDim = 1200): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/png'));
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Ukuran file tanda tangan maksimal 10MB.');
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const rawBase64 = reader.result as string;
+        const optimized = await optimizePngImage(rawBase64);
+        setAdminSignature(optimized);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            localStorage.setItem('adminSignature_' + session.user.id, optimized);
+            await supabase.auth.updateUser({
+              data: { admin_signature: optimized }
+            });
+          }
+          setSigMessage({ type: 'success', text: 'Tanda tangan berhasil diunggah & tersimpan!' });
+          setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
+        } catch (err) {
+          console.error('Error saving signature:', err);
+        }
+        if (sigFileInputRef.current) sigFileInputRef.current.value = '';
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Ukuran file stempel maksimal 10MB.');
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const rawBase64 = reader.result as string;
+        const optimized = await optimizePngImage(rawBase64);
+        setSchoolStamp(optimized);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            localStorage.setItem('schoolStamp_' + session.user.id, optimized);
+            await supabase.auth.updateUser({
+              data: { school_stamp: optimized }
+            });
+          }
+          setSigMessage({ type: 'success', text: 'Stempel sekolah berhasil diunggah & tersimpan!' });
+          setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
+        } catch (err) {
+          console.error('Error saving stamp:', err);
+        }
+        if (stampFileInputRef.current) stampFileInputRef.current.value = '';
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveSignature = async () => {
+    setAdminSignature('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        localStorage.removeItem('adminSignature_' + session.user.id);
+        await supabase.auth.updateUser({
+          data: { admin_signature: null }
+        });
+      }
+      setSigMessage({ type: 'success', text: 'Tanda tangan berhasil dihapus!' });
+      setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error removing signature:', err);
+    }
+  };
+
+  const handleRemoveStamp = async () => {
+    setSchoolStamp('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        localStorage.removeItem('schoolStamp_' + session.user.id);
+        await supabase.auth.updateUser({
+          data: { school_stamp: null }
+        });
+      }
+      setSigMessage({ type: 'success', text: 'Stempel sekolah berhasil dihapus!' });
+      setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error removing stamp:', err);
+    }
+  };
 
   // Helper untuk optimasi gambar dengan tetap mempertahankan rasio/proporsi asli penuh (tanpa terpotong)
   const optimizeImage = (dataUrl: string, maxDim = 800, quality = 0.9): Promise<string> => {
@@ -190,6 +337,8 @@ export default function SettingsView({
       localStorage.setItem('schoolName_' + session.user.id, localName);
       localStorage.setItem('schoolLogo_' + session.user.id, localLogo);
       localStorage.setItem('principalName_' + session.user.id, principalName);
+      localStorage.setItem('adminSignature_' + session.user.id, adminSignature);
+      localStorage.setItem('schoolStamp_' + session.user.id, schoolStamp);
       
       try {
         const { error } = await supabase.from('user_settings').upsert({
@@ -203,7 +352,9 @@ export default function SettingsView({
             full_name: adminName,
             admin_name: adminName,
             school_name: localName,
-            principal_name: principalName
+            principal_name: principalName,
+            admin_signature: adminSignature,
+            school_stamp: schoolStamp
           }
         });
 
@@ -541,6 +692,216 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                     <CheckCircle2 className="w-4 h-4" /> Tersimpan!
                   </span>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Tanda Tangan Admin & Stempel Sekolah Resmi */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FileSignature className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-base font-bold text-slate-800">Tanda Tangan & Stempel Resmi</h3>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Kwitansi & Laporan
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Otomatis dicetak pada berkas kwitansi pembayaran dan lembar pengesahan laporan resmi.
+                  </p>
+                </div>
+
+                {sigMessage.text && (
+                  <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-in fade-in duration-200 ${
+                    sigMessage.type === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{sigMessage.text}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Dua Slot Upload: TTD & Stempel */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 1. Tanda Tangan Admin */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 bg-slate-50/50 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <FileSignature className="w-4 h-4 text-indigo-500" /> Tanda Tangan Admin
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      adminSignature ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200/70 text-slate-600'
+                    }`}>
+                      {adminSignature ? 'Terpasang ✓' : 'Belum Ada'}
+                    </span>
+                  </div>
+
+                  {/* Preview Frame */}
+                  <div className="h-32 w-full rounded-xl border-2 border-dashed border-slate-200 bg-white flex items-center justify-center p-2 relative overflow-hidden group shadow-xs">
+                    {adminSignature ? (
+                      <div className="w-full h-full flex items-center justify-center bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:10px_10px]">
+                        <img src={adminSignature} alt="Tanda Tangan Admin" className="max-h-28 max-w-full object-contain filter drop-shadow-xs" />
+                      </div>
+                    ) : (
+                      <div className="text-center p-3">
+                        <FileSignature className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                        <p className="text-xs font-semibold text-slate-400">Belum ada tanda tangan</p>
+                        <p className="text-[11px] text-slate-400">Format PNG transparan resolusi tinggi (HD)</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <input 
+                    type="file" 
+                    ref={sigFileInputRef} 
+                    onChange={handleSignatureUpload} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => sigFileInputRef.current?.click()}
+                      className="flex-1 py-2 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>{adminSignature ? 'Ganti TTD' : 'Unggah TTD'}</span>
+                    </button>
+                    {adminSignature && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveSignature}
+                        className="py-2 px-3 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                        title="Hapus tanda tangan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Stempel Sekolah */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 bg-slate-50/50 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Stamp className="w-4 h-4 text-indigo-500" /> Stempel Resmi Sekolah
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      schoolStamp ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200/70 text-slate-600'
+                    }`}>
+                      {schoolStamp ? 'Terpasang ✓' : 'Belum Ada'}
+                    </span>
+                  </div>
+
+                  {/* Preview Frame */}
+                  <div className="h-32 w-full rounded-xl border-2 border-dashed border-slate-200 bg-white flex items-center justify-center p-2 relative overflow-hidden group shadow-xs">
+                    {schoolStamp ? (
+                      <div className="w-full h-full flex items-center justify-center bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:10px_10px]">
+                        <img src={schoolStamp} alt="Stempel Sekolah" className="max-h-28 max-w-full object-contain filter drop-shadow-xs" />
+                      </div>
+                    ) : (
+                      <div className="text-center p-3">
+                        <Stamp className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                        <p className="text-xs font-semibold text-slate-400">Belum ada stempel sekolah</p>
+                        <p className="text-[11px] text-slate-400">Format PNG transparan resolusi tinggi (HD)</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <input 
+                    type="file" 
+                    ref={stampFileInputRef} 
+                    onChange={handleStampUpload} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => stampFileInputRef.current?.click()}
+                      className="flex-1 py-2 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>{schoolStamp ? 'Ganti Stempel' : 'Unggah Stempel'}</span>
+                    </button>
+                    {schoolStamp && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveStamp}
+                        className="py-2 px-3 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                        title="Hapus stempel"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Pratinjau Pengesahan Resmi (Stempel Sedikit Menindih Tanda Tangan dari Sebelah Kiri) */}
+              <div className="mt-4 p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Live Pratinjau Pengesahan (Kwitansi & Laporan)
+                  </span>
+                  <span className="text-[11px] text-indigo-600 font-medium bg-white/80 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    Stempel menindih TTD dari sebelah kiri
+                  </span>
+                </div>
+
+                <div className="max-w-md mx-auto bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {city || 'Nama Kota'}, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-xs font-bold text-slate-800 mt-0.5">Petugas Kasir / Bendahara,</p>
+
+                  {/* Area Kombinasi Tanda Tangan + Stempel Menindih dari Kiri */}
+                  <div className="relative h-24 my-2 flex items-center justify-center">
+                    {/* Tanda Tangan (Berada di tengah) */}
+                    {adminSignature ? (
+                      <img 
+                        src={adminSignature} 
+                        alt="Tanda Tangan" 
+                        className="max-h-20 max-w-[190px] object-contain relative z-10 select-none" 
+                      />
+                    ) : (
+                      <div className="h-16 w-36 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-[10px] text-slate-400 font-medium">
+                        [Tanda Tangan Admin]
+                      </div>
+                    )}
+
+                    {/* Stempel Sekolah (Menindih Tanda Tangan dari Sebelah Kiri) */}
+                    {schoolStamp && (
+                      <img 
+                        src={schoolStamp} 
+                        alt="Stempel Sekolah" 
+                        className={`max-h-20 max-w-[85px] object-contain absolute z-20 pointer-events-none select-none drop-shadow-sm transition-all ${
+                          adminSignature 
+                            ? 'left-1/2 -translate-x-[95%] top-1/2 -translate-y-1/2 rotate-[-4deg] opacity-95' 
+                            : 'left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 opacity-95'
+                        }`}
+                      />
+                    )}
+                  </div>
+
+                  <p className="text-xs font-bold text-slate-900">
+                    (  {adminName || 'Nama Admin / Bendahara'}  )
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Bagian Keuangan & Administrasi
+                  </p>
+                </div>
+
+                <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+                  💡 <b>Tips:</b> Gunakan file gambar berformat <b>PNG transparan</b> dengan resolusi HD agar stempel menyatu secara alami di atas tanda tangan tanpa latar kotak putih atau hitam.
+                </p>
               </div>
             </div>
           </div>

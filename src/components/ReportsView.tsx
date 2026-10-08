@@ -45,12 +45,22 @@ export default function ReportsView() {
 
   // Modal & Kustomisasi Export Laporan Profesional
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [schoolInfo, setSchoolInfo] = useState({
+  const [schoolInfo, setSchoolInfo] = useState<{
+    schoolName: string;
+    schoolLogo: string;
+    city: string;
+    principalName: string;
+    treasurerName: string;
+    adminSignature?: string | null;
+    schoolStamp?: string | null;
+  }>({
     schoolName: '',
     schoolLogo: '',
     city: 'Indonesia',
     principalName: 'Kepala Sekolah / Pimpinan',
-    treasurerName: 'Bendahara Sekolah'
+    treasurerName: 'Bendahara Sekolah',
+    adminSignature: null,
+    schoolStamp: null
   });
 
   useEffect(() => {
@@ -159,12 +169,17 @@ export default function ReportsView() {
       const adminName = uMeta.admin_name || uMeta.full_name || 'Bendahara / Pengelola Keuangan';
       const sCity = uMeta.city || localStorage.getItem('schoolCity_' + currentUser.id) || 'Indonesia';
 
+      const adminSignature = uMeta.admin_signature || localStorage.getItem('adminSignature_' + currentUser.id) || null;
+      const schoolStamp = uMeta.school_stamp || localStorage.getItem('schoolStamp_' + currentUser.id) || null;
+
       setSchoolInfo({
         schoolName: sName,
         schoolLogo: sLogo,
         city: sCity,
         principalName: uMeta.principal_name || localStorage.getItem('principalName_' + currentUser.id) || 'Kepala Sekolah / Pimpinan',
-        treasurerName: adminName
+        treasurerName: adminName,
+        adminSignature,
+        schoolStamp
       });
     } catch (sErr) {
       console.warn('Note on loading school settings in reports:', sErr);
@@ -400,6 +415,8 @@ export default function ReportsView() {
     city: schoolInfo.city || 'Indonesia',
     principalName: schoolInfo.principalName || 'Kepala Sekolah / Pimpinan',
     treasurerName: schoolInfo.treasurerName || 'Bendahara Sekolah',
+    adminSignature: schoolInfo.adminSignature,
+    schoolStamp: schoolInfo.schoolStamp,
     selectedBulan,
     selectedTahun,
     totalPemasukanSpp,

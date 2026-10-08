@@ -118,12 +118,16 @@ export default function OtherIncomeView() {
 
       const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
       const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
+      const adminSignature = currentUser?.user_metadata?.admin_signature || (currentUser ? localStorage.getItem('adminSignature_' + currentUser.id) : null) || null;
+      const schoolStamp = currentUser?.user_metadata?.school_stamp || (currentUser ? localStorage.getItem('schoolStamp_' + currentUser.id) : null) || null;
 
       exportOtherIncomeReceiptPDF({
         schoolName: schoolName || 'Lembaga Pendidikan',
         schoolLogo,
         city,
         treasurerName: formattedUserName,
+        adminSignature,
+        schoolStamp,
         otherIncome
       });
     } catch (err) {

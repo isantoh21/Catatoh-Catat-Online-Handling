@@ -293,6 +293,11 @@ export default function ExportReportModal({
                   className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
                 />
                 <span className="font-semibold text-slate-700">Lembar Tanda Tangan & Pengesahan</span>
+                {(reportData.adminSignature || reportData.schoolStamp) && (
+                  <span className="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    TTD & Stempel Aktif ✓
+                  </span>
+                )}
               </label>
             </div>
           </div>

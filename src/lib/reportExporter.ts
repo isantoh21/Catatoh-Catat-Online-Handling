@@ -20,6 +20,8 @@ export interface ReportExportData {
   city: string;
   principalName: string;
   treasurerName: string;
+  adminSignature?: string | null;
+  schoolStamp?: string | null;
   selectedBulan: string;
   selectedTahun: string;
   
@@ -586,6 +588,60 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
 
     // Tempat TTD & Stempel (space 25mm bersih)
     const nameY = sigY + 30;
+
+    // Render TTD Admin & Stempel Sekolah Resmi pada kolom Bendahara (Kanan)
+    const repSigBoxW = 38;
+    const repSigBoxH = 18;
+    let repSigW = repSigBoxW;
+    let repSigH = repSigBoxH;
+    const repSigCenterY = sigY + 17;
+
+    if (data.adminSignature) {
+      try {
+        const imgProps = (doc as any).getImageProperties(data.adminSignature);
+        if (imgProps?.width && imgProps?.height) {
+          const aspect = imgProps.width / imgProps.height;
+          if (aspect > repSigBoxW / repSigBoxH) {
+            repSigW = repSigBoxW;
+            repSigH = repSigBoxW / aspect;
+          } else {
+            repSigH = repSigBoxH;
+            repSigW = repSigBoxH * aspect;
+          }
+        }
+        const sigX = colRightX - (repSigW / 2);
+        const sigTopY = repSigCenterY - (repSigH / 2);
+        doc.addImage(data.adminSignature, 'PNG', sigX, sigTopY, repSigW, repSigH, undefined, 'FAST');
+      } catch (e) {
+        console.warn('Gagal memuat tanda tangan admin di laporan:', e);
+      }
+    }
+
+    if (data.schoolStamp) {
+      try {
+        const repStampBoxDim = 25;
+        let repStampW = repStampBoxDim;
+        let repStampH = repStampBoxDim;
+        const imgProps = (doc as any).getImageProperties(data.schoolStamp);
+        if (imgProps?.width && imgProps?.height) {
+          const aspect = imgProps.width / imgProps.height;
+          if (aspect >= 1) {
+            repStampW = repStampBoxDim;
+            repStampH = repStampBoxDim / aspect;
+          } else {
+            repStampH = repStampBoxDim;
+            repStampW = repStampBoxDim * aspect;
+          }
+        }
+        // Stempel sedikit menindih tanda tangan dari sebelah kiri
+        const refLeft = data.adminSignature ? (colRightX - (repSigW / 2)) : (colRightX - 12);
+        const stampX = refLeft - (repStampW * 0.42);
+        const stampTopY = repSigCenterY - (repStampH / 2);
+        doc.addImage(data.schoolStamp, 'PNG', stampX, stampTopY, repStampW, repStampH, undefined, 'FAST');
+      } catch (e) {
+        console.warn('Gagal memuat stempel sekolah di laporan:', e);
+      }
+    }
     
     // Nama Kepala Sekolah (Kiri)
     doc.setFont('helvetica', 'bold');
