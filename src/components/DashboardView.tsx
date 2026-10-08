@@ -25,9 +25,15 @@ import {
   updateStudentRequirementStatus 
 } from '../lib/reRegistrationService';
 
-const BULAN_OPTIONS = [
+const CALENDAR_MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+// Urutan Bulan Sesuai Tahun Ajaran Sekolah (Juli s/d Juni)
+const BULAN_OPTIONS = [
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
 
@@ -48,7 +54,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   
   // Filter state
   const currentDate = new Date();
-  const [selectedBulan, setSelectedBulan] = useState(BULAN_OPTIONS[currentDate.getMonth()]);
+  const [selectedBulan, setSelectedBulan] = useState(CALENDAR_MONTHS[currentDate.getMonth()]);
   const [selectedTahun, setSelectedTahun] = useState(currentDate.getFullYear().toString());
   const [searchQuery, setSearchQuery] = useState('');
   const [filterKelompok, setFilterKelompok] = useState('Semua Kelompok');
@@ -719,7 +725,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
 
 
   // Reminder data filtering
-  const targetReminderBulan = reminderBulan || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
+  const targetReminderBulan = reminderBulan || (selectedBulan === 'Semua Bulan' ? CALENDAR_MONTHS[new Date().getMonth()] : selectedBulan);
   
   // Seluruh siswa yang belum lunas pada bulan reminder yang dipilih
   const allBelumLunasStudents = students.filter(s => 
@@ -746,7 +752,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   // Buka modal reminder dan inisialisasi checklist default
   // Buka modal reminder dan inisialisasi checklist default (hanya nomor valid yang dicentang otomatis)
   const handleOpenReminderModal = (bulanToUse?: string) => {
-    const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
+    const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? CALENDAR_MONTHS[new Date().getMonth()] : selectedBulan);
     setReminderBulan(target);
     const unpayed = students.filter(s => 
       !payments.some(p => p.student_id === s.id && p.bulan === target && (!p.tahun || p.tahun === parseInt(selectedTahun)))
@@ -1187,9 +1193,12 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
               onChange={e => setSelectedBulan(e.target.value)}
               className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50 truncate"
             >
-              <option value="Semua Bulan">Semua Bulan</option>
-              <optgroup label="Bulan Reguler SPP">
-                {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              <option value="Semua Bulan">Semua Bulan (Tahun Ajaran)</option>
+              <optgroup label="Semester 1 (Ganjil)">
+                {BULAN_OPTIONS.slice(0, 6).map(b => <option key={b} value={b}>{b}</option>)}
+              </optgroup>
+              <optgroup label="Semester 2 (Genap)">
+                {BULAN_OPTIONS.slice(6, 12).map(b => <option key={b} value={b}>{b}</option>)}
               </optgroup>
               {reRegistrationPrograms.length > 0 && (
                 <optgroup label="Kelompok Daftar Ulang & Kelulusan">

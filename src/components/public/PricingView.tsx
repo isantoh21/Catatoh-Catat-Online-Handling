@@ -201,19 +201,20 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
           {/* 2. PAKET PREMIUM (VIBRANT ROYAL BLUE & GOLD CARD) */}
           <div className="rounded-3xl p-6 bg-gradient-to-b from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-xl shadow-blue-500/25 border-2 border-blue-400 flex flex-col justify-between space-y-6 relative scale-102">
             
-            {/* Gold Badge */}
+            {/* Floating Terpopuler Badge */}
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider shadow-md shadow-amber-500/25 border border-amber-300 whitespace-nowrap">
+                <span>⭐</span>
+                <span>Terpopuler</span>
+              </span>
+            </div>
+
             <div className="space-y-4">
-              <div className="flex justify-between items-center gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Crown className="w-5 h-5 text-amber-300 fill-amber-300 shrink-0" />
-                  <h3 className="font-extrabold text-white text-lg lg:text-base xl:text-lg tracking-tight whitespace-nowrap">
-                    Paket Premium
-                  </h3>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black uppercase tracking-wider shadow-xs whitespace-nowrap shrink-0">
-                  <span>⭐</span>
-                  <span>Terpopuler</span>
-                </span>
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-300 fill-amber-300 shrink-0" />
+                <h3 className="font-extrabold text-white text-lg tracking-tight whitespace-nowrap">
+                  Paket Premium
+                </h3>
               </div>
 
               <div>

@@ -12,9 +12,15 @@ import ConfirmModal from './ConfirmModal';
 import ExportReportModal from './ExportReportModal';
 import { ReportExportData } from '../lib/reportExporter';
 
-const BULAN_OPTIONS = [
+const CALENDAR_MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+// Urutan Bulan Sesuai Tahun Ajaran Sekolah (Juli s/d Juni)
+const BULAN_OPTIONS = [
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
 
@@ -25,7 +31,7 @@ interface ReportsViewProps {
 export default function ReportsView({ currentUser: propUser }: ReportsViewProps = {}) {
   
   const currentDate = new Date();
-  const [selectedBulan, setSelectedBulan] = useState(BULAN_OPTIONS[currentDate.getMonth()]);
+  const [selectedBulan, setSelectedBulan] = useState(CALENDAR_MONTHS[currentDate.getMonth()]);
   const [selectedTahun, setSelectedTahun] = useState(currentDate.getFullYear().toString());
   
   const [loading, setLoading] = useState(false);
@@ -476,8 +482,13 @@ export default function ReportsView({ currentUser: propUser }: ReportsViewProps 
                   onChange={e => setSelectedBulan(e.target.value)}
                   className="flex-1 sm:flex-none pl-3 pr-8 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
                 >
-                  <option value="Semua Bulan">Semua Bulan</option>
-                  {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                  <option value="Semua Bulan">Semua Bulan (Tahun Ajaran)</option>
+                  <optgroup label="Semester 1 (Ganjil)">
+                    {BULAN_OPTIONS.slice(0, 6).map(b => <option key={b} value={b}>{b}</option>)}
+                  </optgroup>
+                  <optgroup label="Semester 2 (Genap)">
+                    {BULAN_OPTIONS.slice(6, 12).map(b => <option key={b} value={b}>{b}</option>)}
+                  </optgroup>
                 </select>
                 <select 
                   value={selectedTahun}
