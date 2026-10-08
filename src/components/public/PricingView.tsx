@@ -140,9 +140,9 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
           {/* 1. STANDAR (FREE) */}
           <div className="rounded-3xl p-6 bg-white border-2 border-slate-200 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between space-y-6">
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-slate-900 text-lg">Paket Standar</h3>
-                <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+              <div className="flex justify-between items-center gap-2">
+                <h3 className="font-extrabold text-slate-900 text-lg lg:text-base xl:text-lg whitespace-nowrap">Paket Standar</h3>
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 whitespace-nowrap shrink-0">
                   Gratis
                 </span>
               </div>
@@ -203,13 +203,16 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
             
             {/* Gold Badge */}
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="font-extrabold text-white text-lg">Paket Premium</h3>
-                  <Crown className="w-4 h-4 text-amber-300 fill-amber-300" />
+              <div className="flex justify-between items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Crown className="w-5 h-5 text-amber-300 fill-amber-300 shrink-0" />
+                  <h3 className="font-extrabold text-white text-lg lg:text-base xl:text-lg tracking-tight whitespace-nowrap">
+                    Paket Premium
+                  </h3>
                 </div>
-                <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black uppercase tracking-wider shadow-xs">
-                  ⭐ Terpopuler
+                <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black uppercase tracking-wider shadow-xs whitespace-nowrap shrink-0">
+                  <span>⭐</span>
+                  <span>Terpopuler</span>
                 </span>
               </div>
 
@@ -272,9 +275,9 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
           {/* 3. PAKET YAYASAN */}
           <div className="rounded-3xl p-6 bg-white border-2 border-slate-200 shadow-xs hover:border-indigo-300 transition-all flex flex-col justify-between space-y-6">
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-slate-900 text-lg">Paket Yayasan</h3>
-                <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+              <div className="flex justify-between items-center gap-2">
+                <h3 className="font-extrabold text-slate-900 text-lg lg:text-base xl:text-lg whitespace-nowrap">Paket Yayasan</h3>
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 whitespace-nowrap shrink-0">
                   Multi-Unit
                 </span>
               </div>

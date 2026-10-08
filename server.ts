@@ -206,7 +206,7 @@ const PAYMENT_KEYWORDS = [
 
 // Konfigurasi AI Provider Fallback:
 // 1. Prioritas Utama: Google Gemini Free Tier
-// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): Sumopod (GPT-5 Nano, fallback GPT-6 Luna)
+// 2. Prioritas Kedua (Fallback Pertama jika Gemini sibuk/limit): Sumopod (GPT-5 Nano, GPT-6 Luna, Claude Haiku 4.5, lalu GLM/DeepSeek)
 // 3. Prioritas Ketiga (Fallback Terakhir jika Sumopod sibuk, menolak, atau out of budget): KoboldLLM
 
 const SUMOPOD_CONFIG = {
@@ -215,6 +215,7 @@ const SUMOPOD_CONFIG = {
   models: [
     "gpt-5-nano",
     "gpt-6-luna",
+    "claude-haiku-4-5",
     "glm-5.3-flash",
     "deepseek-v4.1-flash:netra"
   ]
