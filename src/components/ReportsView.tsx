@@ -3,32 +3,25 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   Download, TrendingUp, TrendingDown, Wallet, Users, UserMinus, 
   Code2, Layout, CheckCircle2, Copy, Trash2, Plus, AlertTriangle, 
-  ExternalLink, RefreshCw, Search, X, FileText, FileDown, Table as TableIcon 
+  ExternalLink, RefreshCw, Search, X, FileText, FileDown, Table as TableIcon,
+  Printer, Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
 import ConfirmModal from './ConfirmModal';
-import Papa from 'papaparse';
+import ExportReportModal from './ExportReportModal';
+import { 
+  ReportExportData, 
+  exportProfessionalPDF, 
+  exportProfessionalCSV, 
+  exportProfessionalDOCX 
+} from '../lib/reportExporter';
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
-
-const saveAs = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
 
 export default function ReportsView() {
   
@@ -54,6 +47,16 @@ export default function ReportsView() {
   const [isUnpaidModalOpen, setIsUnpaidModalOpen] = useState(false);
   const [unpaidSearchQuery, setUnpaidSearchQuery] = useState('');
   const [unpaidFilterKelompok, setUnpaidFilterKelompok] = useState('Semua Kelompok');
+
+  // Modal & Kustomisasi Export Laporan Profesional
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [schoolInfo, setSchoolInfo] = useState({
+    schoolName: '',
+    schoolLogo: '',
+    city: 'Indonesia',
+    principalName: 'Kepala Sekolah / Pimpinan',
+    treasurerName: 'Bendahara Sekolah'
+  });
 
   useEffect(() => {
     fetchData();
@@ -146,6 +149,31 @@ export default function ReportsView() {
 
     const { data: otherData } = await supabase.from('other_incomes').select('*').eq('user_id', currentUser.id).eq('tahun', parseInt(selectedTahun)).order('tanggal', { ascending: false });
     if (otherData) setOtherIncomes(otherData);
+
+    // Fetch school settings and administrator metadata for branding
+    try {
+      const { data: settingsData } = await supabase
+        .from('user_settings')
+        .select('school_name, school_logo')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+
+      const uMeta = currentUser.user_metadata || {};
+      const sName = settingsData?.school_name || uMeta.school_name || localStorage.getItem('schoolName_' + currentUser.id) || 'Lembaga Pendidikan / Sekolah';
+      const sLogo = settingsData?.school_logo || localStorage.getItem('schoolLogo_' + currentUser.id) || '';
+      const adminName = uMeta.admin_name || uMeta.full_name || 'Bendahara / Pengelola Keuangan';
+      const sCity = uMeta.city || localStorage.getItem('schoolCity_' + currentUser.id) || 'Indonesia';
+
+      setSchoolInfo({
+        schoolName: sName,
+        schoolLogo: sLogo,
+        city: sCity,
+        principalName: uMeta.principal_name || 'Kepala Sekolah / Pimpinan',
+        treasurerName: adminName
+      });
+    } catch (sErr) {
+      console.warn('Note on loading school settings in reports:', sErr);
+    }
 
     setLoading(false);
   };
@@ -371,139 +399,44 @@ export default function ReportsView() {
     }
   };
 
+  const getFullReportData = (): ReportExportData => ({
+    schoolName: schoolInfo.schoolName || 'Lembaga Pendidikan / Sekolah',
+    schoolLogo: schoolInfo.schoolLogo,
+    city: schoolInfo.city || 'Indonesia',
+    principalName: schoolInfo.principalName || 'Kepala Sekolah / Pimpinan',
+    treasurerName: schoolInfo.treasurerName || 'Bendahara Sekolah',
+    selectedBulan,
+    selectedTahun,
+    totalPemasukanSpp,
+    totalPemasukanLain,
+    totalPemasukan,
+    totalPengeluaran,
+    labaRugi,
+    totalStudents: students.length,
+    totalLunas,
+    totalBelumLunas,
+    totalNominalTunggakan,
+    sppTransactions: transactions,
+    otherIncomes: monthlyOtherIncomes,
+    expenses: monthlyExpenses,
+    unpaidStudents: belumLunasStudents.map(s => ({
+      nama_lengkap: s.nama_lengkap,
+      kelompok: s.kelompok || '-',
+      nomor_whatsapp: s.nomor_whatsapp || '-',
+      nominal_spp: s.nominal_spp || 100000
+    }))
+  });
+
   const handleExportPDF = () => {
-    const doc = new jsPDF();
-    const title = `Laporan Keuangan - ${selectedBulan} ${selectedTahun}`;
-    
-    // Header
-    doc.setFontSize(18);
-    doc.setTextColor(30, 58, 138); // indigo-900
-    doc.text(title, 14, 20);
-    
-    doc.setFontSize(11);
-    
-    // Summary boxes representation
-    doc.setTextColor(71, 85, 105); // slate-600
-    doc.text('Total Pemasukan:', 14, 30);
-    doc.setTextColor(16, 185, 129); // emerald-500
-    doc.text(formatRupiah(totalPemasukan), 50, 30);
-    
-    doc.setTextColor(71, 85, 105);
-    doc.text('Total Pengeluaran:', 90, 30);
-    doc.setTextColor(244, 63, 94); // rose-500
-    doc.text(formatRupiah(totalPengeluaran), 130, 30);
-    
-    doc.setTextColor(71, 85, 105);
-    doc.text('Laba / Rugi Bersih:', 14, 38);
-    doc.setTextColor(labaRugi >= 0 ? 79 : 244, labaRugi >= 0 ? 70 : 63, labaRugi >= 0 ? 229 : 94); // indigo or rose
-    doc.setFont('', 'bold');
-    doc.text(formatRupiah(labaRugi), 50, 38);
-    doc.setFont('', 'normal');
-
-    const exportRows = getExportRows();
-
-    autoTable(doc, {
-      startY: 45,
-      headStyles: { fillColor: [67, 56, 202], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      head: [['No', 'Kategori', 'Kelompok', 'Keterangan / Siswa', 'Tanggal', 'Waktu', 'Nominal']],
-      body: exportRows.map(r => [
-        r.no, 
-        r.jenis, 
-        r.kelompok, 
-        r.keterangan, 
-        new Date(r.tanggal).toLocaleDateString('id-ID'), 
-        formatTime(r.waktu), 
-        formatRupiah(r.nominal)
-      ]),
-      styles: { fontSize: 9, cellPadding: 4 },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        6: { halign: 'right' }
-      }
-    });
-
-    doc.save(`Laporan_Keuangan_${selectedBulan}_${selectedTahun}.pdf`);
+    exportProfessionalPDF(getFullReportData());
   };
 
   const handleExportCSV = () => {
-    const rows = getExportRows().map(r => ({
-      No: r.no,
-      Kategori: r.jenis,
-      Kelompok: r.kelompok,
-      'Keterangan/Siswa': r.keterangan,
-      Tanggal: new Date(r.tanggal).toLocaleDateString('id-ID'),
-      Waktu: formatTime(r.waktu),
-      Nominal: r.nominal
-    }));
-
-    const csv = Papa.unparse(rows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    saveAs(blob, `Laporan_Keuangan_${selectedBulan}_${selectedTahun}.csv`);
+    exportProfessionalCSV(getFullReportData());
   };
 
   const handleExportDOCX = async () => {
-    const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Laporan Keuangan - ${selectedBulan} ${selectedTahun}`,
-                  bold: true,
-                  size: 32,
-                }),
-              ],
-            }),
-            new Paragraph({ text: "", spacing: { after: 200 } }),
-            new Paragraph({ children: [new TextRun({ text: "Total Pemasukan: ", bold: true }), new TextRun({ text: formatRupiah(totalPemasukan), color: "10b981" })] }),
-            new Paragraph({ children: [new TextRun({ text: "Total Pengeluaran: ", bold: true }), new TextRun({ text: formatRupiah(totalPengeluaran), color: "f43f5e" })] }),
-            new Paragraph({ children: [new TextRun({ text: "Laba / Rugi Bersih: ", bold: true }), new TextRun({ text: formatRupiah(labaRugi), color: labaRugi >= 0 ? "4f46e5" : "f43f5e", bold: true })] }),
-            new Paragraph({ text: "" }),
-            new Paragraph({
-              children: [new TextRun({ text: "Rincian Transaksi", bold: true, size: 24 })],
-            }),
-            new Paragraph({ text: "" }),
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              rows: [
-                new TableRow({
-                  tableHeader: true,
-                  children: [
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "No", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Kategori", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Kelompok", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Keterangan/Siswa", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Tanggal", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Waktu", color: "ffffff", bold: true })] })] }),
-                    new TableCell({ shading: { fill: "4338ca" }, children: [new Paragraph({ children: [new TextRun({ text: "Nominal", color: "ffffff", bold: true })] })] }),
-                  ],
-                }),
-                ...getExportRows().map(
-                  (r) =>
-                    new TableRow({
-                      children: [
-                        new TableCell({ children: [new Paragraph(r.no.toString())] }),
-                        new TableCell({ children: [new Paragraph(r.jenis)] }),
-                        new TableCell({ children: [new Paragraph(r.kelompok)] }),
-                        new TableCell({ children: [new Paragraph(r.keterangan)] }),
-                        new TableCell({ children: [new Paragraph(new Date(r.tanggal).toLocaleDateString('id-ID'))] }),
-                        new TableCell({ children: [new Paragraph(formatTime(r.waktu))] }),
-                        new TableCell({ children: [new Paragraph(formatRupiah(r.nominal))] }),
-                      ],
-                    })
-                ),
-              ],
-            }),
-          ],
-        },
-      ],
-    });
-
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `Laporan_Keuangan_${selectedBulan}_${selectedTahun}.docx`);
+    await exportProfessionalDOCX(getFullReportData());
   };
 
 
@@ -522,18 +455,26 @@ export default function ReportsView() {
             
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                
-                <button onClick={handleCheckDuplicates} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Cek Data Dobel
+                <button
+                  onClick={() => setIsExportModalOpen(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  title="Kustomisasi & Export Laporan Keuangan Lengkap"
+                >
+                  <Printer className="w-4 h-4 text-indigo-200" />
+                  <span>Export Laporan Resmi</span>
+                  <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">⭐</span>
                 </button>
-                <button onClick={handleExportPDF} className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                <button onClick={handleExportPDF} className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download PDF">
                   <FileDown className="w-3.5 h-3.5" /> Export PDF
                 </button>
-                <button onClick={handleExportDOCX} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                <button onClick={handleExportCSV} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download Excel/CSV">
+                  <TableIcon className="w-3.5 h-3.5" /> Export Excel
+                </button>
+                <button onClick={handleExportDOCX} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" title="Cepat: Download Word">
                   <FileText className="w-3.5 h-3.5" /> Export DOCX
                 </button>
-                <button onClick={handleExportCSV} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
-                  <TableIcon className="w-3.5 h-3.5" /> Export Excel
+                <button onClick={handleCheckDuplicates} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Cek Data Dobel
                 </button>
               </div>
               <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
@@ -1037,6 +978,13 @@ export default function ReportsView() {
           isLoading={isSubmitting}
         />
       )}
+
+      {/* Modal Kustomisasi & Export Laporan Profesional */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        reportData={getFullReportData()}
+      />
     </div>
   );
 }
