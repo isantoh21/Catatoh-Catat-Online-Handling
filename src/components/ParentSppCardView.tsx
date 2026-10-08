@@ -545,7 +545,19 @@ export default function ParentSppCardView() {
   const academicYearLabel = `${academicStartYear}/${academicStartYear + 1}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
+    <div 
+      className="min-h-screen text-slate-800 flex flex-col font-sans relative selection:bg-blue-200 selection:text-blue-900"
+      style={{
+        backgroundColor: '#edf4fe',
+        backgroundImage: `
+          linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          radial-gradient(circle at 82% 16%, rgba(253, 230, 138, 0.55) 0%, rgba(253, 230, 138, 0) 55%),
+          radial-gradient(circle at 18% 45%, rgba(191, 219, 254, 0.45) 0%, rgba(191, 219, 254, 0) 50%)
+        `,
+        backgroundSize: '28px 28px, 28px 28px, auto, auto'
+      }}
+    >
       {/* Top Header */}
       <header className="bg-indigo-900 text-white shadow-md border-b border-indigo-950 sticky top-0 z-20 print:hidden">
         <div className="max-w-4xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between gap-3">

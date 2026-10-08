@@ -513,7 +513,19 @@ export default function App() {
 
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 font-sans overflow-hidden text-slate-800">
+    <div 
+      className="flex flex-col md:flex-row h-screen w-screen font-sans overflow-hidden text-slate-800"
+      style={{
+        backgroundColor: '#edf4fe',
+        backgroundImage: `
+          linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          radial-gradient(circle at 82% 16%, rgba(253, 230, 138, 0.55) 0%, rgba(253, 230, 138, 0) 55%),
+          radial-gradient(circle at 18% 45%, rgba(191, 219, 254, 0.45) 0%, rgba(191, 219, 254, 0) 50%)
+        `,
+        backgroundSize: '28px 28px, 28px 28px, auto, auto'
+      }}
+    >
 
       {renderAuthModals()}
 
@@ -723,7 +735,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Top Navigation Bar */}
-        <div className="bg-white border-b border-slate-200 px-4 py-3 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-sm">
+        <div className="bg-white/85 backdrop-blur-md border-b border-blue-100/90 px-4 py-3 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-xs">
           <div className="flex items-center gap-3">
             {/* Desktop Menu Toggle */}
             <button 
