@@ -9,7 +9,11 @@ import {
   ChevronDown, 
   Copy, 
   CreditCard,
-  Calculator
+  Calculator,
+  Crown,
+  Sparkles,
+  Building,
+  CheckCircle2
 } from 'lucide-react';
 
 interface PricingViewProps {
@@ -36,7 +40,7 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
   const faqs = [
     {
       q: 'Apakah Paket Standar (Free) benar-benar gratis tanpa batas waktu?',
-      a: 'Ya, 100% gratis selamanya. Sekolah dapat mencatat pembayaran SPP, mengelola siswa, mencetak kuitansi PDF resmi, dan membagikan tautan kartu SPP online ke wali murid tanpa dikenakan biaya.'
+      a: 'Ya, 100% gratis selamanya. Sekolah dapat mencatat pembayaran SPP, mengelola siswa, mencetak kuitansi PDF resmi, dan membagikan tautan kartu SPP online ke wali murid tanpa dikenakan biaya sepeser pun.'
     },
     {
       q: 'Bagaimana prosedur aktivasi untuk Paket Premium?',
@@ -57,20 +61,25 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
   ];
 
   return (
-    <div className="min-h-screen bg-[#fafafc] text-slate-900 font-sans selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white">
       
       {/* Floating Island Navbar */}
       <PublicNavbar schoolName={schoolName} schoolLogo={schoolLogo} />
 
-      {/* HEADER SECTION */}
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center">
+      {/* HEADER SECTION WITH SOFT COLOR WASH */}
+      <section className="relative pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center overflow-hidden">
+        
+        {/* Soft Background Gradient */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-80 bg-gradient-to-b from-blue-100/60 via-indigo-50/30 to-transparent -z-10 blur-2xl pointer-events-none" />
+
         <div className="space-y-4 max-w-2xl mx-auto">
           
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold">
+            <CreditCard className="w-3.5 h-3.5 text-blue-600" />
             <span>Biaya Transparan & Terjangkau</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-950">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-950">
             Pilihan Paket untuk Sekolah Anda
           </h1>
 
@@ -78,14 +87,14 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
             Mulai gratis dengan paket Standar tanpa kartu kredit, atau aktifkan presensi wajah biometrik dan WhatsApp gateway otomatis dengan paket Premium.
           </p>
 
-          {/* Billing Switcher */}
+          {/* Billing Switcher with distinct color pills */}
           <div className="pt-4 flex items-center justify-center">
-            <div className="bg-slate-100 p-1 rounded-full border border-slate-200 flex items-center">
+            <div className="bg-slate-100 p-1.5 rounded-full border border-slate-200 flex items-center shadow-xs">
               <button
                 onClick={() => setBillingCycle('monthly')}
-                className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   billingCycle === 'monthly'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -94,14 +103,16 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
               
               <button
                 onClick={() => setBillingCycle('yearly')}
-                className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   billingCycle === 'yearly'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <span>Bayar Tahunan</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  billingCycle === 'yearly' ? 'bg-amber-400 text-slate-950' : 'bg-emerald-100 text-emerald-800'
+                }`}>
                   Hemat 110rb
                 </span>
               </button>
@@ -110,225 +121,228 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
 
         </div>
 
-        {/* PRICING CARDS (DOUBLE-BEZEL ARCHITECTURE) */}
+        {/* PRICING CARDS (HIGH-CONTRAST DISTINCT CARDS) */}
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
           
           {/* 1. STANDAR (FREE) */}
-          <div className="p-2 bg-slate-200/60 rounded-3xl border border-slate-200/90 flex flex-col justify-between">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 h-full flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-slate-900 text-base">Paket Standar</h3>
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                    Gratis
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-3xl font-extrabold text-slate-900 font-mono">Rp 0</div>
-                  <div className="text-xs text-slate-500 mt-1">Selamanya tanpa batas waktu</div>
-                </div>
-
-                <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-                  Cocok untuk sekolah atau madrasah yang baru beralih dari buku tulis fisik ke sistem pencatatan online.
-                </p>
-
-                <div className="space-y-2.5 pt-2 text-xs text-slate-700">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Data Siswa & Kelas Tanpa Batas</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Pencatatan SPP & Kas Masuk/Keluar</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Cetak Nota Kuitansi PDF Standar</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Kartu SPP Online Wali Murid (24 Jam)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Ekspor Data ke File Excel/CSV</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <X className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                    <span className="line-through">Presensi Wajah AI</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <X className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                    <span className="line-through">WhatsApp Gateway Otomatis</span>
-                  </div>
-                </div>
+          <div className="rounded-3xl p-6 bg-white border-2 border-slate-200 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between space-y-6">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-extrabold text-slate-900 text-lg">Paket Standar</h3>
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                  Gratis
+                </span>
               </div>
 
-              <div className="pt-4 border-t border-slate-100">
-                <button
-                  onClick={() => navigate('/login?mode=register&tier=free')}
-                  className="w-full py-2.5 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200 transition-colors cursor-pointer"
-                >
-                  Mulai Akun Standar
-                </button>
+              <div>
+                <div className="text-3xl font-black text-slate-900 font-mono">Rp 0</div>
+                <div className="text-xs text-slate-500 mt-1 font-medium">Selamanya tanpa batas waktu</div>
               </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Cocok untuk sekolah atau madrasah yang baru beralih dari buku tulis fisik ke sistem pencatatan online.
+              </p>
+
+              <div className="space-y-2.5 pt-2 text-xs text-slate-700">
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Data Siswa & Kelas Tanpa Batas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Pencatatan SPP & Kas Masuk/Keluar</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Cetak Nota Kuitansi PDF Standar</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Kartu SPP Online Wali Murid (24 Jam)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Ekspor Data ke File Excel/CSV</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-400">
+                  <X className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="line-through">Presensi Wajah AI</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-400">
+                  <X className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="line-through">WhatsApp Gateway Otomatis</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100">
+              <button
+                onClick={() => navigate('/login?mode=register&tier=free')}
+                className="w-full py-2.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer"
+              >
+                Mulai Akun Standar
+              </button>
             </div>
           </div>
 
-          {/* 2. PAKET PREMIUM */}
-          <div className="p-2 bg-slate-900 rounded-3xl border border-slate-800 shadow-md flex flex-col justify-between">
-            <div className="bg-slate-900 rounded-2xl p-6 text-white h-full flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-white text-base">Paket Premium</h3>
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold border border-blue-400/30">
-                    Rekomendasi
-                  </span>
+          {/* 2. PAKET PREMIUM (VIBRANT ROYAL BLUE & GOLD CARD) */}
+          <div className="rounded-3xl p-6 bg-gradient-to-b from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-xl shadow-blue-500/25 border-2 border-blue-400 flex flex-col justify-between space-y-6 relative scale-102">
+            
+            {/* Gold Badge */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-extrabold text-white text-lg">Paket Premium</h3>
+                  <Crown className="w-4 h-4 text-amber-300 fill-amber-300" />
                 </div>
+                <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black uppercase tracking-wider shadow-xs">
+                  ⭐ Terpopuler
+                </span>
+              </div>
 
-                <div>
-                  <div className="text-3xl font-extrabold text-white font-mono">
-                    {billingCycle === 'yearly' ? 'Rp 250.000' : 'Rp 30.000'}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    {billingCycle === 'yearly' ? 'Per tahun (hemat Rp 110.000)' : 'Per bulan'}
-                  </div>
+              <div>
+                <div className="text-3xl font-black text-white font-mono">
+                  {billingCycle === 'yearly' ? 'Rp 250.000' : 'Rp 30.000'}
                 </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed border-t border-slate-800 pt-3">
-                  Solusi lengkap dengan presensi biometrik wajah siswa & guru, serta pengiriman pesan WhatsApp otomatis.
-                </p>
-
-                <div className="space-y-2.5 pt-2 text-xs text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>Semua Fitur Paket Standar</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>Presensi Wajah AI</strong> (Kiosk Kamera Piket)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>Geofence GPS</strong> Radius Gerbang Sekolah</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>WhatsApp Gateway</strong> Notifikasi Hadir/Pulang</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>Broadcast Tagihan SPP</strong> dengan Delay Anti-Ban</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span><strong>Pembaca Struk OCR</strong> Bukti Transfer Bank</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Dukungan Teknis Prioritas via WhatsApp</span>
-                  </div>
+                <div className="text-xs text-blue-100 mt-1 font-medium">
+                  {billingCycle === 'yearly' ? 'Per tahun (hemat Rp 110.000)' : 'Per bulan'}
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-800">
-                <button
-                  onClick={() => navigate(`/login?mode=register&tier=premium&cycle=${billingCycle}`)}
-                  className="w-full py-2.5 rounded-full text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <span>Pilih Paket Premium</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              <p className="text-xs text-blue-100 leading-relaxed border-t border-blue-500/50 pt-3">
+                Solusi lengkap dengan presensi biometrik wajah siswa & guru, serta pengiriman pesan WhatsApp otomatis.
+              </p>
+
+              <div className="space-y-2.5 pt-2 text-xs text-blue-50">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>Semua Fitur Paket Standar</strong></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>Presensi Wajah AI</strong> (Kiosk Kamera Piket)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>Geofence GPS</strong> Radius Gerbang Sekolah</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>WhatsApp Gateway</strong> Notifikasi Hadir/Pulang</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>Broadcast Tagihan SPP</strong> dengan Delay Anti-Ban</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span><strong>Pembaca Struk OCR</strong> Bukti Transfer Bank</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>Dukungan Teknis Prioritas via WhatsApp</span>
+                </div>
               </div>
+            </div>
+
+            <div className="pt-4 border-t border-blue-500/50">
+              <button
+                onClick={() => navigate(`/login?mode=register&tier=premium&cycle=${billingCycle}`)}
+                className="w-full py-3 rounded-full text-xs font-black bg-white hover:bg-blue-50 text-blue-700 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+              >
+                <span>Pilih Paket Premium</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
           {/* 3. PAKET YAYASAN */}
-          <div className="p-2 bg-slate-200/60 rounded-3xl border border-slate-200/90 flex flex-col justify-between">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 h-full flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-slate-900 text-base">Paket Yayasan</h3>
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                    Multi-Unit
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-2xl font-extrabold text-slate-900">Konsultasi</div>
-                  <div className="text-xs text-slate-500 mt-1">Sesuai jumlah jenjang sekolah</div>
-                </div>
-
-                <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-                  Khusus yayasan pendidikan yang menaungi beberapa jenjang (TK, SD, SMP, SMA/SMK) dalam satu akun terpusat.
-                </p>
-
-                <div className="space-y-2.5 pt-2 text-xs text-slate-700">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Konsolidasi Kas Semua Jenjang Sekolah</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Akses Khusus Pengurus Yayasan Pusat</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Pendampingan Onboarding Staf Tata Usaha</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Dukungan Teknis Langsung</span>
-                  </div>
-                </div>
+          <div className="rounded-3xl p-6 bg-white border-2 border-slate-200 shadow-xs hover:border-indigo-300 transition-all flex flex-col justify-between space-y-6">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-extrabold text-slate-900 text-lg">Paket Yayasan</h3>
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                  Multi-Unit
+                </span>
               </div>
 
-              <div className="pt-4 border-t border-slate-100">
-                <a
-                  href="https://threads.net/@isantoh"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2.5 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span>Hubungi Kami</span>
-                </a>
+              <div>
+                <div className="text-2xl font-black text-slate-900">Konsultasi</div>
+                <div className="text-xs text-slate-500 mt-1 font-medium">Sesuai jumlah jenjang sekolah</div>
               </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Khusus yayasan pendidikan yang menaungi beberapa jenjang (TK, SD, SMP, SMA/SMK) dalam satu akun terpusat.
+              </p>
+
+              <div className="space-y-2.5 pt-2 text-xs text-slate-700">
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Konsolidasi Kas Semua Jenjang Sekolah</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Akses Khusus Pengurus Yayasan Pusat</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Pendampingan Onboarding Staf Tata Usaha</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Dukungan Teknis Langsung</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100">
+              <a
+                href="https://threads.net/@isantoh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Hubungi Kami</span>
+              </a>
             </div>
           </div>
 
         </div>
 
-        {/* BANK ACTIVATION INFO BOX */}
-        <div className="mt-10 p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left">
+        {/* BANK ACTIVATION INFO BOX WITH BLUE ACCENT */}
+        <div className="mt-10 p-5 rounded-2xl bg-blue-50/80 border border-blue-200/90 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-              <CreditCard className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-900">Rekening Resmi Pembayaran Paket Premium:</div>
-              <div className="text-xs text-slate-600 mt-0.5">
-                BCA: <strong className="font-mono text-slate-900">7805556218</strong> a.n Muhammad Ikhsan
+              <div className="text-xs font-bold text-blue-950">Rekening Resmi Pembayaran Paket Premium:</div>
+              <div className="text-xs text-blue-900 mt-0.5">
+                Bank BCA: <strong className="font-mono text-blue-950 font-bold">7805556218</strong> a.n Muhammad Ikhsan
               </div>
             </div>
           </div>
 
           <button
             onClick={handleCopyBca}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-blue-100/70 text-blue-800 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
           >
-            <Copy className="w-3.5 h-3.5" />
-            <span>{copiedBank ? 'Tersalin' : 'Salin Rekening'}</span>
+            <Copy className="w-3.5 h-3.5 text-blue-600" />
+            <span>{copiedBank ? 'Tersalin!' : 'Salin Rekening'}</span>
           </button>
         </div>
 
       </section>
 
       {/* EFISIENSI KALKULATOR */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto border-t border-slate-200/60">
-        <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-xs space-y-8">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto border-t border-slate-100">
+        <div className="bg-gradient-to-b from-blue-50/40 to-white p-6 sm:p-10 rounded-3xl border border-blue-100 shadow-xs space-y-8">
           
           <div className="text-center max-w-lg mx-auto space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100/80 text-blue-800 text-xs font-bold">
+              <Calculator className="w-3.5 h-3.5 text-blue-600" />
+              Simulasi Efisiensi Sekolah
+            </div>
             <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
               Kalkulator Estimasi Efisiensi Waktu & Kertas
             </h2>
@@ -349,7 +363,7 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
               step="25"
               value={studentCount}
               onChange={(e) => setStudentCount(Number(e.target.value))}
-              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900"
+              className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
             />
             <div className="flex justify-between text-[10px] text-slate-400 font-mono">
               <span>50</span>
@@ -360,15 +374,15 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center max-w-lg mx-auto">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-2xl font-bold text-slate-900 font-mono">~{hoursSavedPerMonth} Jam</div>
-              <div className="text-xs text-slate-600 mt-1">Waktu Staf Dihemat per Bulan</div>
+            <div className="p-4 rounded-2xl bg-white border border-blue-100 shadow-2xs">
+              <div className="text-2xl font-black text-blue-600 font-mono">~{hoursSavedPerMonth} Jam</div>
+              <div className="text-xs text-slate-700 font-bold mt-1">Waktu Staf Dihemat per Bulan</div>
               <div className="text-[10px] text-slate-400 mt-1">Bebas ketik rekapan presensi & SPP</div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-2xl font-bold text-slate-900 font-mono">~{paperReamsSaved} Rim</div>
-              <div className="text-xs text-slate-600 mt-1">Kertas & Buku SPP Terpangkas</div>
+            <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-2xs">
+              <div className="text-2xl font-black text-emerald-600 font-mono">~{paperReamsSaved} Rim</div>
+              <div className="text-xs text-slate-700 font-bold mt-1">Kertas & Buku SPP Terpangkas</div>
               <div className="text-[10px] text-slate-400 mt-1">Penghematan cetak kartu & nota fisik</div>
             </div>
           </div>
@@ -377,7 +391,7 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
       </section>
 
       {/* FAQ SECTION */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-3xl mx-auto border-t border-slate-200/60">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-3xl mx-auto border-t border-slate-100">
         <div className="text-center mb-10 space-y-2">
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
             Pertanyaan yang Sering Diajukan
@@ -393,14 +407,14 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
             return (
               <div 
                 key={faq.q}
-                className="rounded-xl border border-slate-200 bg-white overflow-hidden"
+                className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs"
               >
                 <button
                   onClick={() => setOpenFaq(isOpen ? null : index)}
-                  className="w-full p-4 text-left flex items-center justify-between gap-4 font-semibold text-xs sm:text-sm text-slate-900 hover:text-blue-600 transition-colors cursor-pointer"
+                  className="w-full p-4 text-left flex items-center justify-between gap-4 font-bold text-xs sm:text-sm text-slate-900 hover:text-blue-600 transition-colors cursor-pointer"
                 >
                   <span>{faq.q}</span>
-                  <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-180 text-slate-900' : 'text-slate-400'}`} />
+                  <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-180 text-blue-600' : 'text-slate-400'}`} />
                 </button>
                 {isOpen && (
                   <div className="px-4 pb-4 pt-1 text-xs text-slate-600 leading-relaxed border-t border-slate-100">
