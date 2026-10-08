@@ -273,7 +273,7 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(30, 41, 59);
-  doc.text(':  Kasir Sekolah / Transfer Bank', col2ValX, infoBoxY + 11);
+  doc.text(':  Transfer Bank', col2ValX, infoBoxY + 11);
   doc.text(':', col2ValX, infoBoxY + 16.5);
 
   // Status Badge LUNAS
