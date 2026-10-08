@@ -55,6 +55,10 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
       a: 'Sangat aman. Sistem gateway CATATOH menerapkan jeda acak dinamis (random dynamic delay) yang meniru ritme pengetikan manusia alami untuk mencegah risiko pemblokiran broadcast WhatsApp.'
     },
     {
+      q: 'Apakah uang SPP dari orang tua murid ditahan atau mengendap di pihak ketiga/CATATOH?',
+      a: 'Sama sekali TIDAK. Uang pembayaran SPP dari wali murid 100% langsung masuk ke rekening bank resmi yang sekolah kehendaki (BCA, BRI, Mandiri, BSI, dll) atau diserahkan tunai di tata usaha. CATATOH tidak pernah menahan dana sekolah sepeser pun (0 hari settlement) dan tidak memotong komisi transaksi siswa. Peran CATATOH murni sebagai sistem moderasi cerdas, asisten verifikasi bukti bayar via AI Vision, dan pengamanan pencatatan buku kas.'
+    },
+    {
       q: 'Bisakah sekolah beralih dari Paket Standar ke Premium sewaktu-waktu?',
       a: 'Tentu saja. Semua data siswa, kelas, dan riwayat pembayaran SPP yang dicatat pada paket Standar akan tetap tersimpan saat sekolah beralih ke paket Premium.'
     }

@@ -461,6 +461,78 @@ export default function HomeView({ schoolName = 'CATATOH', schoolLogo = '' }: Ho
 
       </section>
 
+      {/* SECTION: KEAMANAN FINANSIAL & BEBAS SETTLEMENT PIHAK KETIGA */}
+      <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+        <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-emerald-50/90 via-white to-blue-50/60 border-2 border-emerald-200/90 shadow-xs space-y-8">
+          
+          <div className="max-w-3xl mx-auto text-center space-y-3">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              <span>Jaminan Kedaulatan & Keamanan Kas Sekolah</span>
+            </div>
+            
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
+              Sekolah Jauh Lebih Tenang: Uang SPP 100% Langsung Masuk ke Rekening Anda Tanpa Ditahan Pihak Ketiga
+            </h2>
+            
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-2xl mx-auto">
+              Banyak yayasan dan sekolah skala kecil hingga menengah ragu memakai aplikasi digital karena khawatir dananya harus mengendap (<em>settlement</em>) berhari-hari di pihak ketiga, terkena potongan transaksi, atau ada risiko uang tertahan/hilang. Bersama <strong>CATATOH</strong>, Anda memegang kendali penuh.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Kartu 1 */}
+            <div className="p-5 rounded-2xl bg-white border border-emerald-100 shadow-2xs space-y-2.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                <Building className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">Rekening Bank Sekolah Sendiri</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Orang tua murid mentransfer uang langsung ke rekening bank yang sekolah tentukan (BCA, BRI, Mandiri, BSI, dll) atau bayar tunai di tata usaha. <strong>Tidak ada perantara rekening penampung.</strong>
+              </p>
+            </div>
+
+            {/* Kartu 2 */}
+            <div className="p-5 rounded-2xl bg-white border border-emerald-100 shadow-2xs space-y-2.5">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <Clock className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">0 Hari Settlement & 0% Potongan</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Uang masuk detik itu juga ke saldo rekening kas sekolah Anda. <strong>CATATOH tidak pernah menahan dana sekolah sepeser pun</strong> dan tidak memotong komisi per transaksi siswa.
+              </p>
+            </div>
+
+            {/* Kartu 3 */}
+            <div className="p-5 rounded-2xl bg-white border border-emerald-100 shadow-2xs space-y-2.5">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">Moderasi & Pengamanan Pencatatan</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Peran CATATOH murni sebagai <strong>asisten moderasi cerdas</strong>: membaca struk transfer otomatis via AI Vision, memverifikasi kuitansi lunas, dan mengamankan pembukuan kas agar tidak ada uang terselip.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 text-xs text-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span className="font-semibold text-slate-800">
+                Uang 100% aman di bank Anda sendiri. Pencatatan rapi otomatis, orang tua senang, bendahara tenang.
+              </span>
+            </div>
+            <button
+              onClick={() => navigate('/pricing')}
+              className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer shadow-xs"
+            >
+              Lihat Biaya & Paket
+            </button>
+          </div>
+
+        </div>
+      </section>
+
       {/* SECTION 2: PERBANDINGAN SEBELUM VS SESUDAH (HIGH-CONTRAST DISTINCT BOXES) */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto border-t border-slate-100">
         <div className="text-center max-w-2xl mx-auto mb-14 space-y-3">
