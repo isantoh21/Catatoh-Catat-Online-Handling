@@ -227,38 +227,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       setCurrentUserId(propUser.id);
     }
     fetchData(propUser);
-
-    const channelId = currentUserId || propUser?.id || 'global';
-    const studentsChannel = supabase
-      .channel(`realtime-students-${channelId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
-        console.log('Real-time update on students:', payload);
-        fetchData();
-      })
-      .subscribe();
-      
-    const paymentsChannel = supabase
-      .channel(`realtime-payments-${channelId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, (payload) => {
-        console.log('Real-time update on payments:', payload);
-        fetchData();
-      })
-      .subscribe();
-
-    const verifChannel = supabase
-      .channel(`realtime-verifs-${channelId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_verifications' }, () => {
-        refreshPendingCount();
-        fetchData();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(studentsChannel);
-      supabase.removeChannel(paymentsChannel);
-      supabase.removeChannel(verifChannel);
-    };
-  }, [propUser, selectedBulan, selectedTahun]);
+  }, [propUser?.id]);
 
   const handleSaveTemplate = async () => {
     const sessionData = await supabase.auth.getSession();
@@ -279,6 +248,10 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
 
   const fetchData = async (explicitUser?: any) => {
     setLoading(true);
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3500);
+
     try {
       let activeUser = explicitUser || propUser;
       if (!activeUser) {
@@ -299,37 +272,54 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
 
       setCurrentUserId(activeUser.id);
 
-      // Jalankan query siswa, pembayaran, program, dan moderasi secara paralel
-      // Query semua pembayaran agar pergantian tahun/bulan instan & tahun aktif terdeteksi otomatis
+      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+        Promise.race([
+          promise,
+          new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
+        ]);
+
+      // Jalankan query siswa, pembayaran, program, dan moderasi secara paralel dengan timeout aman
       const [studentsRes, paymentsRes, progsRes, verifsRes] = await Promise.all([
-        supabase
-          .from('students')
-          .select('*')
-          .eq('user_id', activeUser.id)
-          .order('nama_lengkap', { ascending: true })
-          .range(0, 4999),
-        supabase
-          .from('payments')
-          .select('*')
-          .eq('user_id', activeUser.id)
-          .range(0, 9999),
-        getReRegistrationPrograms(activeUser.id).catch(() => []),
-        getPaymentVerifications(activeUser.id).catch(() => [])
+        withTimeout(
+          supabase
+            .from('students')
+            .select('*')
+            .eq('user_id', activeUser.id)
+            .order('nama_lengkap', { ascending: true })
+            .range(0, 4999),
+          5000,
+          { data: null, error: { message: 'Timeout' } } as any
+        ),
+        withTimeout(
+          supabase
+            .from('payments')
+            .select('*')
+            .eq('user_id', activeUser.id)
+            .range(0, 9999),
+          5000,
+          { data: null, error: { message: 'Timeout' } } as any
+        ),
+        withTimeout(getReRegistrationPrograms(activeUser.id).catch(() => []), 3000, []),
+        withTimeout(getPaymentVerifications(activeUser.id).catch(() => []), 3000, [])
       ]);
 
       if (studentsRes?.error) {
         console.error('Catatoh: Gagal query students, mencoba fallback:', studentsRes.error);
-        const retryStudents = await supabase
-          .from('students')
-          .select('*')
-          .eq('user_id', activeUser.id)
-          .range(0, 4999);
-        if (retryStudents.data) {
-          const activeOnly = retryStudents.data.filter(s => s.status_aktif !== false);
+        const retryStudents = await withTimeout(
+          supabase
+            .from('students')
+            .select('*')
+            .eq('user_id', activeUser.id)
+            .range(0, 4999),
+          3000,
+          { data: null } as any
+        );
+        if (retryStudents?.data) {
+          const activeOnly = retryStudents.data.filter((s: any) => s.status_aktif !== false);
           setStudents(activeOnly);
         }
       } else if (studentsRes?.data) {
-        const activeOnly = studentsRes.data.filter(s => s.status_aktif !== false);
+        const activeOnly = studentsRes.data.filter((s: any) => s.status_aktif !== false);
         setStudents(activeOnly);
       }
 
@@ -345,13 +335,14 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       }
       if (progsRes) setReRegistrationPrograms(progsRes);
       if (verifsRes) {
-        const pendings = (verifsRes || []).filter(v => v.status === 'pending');
+        const pendings = (verifsRes || []).filter((v: any) => v.status === 'pending');
         setPendingVerifications(pendings);
         setPendingVerificationsCount(pendings.length);
       }
     } catch (err) {
       console.warn('Gagal memuat data dashboard:', err);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
   };

@@ -69,30 +69,14 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
     } else {
       fetchStudents();
     }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUserId(session.user.id);
-        fetchStudents(session.user);
-      }
-    });
-
-    const channel = supabase
-      .channel('realtime-students')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
-        console.log('Real-time update on students:', payload);
-        fetchStudents();
-      })
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-      supabase.removeChannel(channel);
-    };
-  }, [propUser]);
+  }, [propUser?.id]);
 
   const fetchStudents = async (userParam?: any) => {
     setLoading(true);
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
     try {
       let activeUser = userParam || propUser;
       if (!activeUser) {
@@ -100,9 +84,12 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
         activeUser = sessionRes.data.session?.user;
       }
       if (!activeUser) {
-        await new Promise(r => setTimeout(r, 400));
-        const retrySession = await supabase.auth.getSession();
-        activeUser = retrySession.data.session?.user;
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          const retrySession = await supabase.auth.getSession();
+          activeUser = retrySession.data.session?.user;
+          if (activeUser) break;
+        }
       }
       if (!activeUser) {
         setStudents([]);
@@ -110,21 +97,35 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
       }
       setCurrentUserId(activeUser.id);
 
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('user_id', activeUser.id)
-        .order('created_at', { ascending: false })
-        .range(0, 4999);
-      
-      if (error) {
-        console.error('Catatoh: Gagal fetch students, mencoba retry fallback:', error);
-        const retryRes = await supabase
+      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+        Promise.race([
+          promise,
+          new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
+        ]);
+
+      const { data, error } = await withTimeout(
+        supabase
           .from('students')
           .select('*')
           .eq('user_id', activeUser.id)
-          .range(0, 4999);
-        if (retryRes.data) {
+          .order('created_at', { ascending: false })
+          .range(0, 4999),
+        4000,
+        { data: null, error: { message: 'Timeout' } } as any
+      );
+      
+      if (error) {
+        console.error('Catatoh: Gagal fetch students, mencoba retry fallback:', error);
+        const retryRes = await withTimeout(
+          supabase
+            .from('students')
+            .select('*')
+            .eq('user_id', activeUser.id)
+            .range(0, 4999),
+          3000,
+          { data: null } as any
+        );
+        if (retryRes?.data) {
           setStudents(retryRes.data);
         }
       } else if (data) {
@@ -133,6 +134,7 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
     } catch (err) {
       console.error('Exception in fetchStudents:', err);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
   };
