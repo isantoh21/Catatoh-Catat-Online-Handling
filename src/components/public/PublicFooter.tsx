@@ -2,163 +2,127 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   GraduationCap, 
-  Sparkles, 
-  ShieldCheck, 
-  Heart, 
-  MessageCircle, 
-  ExternalLink,
-  ArrowUpRight,
-  Zap,
-  Cpu,
-  Lock
+  ArrowUpRight
 } from 'lucide-react';
 
 export default function PublicFooter({ schoolName = 'CATATOH' }: { schoolName?: string }) {
   const navigate = useNavigate();
 
   return (
-    <footer className="bg-slate-950 text-slate-400 border-t border-white/10 relative overflow-hidden">
-      {/* Background glow effect */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-gradient-to-b from-blue-600/10 via-indigo-600/5 to-transparent blur-3xl pointer-events-none" />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-12 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-white/10">
+    <footer className="bg-slate-50 text-slate-600 border-t border-slate-200">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-10 border-b border-slate-200">
           
           {/* Brand Column */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 border border-white/20">
-                <GraduationCap className="w-5 h-5 text-white" />
+          <div className="lg:col-span-2 space-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
+                <GraduationCap className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-xl font-black text-white tracking-tight block">
-                  {schoolName}
-                </span>
-                <span className="text-xs text-blue-400 font-mono tracking-wide">
-                  Catat Online Handling • EduOS 2026
-                </span>
-              </div>
+              <span className="text-base font-bold text-slate-900 tracking-tight">
+                {schoolName}
+              </span>
             </div>
 
-            <p className="text-sm text-slate-400 leading-relaxed max-w-sm">
-              Ekosistem tata kelola keuangan sekolah, SPP terpadu, presensi biometrik wajah AI, dan WhatsApp Gateway otomatis tercerdas untuk sekolah, madrasah, dan yayasan di Indonesia.
+            <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+              Sistem pencatatan SPP online, presensi biometrik wajah siswa & dewan guru, serta WhatsApp gateway otomatis untuk sekolah dan madrasah di Indonesia.
             </p>
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-white/5 border border-white/10 text-slate-300">
-                <Cpu className="w-3 h-3 text-cyan-400" />
-                Gemini Vision OCR
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-white/5 border border-white/10 text-slate-300">
-                <Zap className="w-3 h-3 text-amber-400" />
-                Face Biometrics 1s
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-white/5 border border-white/10 text-slate-300">
-                <Lock className="w-3 h-3 text-emerald-400" />
-                Anti-Ban WA Engine
-              </span>
+            <div className="text-[11px] text-slate-400 font-mono pt-1">
+              BCA Resmi: <span className="text-slate-700 font-bold">7805556218</span> a.n Muhammad Ikhsan
             </div>
           </div>
 
           {/* Navigation Column */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white">Navigasi Utama</h4>
-            <ul className="space-y-2.5 text-sm">
+          <div className="space-y-2.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">Navigasi</h4>
+            <ul className="space-y-2 text-xs">
               <li>
                 <button 
                   onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  className="hover:text-white transition-colors cursor-pointer text-left"
+                  className="hover:text-slate-900 transition-colors cursor-pointer text-left"
                 >
-                  Beranda (Home)
+                  Beranda
                 </button>
               </li>
               <li>
                 <button 
                   onClick={() => { navigate('/pricing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  className="hover:text-white transition-colors cursor-pointer text-left"
+                  className="hover:text-slate-900 transition-colors cursor-pointer text-left"
                 >
-                  Harga & Paket
+                  Biaya & Paket
                 </button>
               </li>
               <li>
                 <button 
                   onClick={() => { navigate('/login'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  className="hover:text-white transition-colors cursor-pointer text-left"
+                  className="hover:text-slate-900 transition-colors cursor-pointer text-left"
                 >
-                  Portal Masuk (Login)
+                  Masuk Akun
                 </button>
               </li>
               <li>
                 <button 
                   onClick={() => { navigate('/login?mode=register'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  className="hover:text-white transition-colors cursor-pointer text-left text-blue-400 font-semibold"
+                  className="hover:text-blue-600 font-semibold transition-colors cursor-pointer text-left"
                 >
-                  Daftar Akun Baru
+                  Daftar Baru
                 </button>
               </li>
             </ul>
           </div>
 
-          {/* Features Column */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white">Fitur Unggulan</h4>
-            <ul className="space-y-2.5 text-sm text-slate-400">
-              <li>Presensi Wajah AI & Geofence GPS</li>
-              <li>WhatsApp Gateway Tagihan SPP Massal</li>
-              <li>AI Vision OCR Pembaca Struk Bank</li>
-              <li>Kartu SPP Online Wali Murid 24/7</li>
-              <li>Kuitansi Pembayaran PDF Otomatis</li>
-              <li>Buku Kas & Pelaporan Bulanan</li>
+          {/* Modul Column */}
+          <div className="space-y-2.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">Modul Utama</h4>
+            <ul className="space-y-2 text-xs text-slate-500">
+              <li>Pencatatan SPP & Kas Sekolah</li>
+              <li>Presensi Wajah AI Kamera Piket</li>
+              <li>WhatsApp Gateway Hadir/Pulang</li>
+              <li>Tagihan SPP Massal Anti-Banned</li>
+              <li>Pembaca Struk Transfer Bank (OCR)</li>
+              <li>Kartu SPP Online Wali Murid</li>
             </ul>
           </div>
 
           {/* Support Column */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white">Bantuan & Komunitas</h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Punya pertanyaan seputar implementasi atau ingin konsultasi paket sekolah? Hubungi kami langsung:
+          <div className="space-y-2.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">Bantuan & Kontak</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Konsultasi implementasi sekolah atau pendampingan pendaftaran:
             </p>
-            <div className="space-y-2 pt-1 text-sm">
+            <div className="space-y-1.5 pt-1 text-xs">
               <a 
                 href="https://threads.net/@isantoh" 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 text-slate-700 hover:text-blue-600 transition-colors"
               >
                 <span>Threads @isantoh</span>
-                <ArrowUpRight className="w-3.5 h-3.5 opacity-60" />
+                <ArrowUpRight className="w-3 h-3 opacity-60" />
               </a>
               <a 
                 href="https://instagram.com/isantoh" 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 text-slate-700 hover:text-blue-600 transition-colors"
               >
                 <span>Instagram @isantoh</span>
-                <ArrowUpRight className="w-3.5 h-3.5 opacity-60" />
+                <ArrowUpRight className="w-3 h-3 opacity-60" />
               </a>
-              <div className="text-xs text-slate-500 pt-1">
-                BCA Rekening Resmi: <br />
-                <span className="font-mono text-slate-300 font-bold">7805556218</span> (Muhammad Ikhsan)
-              </div>
             </div>
           </div>
 
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span>© 2026 {schoolName}. All rights reserved.</span>
-            <span>•</span>
-            <span className="inline-flex items-center gap-1 text-emerald-400 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Sistem Cloud Aktif
-            </span>
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div>
+            © {new Date().getFullYear()} {schoolName}. Hak cipta dilindungi undang-undang.
           </div>
-
-          <div className="flex items-center gap-4">
-            <span className="text-slate-400">Dirancang dengan presisi untuk memajukan pendidikan Indonesia.</span>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-slate-600 font-medium">Sistem Cloud Aktif</span>
           </div>
         </div>
 

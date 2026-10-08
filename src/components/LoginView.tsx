@@ -244,7 +244,7 @@ export default function LoginView({
   ];
 
   return (
-    <div className="min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white bg-slate-950">
+    <div className="min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white bg-[#fafafc]">
       <PublicNavbar schoolName={schoolName} schoolLogo={schoolLogo} />
 
       <div className="flex-1 flex flex-col lg:flex-row pt-16 sm:pt-20">
