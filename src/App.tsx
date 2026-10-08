@@ -94,7 +94,8 @@ export default function App() {
       user.user_metadata?.full_name || 
       user.user_metadata?.admin_name || 
       (typeof loadedSettings === 'object' ? loadedSettings?.admin_name : '') ||
-      ''
+      (user.email ? user.email.split('@')[0] : '') ||
+      'Admin'
     ).trim();
     const isAdminValid = rawAdmin.length >= 2 && rawAdmin !== 'Belum Diatur';
 
@@ -179,6 +180,14 @@ export default function App() {
       if (session?.user) {
         const loadedSchool = await fetchUserSettings(session.user.id).catch(() => '');
         checkProfileRequirements(session.user, loadedSchool);
+        if (loadedSchool && typeof loadedSchool === 'object' && !(loadedSchool as any).admin_name) {
+          const autoAdmin = (
+            session.user.user_metadata?.full_name ||
+            session.user.user_metadata?.admin_name ||
+            (session.user.email ? session.user.email.split('@')[0] : 'Admin')
+          );
+          supabase.from('user_settings').update({ admin_name: autoAdmin }).eq('user_id', session.user.id).then(() => {});
+        }
       }
     }).catch((err) => {
       console.warn('Session initialization fallback:', err);
@@ -199,8 +208,16 @@ export default function App() {
 
       if (session?.user) {
         fetchUserSettings(session.user.id).then((loadedSchool) => {
-          const isComplete = checkProfileRequirements(session.user, loadedSchool);
-          });
+          checkProfileRequirements(session.user, loadedSchool);
+          if (loadedSchool && typeof loadedSchool === 'object' && !(loadedSchool as any).admin_name) {
+            const autoAdmin = (
+              session.user.user_metadata?.full_name ||
+              session.user.user_metadata?.admin_name ||
+              (session.user.email ? session.user.email.split('@')[0] : 'Admin')
+            );
+            supabase.from('user_settings').update({ admin_name: autoAdmin }).eq('user_id', session.user.id).then(() => {});
+          }
+        });
       } else {
         setSchoolName('CATATOH');
         setSchoolLogo('');

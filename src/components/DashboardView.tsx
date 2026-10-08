@@ -300,14 +300,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       setCurrentUserId(activeUser.id);
 
       // Jalankan query siswa, pembayaran, program, dan moderasi secara paralel
-      // Query semua pembayaran tahun berjalan agar sel tabel dan filter selalu lengkap & cepat
-      const paymentsQuery = supabase
-        .from('payments')
-        .select('*')
-        .eq('user_id', activeUser.id)
-        .eq('tahun', parseInt(selectedTahun))
-        .range(0, 4999);
-
+      // Query semua pembayaran agar pergantian tahun/bulan instan & tahun aktif terdeteksi otomatis
       const [studentsRes, paymentsRes, progsRes, verifsRes] = await Promise.all([
         supabase
           .from('students')
@@ -315,16 +308,41 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
           .eq('user_id', activeUser.id)
           .order('nama_lengkap', { ascending: true })
           .range(0, 4999),
-        paymentsQuery,
+        supabase
+          .from('payments')
+          .select('*')
+          .eq('user_id', activeUser.id)
+          .range(0, 9999),
         getReRegistrationPrograms(activeUser.id).catch(() => []),
         getPaymentVerifications(activeUser.id).catch(() => [])
       ]);
 
-      if (studentsRes?.data) {
+      if (studentsRes?.error) {
+        console.error('Catatoh: Gagal query students, mencoba fallback:', studentsRes.error);
+        const retryStudents = await supabase
+          .from('students')
+          .select('*')
+          .eq('user_id', activeUser.id)
+          .range(0, 4999);
+        if (retryStudents.data) {
+          const activeOnly = retryStudents.data.filter(s => s.status_aktif !== false);
+          setStudents(activeOnly);
+        }
+      } else if (studentsRes?.data) {
         const activeOnly = studentsRes.data.filter(s => s.status_aktif !== false);
         setStudents(activeOnly);
       }
-      if (paymentsRes?.data) setPayments(paymentsRes.data);
+
+      if (paymentsRes?.data) {
+        setPayments(paymentsRes.data);
+        if (paymentsRes.data.length > 0) {
+          const yearsWithPayments = [...new Set(paymentsRes.data.map((p: any) => p.tahun).filter(Boolean))];
+          if (yearsWithPayments.length > 0 && !yearsWithPayments.includes(parseInt(selectedTahun))) {
+            const bestYear = Math.max(...yearsWithPayments);
+            setSelectedTahun(bestYear.toString());
+          }
+        }
+      }
       if (progsRes) setReRegistrationPrograms(progsRes);
       if (verifsRes) {
         const pendings = (verifsRes || []).filter(v => v.status === 'pending');
@@ -587,22 +605,26 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   const paymentsMap = useMemo(() => {
     const map = new Map<string, any>();
     if (!payments) return map;
+    const targetTahun = parseInt(selectedTahun);
     for (const p of payments) {
-      if (p.student_id && p.bulan) {
+      if (p.student_id && p.bulan && (!p.tahun || p.tahun === targetTahun)) {
         map.set(`${p.student_id}_${p.bulan.trim().toLowerCase()}`, p);
       }
     }
     return map;
-  }, [payments]);
+  }, [payments, selectedTahun]);
 
   const studentWithPaymentsSet = useMemo(() => {
     const set = new Set<string>();
     if (!payments) return set;
+    const targetTahun = parseInt(selectedTahun);
     for (const p of payments) {
-      if (p.student_id) set.add(p.student_id);
+      if (p.student_id && (!p.tahun || p.tahun === targetTahun)) {
+        set.add(p.student_id);
+      }
     }
     return set;
-  }, [payments]);
+  }, [payments, selectedTahun]);
 
   // Pre-index pending verifications per student & month for O(1) cell lookup
   const pendingVerificationsMap = useMemo(() => {
@@ -710,7 +732,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   
   // Seluruh siswa yang belum lunas pada bulan reminder yang dipilih
   const allBelumLunasStudents = students.filter(s => 
-    !payments.some(p => p.student_id === s.id && p.bulan === targetReminderBulan)
+    !payments.some(p => p.student_id === s.id && p.bulan === targetReminderBulan && (!p.tahun || p.tahun === parseInt(selectedTahun)))
   );
 
   // Filter khusus di dalam Reminder Modal (pencarian nama/WA & filter kelompok)
@@ -736,7 +758,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
     const target = bulanToUse || (selectedBulan === 'Semua Bulan' ? BULAN_OPTIONS[new Date().getMonth()] : selectedBulan);
     setReminderBulan(target);
     const unpayed = students.filter(s => 
-      !payments.some(p => p.student_id === s.id && p.bulan === target)
+      !payments.some(p => p.student_id === s.id && p.bulan === target && (!p.tahun || p.tahun === parseInt(selectedTahun)))
     );
     // Centang default HANYA siswa yang nomor WA-nya valid (min 10 digit)
     const withValidPhone = unpayed

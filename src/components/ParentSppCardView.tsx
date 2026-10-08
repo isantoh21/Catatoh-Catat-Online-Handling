@@ -1076,7 +1076,7 @@ export default function ParentSppCardView() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {studentPrograms.map(prog => {
-                      const paymentEntry = Object.values(activeStudent.payments || {}).find(
+                      const paymentEntry: any = Object.values(activeStudent.payments || {}).find(
                         (p: any) => p.bulan?.toLowerCase().trim() === prog.name.toLowerCase().trim()
                       );
                       const isPaid = !!paymentEntry;

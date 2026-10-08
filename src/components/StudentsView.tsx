@@ -118,7 +118,15 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
         .range(0, 4999);
       
       if (error) {
-        console.error('Error fetching students:', error);
+        console.error('Catatoh: Gagal fetch students, mencoba retry fallback:', error);
+        const retryRes = await supabase
+          .from('students')
+          .select('*')
+          .eq('user_id', activeUser.id)
+          .range(0, 4999);
+        if (retryRes.data) {
+          setStudents(retryRes.data);
+        }
       } else if (data) {
         setStudents(data);
       }

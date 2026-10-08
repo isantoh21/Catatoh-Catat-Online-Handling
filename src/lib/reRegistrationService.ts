@@ -16,6 +16,9 @@ export interface ReRegistrationProgram {
 
 const getStorageKey = (userId?: string) => `catatoh_rereg_programs_${userId || 'global'}`;
 
+let isTableSupported = true;
+let isColumnSupported = true;
+
 /**
  * Mengambil daftar kelompok program Daftar Ulang dan Kelulusan milik pengguna.
  * Menggunakan strategi multi-tier: Supabase table -> user_settings -> user_metadata -> localStorage.
@@ -27,8 +30,8 @@ export async function getReRegistrationPrograms(userId?: string): Promise<ReRegi
     activeUserId = session?.user?.id;
   }
 
-  // 1. Coba ambil dari Supabase tabel `re_registration_programs`
-  if (activeUserId) {
+  // 1. Coba ambil dari Supabase tabel `re_registration_programs` jika didukung
+  if (activeUserId && isTableSupported) {
     try {
       const { data, error } = await supabase
         .from('re_registration_programs')
@@ -36,7 +39,11 @@ export async function getReRegistrationPrograms(userId?: string): Promise<ReRegi
         .eq('user_id', activeUserId)
         .order('created_at', { ascending: false });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01') {
+          isTableSupported = false;
+        }
+      } else if (Array.isArray(data) && data.length > 0) {
         // Cache ke local storage
         try {
           localStorage.setItem(getStorageKey(activeUserId), JSON.stringify(data));
@@ -44,24 +51,31 @@ export async function getReRegistrationPrograms(userId?: string): Promise<ReRegi
         return data as ReRegistrationProgram[];
       }
     } catch (dbErr) {
-      // Tabel mungkin belum dibuat di SQL editor, beralih ke layer berikutnya
+      isTableSupported = false;
     }
+  }
 
-    // 2. Coba ambil dari user_settings di Supabase
+  // 2. Coba ambil dari user_settings di Supabase jika didukung
+  if (activeUserId && isColumnSupported) {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_settings')
         .select('re_registration_programs')
         .eq('user_id', activeUserId)
         .maybeSingle();
 
-      if (data?.re_registration_programs && Array.isArray(data.re_registration_programs)) {
+      if (error && error.code === '42703') {
+        isColumnSupported = false;
+      } else if (data?.re_registration_programs && Array.isArray(data.re_registration_programs)) {
         try {
           localStorage.setItem(getStorageKey(activeUserId), JSON.stringify(data.re_registration_programs));
         } catch (_) {}
         return data.re_registration_programs as ReRegistrationProgram[];
       }
-    } catch (_) {}
+    } catch (_) {
+      isColumnSupported = false;
+    }
+  }
 
     // 3. Coba ambil dari auth user_metadata
     try {
@@ -71,7 +85,6 @@ export async function getReRegistrationPrograms(userId?: string): Promise<ReRegi
         return metaPrograms as ReRegistrationProgram[];
       }
     } catch (_) {}
-  }
 
   // 4. Fallback ke LocalStorage
   try {

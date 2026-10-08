@@ -661,7 +661,7 @@ export const exportProfessionalPDF = (data: ReportExportData) => {
   }
 
   // 9. FOOTER DI SETIAP HALAMAN (PAGE NUMBERING & IDENTITY)
-  const totalPages = doc.internal.getNumberOfPages();
+  const totalPages = (doc.internal as any).getNumberOfPages ? (doc.internal as any).getNumberOfPages() : doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setDrawColor(226, 232, 240);

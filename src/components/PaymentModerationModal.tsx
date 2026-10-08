@@ -405,6 +405,8 @@ export default function PaymentModerationModal({
       let singleStudentObj: any = null;
 
       // Cek apakah item adalah pembayaran Daftar Ulang atau Kelulusan
+      let approvedBulanText = item.bulan;
+      let approvedTahunText = item.tahun;
       const matchedProg = getDetectedProgramForItem(item, targetStudents, reRegistrationPrograms)
         || reRegistrationPrograms.find(p => p.name.trim().toLowerCase() === (item.bulan || '').trim().toLowerCase());
 
@@ -582,8 +584,8 @@ export default function PaymentModerationModal({
       }
 
       // Tentukan label bulan & tahun untuk pencatatan verifikasi dan pesan konfirmasi WA
-      let approvedBulanText = item.bulan;
-      let approvedTahunText = item.tahun;
+      approvedBulanText = item.bulan;
+      approvedTahunText = item.tahun;
       if (matchedProg) {
         approvedBulanText = matchedProg.name;
       } else if (singleStudentAllocation) {
@@ -702,7 +704,6 @@ export default function PaymentModerationModal({
 
           receiptFilePayload = {
             url: pdfRes.dataUri,
-            data: pdfRes.dataUri,
             filename: pdfRes.filename,
             mimetype: 'application/pdf'
           };
@@ -864,7 +865,6 @@ export default function PaymentModerationModal({
 
         receiptFilePayload = {
           url: pdfRes.dataUri,
-          data: pdfRes.dataUri,
           filename: pdfRes.filename,
           mimetype: 'application/pdf'
         };
@@ -1923,22 +1923,22 @@ export default function PaymentModerationModal({
                       {/* Deteksi Program Daftar Ulang / Kelulusan */}
                       {detectedProg && (
                         <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs ${
-                          detectedProg.type === 'graduation'
+                          detectedProg.type === 'lulus'
                             ? 'bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-pink-50/80 border-purple-200 text-purple-950'
                             : 'bg-gradient-to-r from-teal-50/90 via-emerald-50/70 to-cyan-50/80 border-emerald-200 text-emerald-950'
                         }`}>
                           <div className="flex items-center gap-2">
                             <span className="text-base shrink-0">
-                              {detectedProg.type === 'graduation' ? '🎓' : '📋'}
+                              {detectedProg.type === 'lulus' ? '🎓' : '📋'}
                             </span>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                                  detectedProg.type === 'graduation'
+                                  detectedProg.type === 'lulus'
                                     ? 'bg-purple-600 text-white'
                                     : 'bg-emerald-600 text-white'
                                 }`}>
-                                  {detectedProg.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'}
+                                  {detectedProg.type === 'lulus' ? 'Kelulusan' : 'Daftar Ulang'}
                                 </span>
                                 <span className="font-extrabold text-xs">
                                   {detectedProg.name}
@@ -1955,12 +1955,12 @@ export default function PaymentModerationModal({
                             </div>
                           </div>
 
-                          {detectedProg.type === 'graduation' && detectedProg.requirements && (
+                          {detectedProg.type === 'lulus' && detectedProg.requirements && (
                             <div className="bg-white/95 p-2 rounded-lg border border-purple-200 text-[11px] shrink-0">
                               <span className="font-bold text-purple-900 block">Syarat Khusus Kelulusan:</span>
                               <span className="text-purple-800 font-medium">{detectedProg.requirements}</span>
                               <div className="mt-1 flex items-center gap-1 font-bold text-[10px]">
-                                {matchedStudents.every(st => detectedProg.requirement_statuses?.[st.id]) ? (
+                                {matchedStudents.every(st => detectedProg.student_requirements_status?.[st.id]) ? (
                                   <span className="text-emerald-600 flex items-center gap-1">
                                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                     Syarat Sudah Terpenuhi

@@ -144,6 +144,8 @@ export default function ReportsView({ currentUser: propUser }: ReportsViewProps 
       return;
     }
 
+    const currentUser = activeUser;
+
     // Fetch active students for metrics (select all fields including kelompok & no. WA)
     const { data: studentsData } = await supabase
       .from('students')
