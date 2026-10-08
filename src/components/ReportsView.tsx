@@ -76,35 +76,6 @@ export default function ReportsView({ currentUser: propUser }: ReportsViewProps 
       }
     });
 
-    // Listen to real-time changes on students table so student count is always synchronized
-    const studentsChannel = supabase
-      .channel('realtime-reports-students')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
-        fetchData();
-      })
-      .subscribe();
-
-    const paymentsChannel = supabase
-      .channel('realtime-reports-payments')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
-        fetchData();
-      })
-      .subscribe();
-      
-    const otherIncomesChannel = supabase
-      .channel('realtime-reports-other-incomes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'other_incomes' }, () => {
-        fetchData();
-      })
-      .subscribe();
-
-    const expensesChannel = supabase
-      .channel('realtime-reports-expenses')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
-        fetchData();
-      })
-      .subscribe();
-
     const handleFocus = () => {
       fetchData();
     };
@@ -112,13 +83,9 @@ export default function ReportsView({ currentUser: propUser }: ReportsViewProps 
 
     return () => {
       subscription.unsubscribe();
-      supabase.removeChannel(studentsChannel);
-      supabase.removeChannel(paymentsChannel);
-      supabase.removeChannel(expensesChannel);
-      supabase.removeChannel(otherIncomesChannel);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [propUser, selectedTahun]); // Re-fetch all data for the year when year or user changes
+  }, [propUser?.id, selectedTahun]);
 
   const fetchData = async (userParam?: any) => {
     setLoading(true);

@@ -77,18 +77,7 @@ export default function GroupsView({ currentUser: propUser }: GroupsViewProps = 
       }
     });
 
-    const channel = supabase
-      .channel('realtime-groups-students')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
-        fetchStudents();
-      })
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-      supabase.removeChannel(channel);
-    };
-  }, [propUser]);
+  }, [propUser?.id]);
 
   // Reset selections when switching tabs
   useEffect(() => {
