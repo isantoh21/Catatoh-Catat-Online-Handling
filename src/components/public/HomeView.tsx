@@ -21,7 +21,21 @@ import {
   Building,
   Sparkles,
   Users,
-  Smartphone
+  Smartphone,
+  Search,
+  Phone,
+  GraduationCap,
+  Calendar,
+  CalendarRange,
+  TrendingUp,
+  RefreshCw,
+  CheckSquare,
+  Square,
+  DollarSign,
+  Filter,
+  CheckCircle,
+  FolderPlus,
+  AlertCircle
 } from 'lucide-react';
 
 interface HomeViewProps {
@@ -216,57 +230,174 @@ export default function HomeView({ schoolName = 'CATATOH', schoolLogo = '' }: Ho
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-blue-100">
                       <div>
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-bold mb-1">
-                          <Wallet className="w-3 h-3" /> Modul Keuangan & SPP
+                          <Wallet className="w-3 h-3" /> Modul Pembukuan SPP & Kas Sekolah Terpadu
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900">Pembukuan SPP Bulanan & Kas Masuk/Keluar</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Filter per kelas instan, rekap saldo otomatis, dan cetak kuitansi resmi.</p>
+                        <h3 className="text-lg font-bold text-slate-900">Pusat Kendali SPP Bulanan, Cetak Kuitansi & Buku Kas Lengkap</h3>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          1-Klik Lunas, Lunas Massal setoran kelas, cetak kuitansi resmi PDF, serta otomatis membukukan kas operasional tanpa selisih.
+                        </p>
                       </div>
-                      <div>
-                        <span className="text-xs px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 inline-block">
-                          Total Kas Hari Ini: Rp 14.250.000
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 inline-flex items-center gap-1.5 shadow-2xs">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Saldo Kas Real-time: Rp 13.550.000</span>
                         </span>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 overflow-hidden text-xs shadow-xs">
+                    {/* Filter & Action Toolbar (Mirip Dashboard Asli) */}
+                    <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 flex flex-wrap lg:flex-nowrap items-center justify-between gap-3 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 flex-1">
+                        <div className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 flex items-center gap-1.5 shadow-2xs">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Oktober 2026 (Semester Ganjil)</span>
+                        </div>
+                        <div className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-medium text-slate-700 shadow-2xs">
+                          <span>Kelas: <b>VII-A</b></span>
+                        </div>
+                        <div className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-medium text-slate-700 shadow-2xs">
+                          <span>Status: <b>Semua</b></span>
+                        </div>
+                        <div className="relative flex-1 min-w-[140px]">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input 
+                            readOnly 
+                            value="Ahmad Fadhil..." 
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 text-xs" 
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tombol Aksi Nyata Dashboard */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-2xs">
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          <span>Tandai Lunas Massal (2 Siswa)</span>
+                        </button>
+                        <button className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-slate-900 shadow-2xs" title="Sync Database">
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <button className="px-2.5 py-1.5 bg-indigo-900 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-2xs relative">
+                          <MessageCircle className="w-3.5 h-3.5 text-amber-300" />
+                          <span className="hidden sm:inline text-[11px]">Moderasi WA</span>
+                          <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-indigo-950 text-[10px] font-black">2 Baru</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tabel SPP Nyata */}
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden text-xs shadow-2xs bg-white">
                       <table className="w-full text-left">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+                        <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
                           <tr>
-                            <th className="p-3">Nama Siswa</th>
-                            <th className="p-3">Kelas</th>
-                            <th className="p-3">Bulan</th>
-                            <th className="p-3">Nominal</th>
-                            <th className="p-3">Status Bayar</th>
-                            <th className="p-3 text-right">Aksi</th>
+                            <th className="p-3 w-8 text-center">
+                              <CheckSquare className="w-4 h-4 text-indigo-600 mx-auto" />
+                            </th>
+                            <th className="p-3">Siswa & Kelas</th>
+                            <th className="p-3">Bulan Tagihan</th>
+                            <th className="p-3">Status Pembayaran</th>
+                            <th className="p-3 text-right">Tindakan Admin</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700">
-                          <tr className="hover:bg-blue-50/30 transition-colors">
-                            <td className="p-3 font-semibold text-slate-900">Ahmad Fadhil Prasetya</td>
-                            <td className="p-3"><span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">Kelas VII-A</span></td>
-                            <td className="p-3">Oktober 2026</td>
-                            <td className="p-3 font-mono font-bold text-slate-900">Rp 250.000</td>
-                            <td className="p-3"><span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">Lunas (BCA)</span></td>
-                            <td className="p-3 text-right"><span className="text-blue-600 font-bold hover:underline cursor-pointer">Cetak Nota PDF</span></td>
+                          <tr className="hover:bg-blue-50/30 transition-colors bg-blue-50/10">
+                            <td className="p-3 text-center">
+                              <CheckSquare className="w-4 h-4 text-indigo-600 mx-auto" />
+                            </td>
+                            <td className="p-3 font-semibold text-slate-900">
+                              <div>Ahmad Fadhil Prasetya</div>
+                              <span className="text-[10px] text-slate-500 font-normal">Kelas VII-A • Reguler</span>
+                            </td>
+                            <td className="p-3 font-medium">Oktober 2026</td>
+                            <td className="p-3">
+                              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                <span>LUNAS (08 Okt 2026, 09:14 WIB)</span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right space-x-1.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold border border-blue-200 hover:bg-blue-100 cursor-pointer shadow-2xs">
+                                <Printer className="w-3 h-3" /> Cetak Kuitansi PDF
+                              </span>
+                            </td>
                           </tr>
                           <tr className="hover:bg-blue-50/30 transition-colors">
-                            <td className="p-3 font-semibold text-slate-900">Nabila Zahra Syahrul</td>
-                            <td className="p-3"><span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">Kelas VII-A</span></td>
-                            <td className="p-3">Oktober 2026</td>
-                            <td className="p-3 font-mono font-bold text-slate-900">Rp 250.000</td>
-                            <td className="p-3"><span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">Lunas (Tunai)</span></td>
-                            <td className="p-3 text-right"><span className="text-blue-600 font-bold hover:underline cursor-pointer">Cetak Nota PDF</span></td>
+                            <td className="p-3 text-center">
+                              <CheckSquare className="w-4 h-4 text-indigo-600 mx-auto" />
+                            </td>
+                            <td className="p-3 font-semibold text-slate-900">
+                              <div>Nabila Zahra Syahrul</div>
+                              <span className="text-[10px] text-slate-500 font-normal">Kelas VII-A • Reguler</span>
+                            </td>
+                            <td className="p-3 font-medium">Oktober 2026</td>
+                            <td className="p-3">
+                              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[11px]">
+                                <Clock className="w-3 h-3 text-rose-600" />
+                                <span>BELUM LUNAS</span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right space-x-1.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 cursor-pointer shadow-2xs">
+                                <Check className="w-3 h-3" /> 1-Klik Lunas
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 hover:bg-emerald-100 cursor-pointer shadow-2xs">
+                                <MessageCircle className="w-3 h-3" /> Tagih WA
+                              </span>
+                            </td>
                           </tr>
                           <tr className="hover:bg-blue-50/30 transition-colors">
-                            <td className="p-3 font-semibold text-slate-900">Rafi Arya Wijaya</td>
-                            <td className="p-3"><span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">Kelas VII-A</span></td>
-                            <td className="p-3">Oktober 2026</td>
-                            <td className="p-3 font-mono font-bold text-slate-900">Rp 250.000</td>
-                            <td className="p-3"><span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">Menunggu</span></td>
-                            <td className="p-3 text-right"><span className="text-emerald-700 font-bold hover:underline cursor-pointer">Kirim WA Ortu</span></td>
+                            <td className="p-3 text-center">
+                              <Square className="w-4 h-4 text-slate-300 mx-auto" />
+                            </td>
+                            <td className="p-3 font-semibold text-slate-900">
+                              <div>Rafi Arya Wijaya</div>
+                              <span className="text-[10px] text-slate-500 font-normal">Kelas VII-A • Reguler</span>
+                            </td>
+                            <td className="p-3 font-medium">Oktober 2026</td>
+                            <td className="p-3">
+                              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                <span>LUNAS (07 Okt 2026, 11:20 WIB)</span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold border border-blue-200 hover:bg-blue-100 cursor-pointer shadow-2xs">
+                                <Printer className="w-3 h-3" /> Cetak Kuitansi PDF
+                              </span>
+                            </td>
                           </tr>
                         </tbody>
                       </table>
+                    </div>
+
+                    {/* Ringkasan 3 Pilar Buku Kas Terintegrasi */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                      <div className="p-3.5 rounded-xl bg-gradient-to-b from-blue-50/80 to-white border border-blue-200 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-800 flex items-center justify-between">
+                          <span>Pemasukan Kas & SPP</span>
+                          <span className="w-2 h-2 rounded-full bg-blue-600" />
+                        </div>
+                        <div className="text-base font-black text-slate-950 font-mono">Rp 18.750.000</div>
+                        <p className="text-[10px] text-slate-500">SPP siswa otomatis sinkron + Uang Pendaftaran/Seragam</p>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-gradient-to-b from-rose-50/80 to-white border border-rose-200 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-rose-800 flex items-center justify-between">
+                          <span>Pengeluaran Operasional</span>
+                          <span className="w-2 h-2 rounded-full bg-rose-600" />
+                        </div>
+                        <div className="text-base font-black text-slate-950 font-mono">Rp 5.200.000</div>
+                        <p className="text-[10px] text-slate-500">Honor staf, listrik, ATK & pemeliharaan (arsip foto nota)</p>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-gradient-to-b from-emerald-50/80 to-white border border-emerald-200 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
+                          <span>Saldo Kas Bersih Buku</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                        </div>
+                        <div className="text-base font-black text-emerald-700 font-mono">Rp 13.550.000</div>
+                        <p className="text-[10px] text-slate-500">Net cashflow seimbang 100%, siap unduh laporan bulanan</p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -403,50 +534,196 @@ export default function HomeView({ schoolName = 'CATATOH', schoolLogo = '' }: Ho
                   </div>
                 )}
 
-                {/* 5. Kartu Wali Murid */}
+                {/* 5. Kartu Wali Murid (Mencerminkan Fungsi Asli ParentSppCardView) */}
                 {activeWorkflow === 'portal' && (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                    <div className="md:col-span-6 space-y-3">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-800 text-xs font-bold">
-                        <Receipt className="w-3 h-3" /> Transparansi Mandiri 24 Jam
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-900">Kartu SPP Online Wali Murid Bebas Password</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        Tiap siswa memiliki tautan kartu SPP online khusus. Orang tua dapat memeriksa riwayat pembayaran satu tahun ajaran dan mengunduh kuitansi resmi kapan pun dari smartphone tanpa perlu repot login akun.
-                      </p>
-                      <div className="space-y-2 text-xs text-slate-700 pt-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Menghilangkan 90% panggilan wali murid menanyakan sisa tagihan</span>
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-amber-100">
+                      <div>
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-900 text-xs font-bold mb-1">
+                          <Receipt className="w-3 h-3 text-amber-700" /> Portal Kartu SPP Digital Mandiri 24 Jam
                         </div>
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Kuitansi digital sah dapat diunduh kapan saja</span>
+                        <h3 className="text-lg font-bold text-slate-900">Pemeriksaan Progres SPP Siswa Bebas Password & Multi-Anak</h3>
+                        <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                          Wali murid cukup memasukkan nomor WhatsApp terdaftar. Langsung melihat kelunasan 1 tahun ajaran (Juli ke Juni), semester ganjil/genap, biaya daftar ulang/kelulusan, serta tombol cetak kartu mandiri.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 font-bold border border-amber-200 inline-flex items-center gap-1.5 shadow-2xs">
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Privasi Terjaga: Nominal Rupiah Disembunyikan</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Step 1: Form Akses Cepat via Nomor WA (Tanpa Password) */}
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                      <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                        <div className="relative flex-1 w-full">
+                          <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input 
+                            readOnly 
+                            value="0812-3456-7890 (Nomor WhatsApp Wali Murid)" 
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-medium"
+                          />
+                        </div>
+                        <button className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-2xs">
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Cek Kartu SPP</span>
+                        </button>
+                      </div>
+
+                      {/* Multi-Anak Switcher (Fitur Nyata jika 1 Ortu punya 2 anak) */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-indigo-600" /> Ditemukan 2 Siswa untuk Nomor Ini:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                            <span>Muhammad Rizky Pratama</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-medium">Kelas VII-A</span>
+                          </span>
+                          <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200 flex items-center gap-1.5 cursor-pointer hover:bg-slate-200">
+                            <span>Siti Aisyah Humaira</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 font-medium">Kelas IX-B</span>
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="md:col-span-6 bg-gradient-to-b from-amber-50/50 to-white rounded-2xl p-5 border border-amber-200 text-xs space-y-2 shadow-xs">
-                      <div className="font-bold text-slate-900 pb-2 border-b border-amber-100 flex justify-between items-center">
-                        <span className="text-amber-950 font-bold">Kartu SPP Digital Siswa</span>
-                        <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">T.A 2026/2027</span>
+                    {/* Step 2: Kartu Status Siswa & Progress Bar Kelunasan 1 Tahun Ajaran */}
+                    <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 font-black text-base flex items-center justify-center border border-indigo-200 shadow-inner">
+                            M
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-extrabold text-slate-900 text-sm sm:text-base">Muhammad Rizky Pratama</h4>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                Aktif
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                              Kelas: <b>VII-A</b> • Tahun Ajaran <b>TA 2026/2027 (Juli 2026 – Juni 2027)</b>
+                            </p>
+                          </div>
+                        </div>
+                        <button className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-200 self-start sm:self-auto cursor-pointer shadow-2xs">
+                          <Printer className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Cetak Kartu SPP</span>
+                        </button>
                       </div>
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex justify-between py-1 border-b border-slate-100">
-                          <span className="text-slate-600">Juli 2026</span>
-                          <span className="text-emerald-700 font-bold">Lunas (10 Juli 2026)</span>
+
+                      {/* Progress Bar 1 Tahun Ajaran (Juli ke Juni) */}
+                      <div className="p-3.5 rounded-xl bg-gradient-to-r from-slate-50 to-indigo-50/50 border border-indigo-100 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            Progres Kelunasan SPP TA 2026/2027
+                          </span>
+                          <span className="font-black text-indigo-700">8 dari 12 Bulan Lunas (67%)</span>
                         </div>
-                        <div className="flex justify-between py-1 border-b border-slate-100">
-                          <span className="text-slate-600">Agustus 2026</span>
-                          <span className="text-emerald-700 font-bold">Lunas (8 Agustus 2026)</span>
+                        <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden p-0.5">
+                          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: '67%' }} />
                         </div>
-                        <div className="flex justify-between py-1 border-b border-slate-100">
-                          <span className="text-slate-600">September 2026</span>
-                          <span className="text-emerald-700 font-bold">Lunas (5 September 2026)</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-600 pt-0.5">
+                          <span>Semester Ganjil: <b className="text-emerald-700">6/6 Lunas</b></span>
+                          <span>Semester Genap: <b className="text-indigo-700">2/6 Lunas</b></span>
                         </div>
-                        <div className="flex justify-between py-1">
-                          <span className="text-slate-900 font-semibold">Oktober 2026</span>
-                          <span className="text-amber-700 font-bold">Menunggu Pembayaran</span>
+                      </div>
+
+                      {/* 12 Kotak Status Bulan Tahun Ajaran (Juli - Juni) */}
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                          <CalendarRange className="w-3.5 h-3.5 text-indigo-600" /> Riwayat Status 12 Bulan (Juli 2026 – Juni 2027):
+                        </div>
+                        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 text-xs">
+                          {/* Juli - Des (Ganjil) */}
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Juli 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">10 Jul 2026</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Agustus 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">08 Agu 2026</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">September 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">05 Sep 2026</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Oktober 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">08 Okt 2026</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">November 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">06 Nov 2026</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Desember 2026</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">10 Des 2026</div>
+                          </div>
+
+                          {/* Jan - Jun (Genap) */}
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Januari 2027</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">08 Jan 2027</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Februari 2027</div>
+                            <span className="text-[10px] font-extrabold text-emerald-700">LUNAS</span>
+                            <div className="text-[9px] text-slate-500 mt-0.5">07 Feb 2027</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-rose-50/70 border border-rose-200 text-center">
+                            <div className="font-bold text-slate-800 text-[11px]">Maret 2027</div>
+                            <span className="text-[10px] font-extrabold text-rose-700">BELUM</span>
+                            <div className="text-[9px] text-slate-400 mt-0.5">-</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-center opacity-70">
+                            <div className="font-bold text-slate-700 text-[11px]">April 2027</div>
+                            <span className="text-[10px] font-bold text-slate-500">BELUM</span>
+                            <div className="text-[9px] text-slate-400 mt-0.5">-</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-center opacity-70">
+                            <div className="font-bold text-slate-700 text-[11px]">Mei 2027</div>
+                            <span className="text-[10px] font-bold text-slate-500">BELUM</span>
+                            <div className="text-[9px] text-slate-400 mt-0.5">-</div>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-center opacity-70">
+                            <div className="font-bold text-slate-700 text-[11px]">Juni 2027</div>
+                            <span className="text-[10px] font-bold text-slate-500">BELUM</span>
+                            <div className="text-[9px] text-slate-400 mt-0.5">-</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tagihan Khusus Program Daftar Ulang & Wisuda */}
+                      <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-extrabold px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded uppercase">📋 Daftar Ulang</span>
+                            <div className="font-bold text-slate-800 mt-1">Uang Pangkal / Daftar Ulang TA 26/27</div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                            LUNAS
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-extrabold px-1.5 py-0.2 bg-amber-100 text-amber-900 rounded uppercase">🎓 Kelulusan</span>
+                            <div className="font-bold text-slate-800 mt-1">Biaya Wisuda & Ijazah 2027</div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">
+                            BELUM BAYAR
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -653,9 +930,9 @@ export default function HomeView({ schoolName = 'CATATOH', schoolLogo = '' }: Ho
             <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold mb-4">
               <Wallet className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-2">Kas & Kartu SPP Digital 24 Jam</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-2">Kas Terpadu & Kartu SPP Wali Murid</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Sentralisasi pembukuan SPP, kas masuk, dan pengeluaran. Cetak kuitansi nota PDF resmi dan portal online mandiri bagi wali murid.
+              1-Klik Lunas & Lunas Massal, cetak kuitansi PDF resmi, otomatis sinkron ke buku kas operasional sekolah, serta portal cek mandiri wali murid berbasis nomor WA tanpa ribet login.
             </p>
           </div>
 
