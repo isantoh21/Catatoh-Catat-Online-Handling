@@ -18,7 +18,11 @@ const BULAN_OPTIONS = [
 ];
 const YEAR_OPTIONS = Array.from({ length: 2045 - 2023 + 1 }, (_, i) => 2023 + i);
 
-export default function ReportsView() {
+interface ReportsViewProps {
+  currentUser?: any;
+}
+
+export default function ReportsView({ currentUser: propUser }: ReportsViewProps = {}) {
   
   const currentDate = new Date();
   const [selectedBulan, setSelectedBulan] = useState(BULAN_OPTIONS[currentDate.getMonth()]);
@@ -64,7 +68,13 @@ export default function ReportsView() {
   });
 
   useEffect(() => {
-    fetchData();
+    fetchData(propUser);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchData(session.user);
+      }
+    });
 
     // Listen to real-time changes on students table so student count is always synchronized
     const studentsChannel = supabase
@@ -101,19 +111,32 @@ export default function ReportsView() {
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      subscription.unsubscribe();
       supabase.removeChannel(studentsChannel);
       supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(expensesChannel);
       supabase.removeChannel(otherIncomesChannel);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [selectedTahun]); // Re-fetch all data for the year when year changes
+  }, [propUser, selectedTahun]); // Re-fetch all data for the year when year or user changes
 
-  const fetchData = async () => {
+  const fetchData = async (userParam?: any) => {
     setLoading(true);
 
-    const currentUser = (await supabase.auth.getSession()).data.session?.user;
-    if (!currentUser) {
+    let activeUser = userParam || propUser;
+    if (!activeUser) {
+      const sessionRes = await supabase.auth.getSession();
+      activeUser = sessionRes.data.session?.user;
+    }
+    if (!activeUser) {
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 400));
+        const retrySession = await supabase.auth.getSession();
+        activeUser = retrySession.data.session?.user;
+        if (activeUser) break;
+      }
+    }
+    if (!activeUser) {
       setStudents([]);
       setPayments([]);
       setExpenses([]);
@@ -124,13 +147,15 @@ export default function ReportsView() {
     // Fetch active students for metrics (select all fields including kelompok & no. WA)
     const { data: studentsData } = await supabase
       .from('students')
-      .select('id, nama_lengkap, nominal_spp, kelompok, nomor_whatsapp')
-      .eq('user_id', currentUser.id)
-      .neq('status_aktif', false)
+      .select('id, nama_lengkap, nominal_spp, kelompok, nomor_whatsapp, status_aktif')
+      .eq('user_id', activeUser.id)
       .order('nama_lengkap', { ascending: true })
       .range(0, 4999);
       
-    if (studentsData) setStudents(studentsData);
+    if (studentsData) {
+      const activeOnly = studentsData.filter(s => s.status_aktif !== false);
+      setStudents(activeOnly);
+    }
 
     // Fetch payments for selected year
     const { data: paymentsData } = await supabase

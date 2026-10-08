@@ -11,7 +11,11 @@ const BULAN_OPTIONS = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export default function OtherIncomeView() {
+interface OtherIncomeViewProps {
+  currentUser?: any;
+}
+
+export default function OtherIncomeView({ currentUser: propUser }: OtherIncomeViewProps = {}) {
   const [otherIncomes, setOtherIncomes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -31,19 +35,41 @@ export default function OtherIncomeView() {
   const [isTableMissing, setIsTableMissing] = useState(false);
 
   useEffect(() => {
-    fetchOtherIncomes();
-  }, []);
+    fetchOtherIncomes(propUser);
 
-  const fetchOtherIncomes = async () => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchOtherIncomes(session.user);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [propUser]);
+
+  const fetchOtherIncomes = async (userParam?: any) => {
     try {
       setLoading(true);
-      const currentUser = (await supabase.auth.getSession()).data.session?.user;
-      if (!currentUser) return;
+      let activeUser = userParam || propUser;
+      if (!activeUser) {
+        const sessionRes = await supabase.auth.getSession();
+        activeUser = sessionRes.data.session?.user;
+      }
+      if (!activeUser) {
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          const retrySession = await supabase.auth.getSession();
+          activeUser = retrySession.data.session?.user;
+          if (activeUser) break;
+        }
+      }
+      if (!activeUser) return;
       
       const { data, error } = await supabase
         .from('other_incomes')
         .select('*')
-        .eq('user_id', currentUser.id);
+        .eq('user_id', activeUser.id);
         
       if (error) {
         if (error.code === 'PGRST205') {

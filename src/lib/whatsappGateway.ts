@@ -346,18 +346,6 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
     return [];
   }
 
-  // Bersihkan data base64 warisan lama di Supabase di latar belakang agar database tetap ramping (< 5 MB)
-  if (activeUserId) {
-    try {
-      supabase
-        .from('payment_verifications')
-        .update({ proof_image_url: 'ai_detected' } as any)
-        .like('proof_image_url', 'data:%')
-        .eq('user_id', activeUserId)
-        .then(() => {}, () => {});
-    } catch (_) {}
-  }
-
   // Bersihkan cache localStorage yang over-quota jika terisi data base64 raksasa (>100KB)
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -427,16 +415,6 @@ export async function getPaymentVerifications(userId?: string): Promise<PaymentV
         }
         return true;
       });
-
-      // Bersihkan dari database Supabase di latar belakang
-      if (expiredApprovedIds.length > 0) {
-        supabase
-          .from('payment_verifications')
-          .delete()
-          .in('id', expiredApprovedIds)
-          .eq('user_id', activeUserId)
-          .then(() => {}, () => {});
-      }
 
       // Filter ketat: HANYA bukti struk transfer nyata yang lolos dan HANYA dari siswa terdaftar milik akun ini
       return mapped.filter((item: any) => isRealTransferReceipt(item) && Boolean(item.student_id));

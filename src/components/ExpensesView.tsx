@@ -9,7 +9,11 @@ const BULAN_OPTIONS = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export default function ExpensesView() {
+interface ExpensesViewProps {
+  currentUser?: any;
+}
+
+export default function ExpensesView({ currentUser: propUser }: ExpensesViewProps = {}) {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -28,19 +32,41 @@ export default function ExpensesView() {
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
   useEffect(() => {
-    fetchExpenses();
-  }, []);
+    fetchExpenses(propUser);
 
-  const fetchExpenses = async () => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchExpenses(session.user);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [propUser]);
+
+  const fetchExpenses = async (userParam?: any) => {
     try {
       setLoading(true);
-      const currentUser = (await supabase.auth.getSession()).data.session?.user;
-      if (!currentUser) return;
+      let activeUser = userParam || propUser;
+      if (!activeUser) {
+        const sessionRes = await supabase.auth.getSession();
+        activeUser = sessionRes.data.session?.user;
+      }
+      if (!activeUser) {
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          const retrySession = await supabase.auth.getSession();
+          activeUser = retrySession.data.session?.user;
+          if (activeUser) break;
+        }
+      }
+      if (!activeUser) return;
       
       const { data, error } = await supabase
         .from('expenses')
         .select('*')
-        .eq('user_id', currentUser.id);
+        .eq('user_id', activeUser.id);
         
       if (error) throw error;
       setExpenses(data || []);

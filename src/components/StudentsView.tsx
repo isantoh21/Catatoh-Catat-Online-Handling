@@ -114,22 +114,13 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
         .from('students')
         .select('*')
         .eq('user_id', activeUser.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 4999);
       
       if (error) {
         console.error('Error fetching students:', error);
       } else if (data) {
         setStudents(data);
-        // Auto-heal data siswa lama yang kolom status_aktif nya masih NULL/undefined menjadi true (aktif)
-        const nullStatusStudents = data.filter(s => s.status_aktif === null || s.status_aktif === undefined);
-        if (nullStatusStudents.length > 0) {
-          supabase
-            .from('students')
-            .update({ status_aktif: true })
-            .in('id', nullStatusStudents.map(s => s.id))
-            .eq('user_id', activeUser.id)
-            .then(() => {});
-        }
       }
     } catch (err) {
       console.error('Exception in fetchStudents:', err);

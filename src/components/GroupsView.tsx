@@ -16,7 +16,11 @@ import {
 } from '../lib/reRegistrationService';
 import { logActivity } from '../lib/activityLogger';
 
-export default function GroupsView() {
+interface GroupsViewProps {
+  currentUser?: any;
+}
+
+export default function GroupsView({ currentUser: propUser }: GroupsViewProps = {}) {
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -63,8 +67,15 @@ export default function GroupsView() {
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
   useEffect(() => {
-    fetchStudents();
+    fetchStudents(propUser);
     fetchPrograms();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchStudents(session.user);
+        fetchPrograms();
+      }
+    });
 
     const channel = supabase
       .channel('realtime-groups-students')
@@ -74,9 +85,10 @@ export default function GroupsView() {
       .subscribe();
 
     return () => {
+      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [propUser]);
 
   // Reset selections when switching tabs
   useEffect(() => {
@@ -85,21 +97,33 @@ export default function GroupsView() {
     setSearchQuery('');
   }, [activeTab]);
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (userParam?: any) => {
     try {
       setLoading(true);
-      const currentUser = (await supabase.auth.getSession()).data.session?.user;
-      if (!currentUser) return;
+      let activeUser = userParam || propUser;
+      if (!activeUser) {
+        const sessionRes = await supabase.auth.getSession();
+        activeUser = sessionRes.data.session?.user;
+      }
+      if (!activeUser) {
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          const retrySession = await supabase.auth.getSession();
+          activeUser = retrySession.data.session?.user;
+          if (activeUser) break;
+        }
+      }
+      if (!activeUser) return;
       
       const { data, error } = await supabase
         .from('students')
         .select('*')
-        .eq('user_id', currentUser.id)
-        .neq('status_aktif', false)
+        .eq('user_id', activeUser.id)
         .order('nama_lengkap');
         
       if (error) throw error;
-      setStudents(data || []);
+      const activeOnly = (data || []).filter(s => s.status_aktif !== false);
+      setStudents(activeOnly);
     } catch (error) {
       console.error('Error fetching students:', error);
     } finally {

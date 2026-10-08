@@ -223,9 +223,12 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
   };
 
   useEffect(() => {
-    fetchData();
+    if (propUser?.id) {
+      setCurrentUserId(propUser.id);
+    }
+    fetchData(propUser);
 
-    const channelId = currentUserId || 'global';
+    const channelId = currentUserId || propUser?.id || 'global';
     const studentsChannel = supabase
       .channel(`realtime-students-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
@@ -255,7 +258,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(verifChannel);
     };
-  }, [selectedBulan, selectedTahun, currentUserId]);
+  }, [propUser, selectedBulan, selectedTahun]);
 
   const handleSaveTemplate = async () => {
     const sessionData = await supabase.auth.getSession();
@@ -283,9 +286,12 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
         activeUser = sessionData.data.session?.user;
       }
       if (!activeUser) {
-        await new Promise(r => setTimeout(r, 400));
-        const retrySession = await supabase.auth.getSession();
-        activeUser = retrySession.data.session?.user;
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          const retrySession = await supabase.auth.getSession();
+          activeUser = retrySession.data.session?.user;
+          if (activeUser) break;
+        }
       }
       if (!activeUser) {
         return;
@@ -294,29 +300,30 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       setCurrentUserId(activeUser.id);
 
       // Jalankan query siswa, pembayaran, program, dan moderasi secara paralel
-      let paymentsQuery = supabase
+      // Query semua pembayaran tahun berjalan agar sel tabel dan filter selalu lengkap & cepat
+      const paymentsQuery = supabase
         .from('payments')
         .select('*')
         .eq('user_id', activeUser.id)
-        .eq('tahun', parseInt(selectedTahun));
-        
-      if (selectedBulan !== 'Semua Bulan') {
-        paymentsQuery = paymentsQuery.eq('bulan', selectedBulan);
-      }
+        .eq('tahun', parseInt(selectedTahun))
+        .range(0, 4999);
 
       const [studentsRes, paymentsRes, progsRes, verifsRes] = await Promise.all([
         supabase
           .from('students')
           .select('*')
           .eq('user_id', activeUser.id)
-          .neq('status_aktif', false)
-          .order('nama_lengkap', { ascending: true }),
+          .order('nama_lengkap', { ascending: true })
+          .range(0, 4999),
         paymentsQuery,
         getReRegistrationPrograms(activeUser.id).catch(() => []),
         getPaymentVerifications(activeUser.id).catch(() => [])
       ]);
 
-      if (studentsRes?.data) setStudents(studentsRes.data);
+      if (studentsRes?.data) {
+        const activeOnly = studentsRes.data.filter(s => s.status_aktif !== false);
+        setStudents(activeOnly);
+      }
       if (paymentsRes?.data) setPayments(paymentsRes.data);
       if (progsRes) setReRegistrationPrograms(progsRes);
       if (verifsRes) {
@@ -1401,7 +1408,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
               <div className="p-8 text-center text-sm text-slate-500">Tidak ada data siswa aktif.</div>
             ) : (
               paginatedStudents.map(student => {
-                const payment = payments.find(p => p.student_id === student.id && p.bulan === selectedBulan);
+                const payment = paymentsMap.get(`${student.id}_${selectedBulan.trim().toLowerCase()}`);
                 const isLunas = !!payment;
                 const pendingVerif = !isLunas ? getPendingVerificationForStudent(student.id, selectedBulan, selectedTahun) : null;
 
@@ -1598,7 +1605,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
                 <tr><td colSpan={activeProgram?.type === 'lulus' ? 7 : 6} className="px-6 py-8 text-center text-sm text-slate-500">Tidak ada data siswa aktif.</td></tr>
               ) : (
                 paginatedStudents.map(student => {
-                  const payment = payments.find(p => p.student_id === student.id && p.bulan === selectedBulan);
+                  const payment = paymentsMap.get(`${student.id}_${selectedBulan.trim().toLowerCase()}`);
                   const isLunas = !!payment;
                   const pendingVerif = !isLunas ? getPendingVerificationForStudent(student.id, selectedBulan, selectedTahun) : null;
 

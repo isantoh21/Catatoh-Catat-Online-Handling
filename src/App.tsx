@@ -879,10 +879,10 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardView currentUser={currentUser} />} />
             <Route path="/siswa" element={<StudentsView currentUser={currentUser} />} />
-            <Route path="/kelompok" element={<GroupsView />} />
-            <Route path="/pengeluaran" element={<ExpensesView />} />
-            <Route path="/pemasukan-lain" element={<OtherIncomeView />} />
-            <Route path="/laporan" element={<ReportsView />} />
+            <Route path="/kelompok" element={<GroupsView currentUser={currentUser} />} />
+            <Route path="/pengeluaran" element={<ExpensesView currentUser={currentUser} />} />
+            <Route path="/pemasukan-lain" element={<OtherIncomeView currentUser={currentUser} />} />
+            <Route path="/laporan" element={<ReportsView currentUser={currentUser} />} />
             <Route path="/log" element={<ActivityLogsView />} />
             <Route path="/panduan" element={<GuideView />} />
             <Route 
