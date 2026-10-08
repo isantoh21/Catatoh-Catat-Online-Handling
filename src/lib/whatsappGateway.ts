@@ -165,7 +165,7 @@ export async function sendWhatsAppMessage(payload: {
   authkey?: string;
   to: string;
   message: string;
-  file?: string;
+  file?: string | { url: string; data?: string; filename?: string; mimetype?: string };
   userId?: string;
 }): Promise<{ success: boolean; data?: any; error?: string; code?: string }> {
   try {

@@ -409,8 +409,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 6. Action: sendText (Outbound WhatsApp Messaging with Pre-Flight Validation)
-    if (action === 'sendText') {
+    // 6. Action: sendText / sendFile (Outbound WhatsApp Messaging with Pre-Flight Validation)
+    if (action === 'sendText' || action === 'sendFile') {
       const body = await req.json().catch(() => ({}));
       let rawTo = (body.to || body.chatId || '').toString();
       let cleanDigits = rawTo.replace(/\D/g, '');
@@ -488,10 +488,30 @@ Deno.serve(async (req: Request) => {
 
       if (fileUrl) {
         wahaTargetUrl = `${WAHA_BASE_URL}/api/sendFile`;
+        
+        let filePayload: any;
+        if (typeof fileUrl === 'string') {
+          filePayload = {
+            url: fileUrl,
+            data: fileUrl,
+            filename: 'Kwitansi_Pembayaran.pdf',
+            mimetype: 'application/pdf'
+          };
+        } else {
+          filePayload = {
+            ...fileUrl,
+            url: fileUrl.url || fileUrl.data,
+            data: fileUrl.data || fileUrl.url,
+            filename: fileUrl.filename || 'Kwitansi_Pembayaran.pdf',
+            mimetype: fileUrl.mimetype || 'application/pdf'
+          };
+        }
+
         wahaPayload = {
           session: sessionName,
           chatId: chatId,
-          file: typeof fileUrl === 'string' ? { url: fileUrl } : fileUrl,
+          file: filePayload,
+          filename: filePayload.filename,
           caption: messageText,
         };
       }
@@ -507,7 +527,7 @@ Deno.serve(async (req: Request) => {
 
       const sendData = await sendRes.json().catch(() => ({}));
       const isSuccess = sendRes.ok && (!sendData?.error);
-      const errorMessage = sendData?.error || sendData?.message || (sendRes.ok ? undefined : 'Gagal mengirim pesan WhatsApp via Gateway');
+      const errorMessage = sendData?.error || (sendRes.ok ? undefined : (sendData?.message || 'Gagal mengirim pesan WhatsApp via Gateway'));
 
       return new Response(
         JSON.stringify({

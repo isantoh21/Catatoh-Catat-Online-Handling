@@ -702,6 +702,7 @@ export default function PaymentModerationModal({
 
           receiptFilePayload = {
             url: pdfRes.dataUri,
+            data: pdfRes.dataUri,
             filename: pdfRes.filename,
             mimetype: 'application/pdf'
           };
@@ -863,6 +864,7 @@ export default function PaymentModerationModal({
 
         receiptFilePayload = {
           url: pdfRes.dataUri,
+          data: pdfRes.dataUri,
           filename: pdfRes.filename,
           mimetype: 'application/pdf'
         };

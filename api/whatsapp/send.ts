@@ -88,11 +88,38 @@ export default async function handler(req: any, res: any) {
     const gatewayApiKey = process.env.WAHA_API_KEY || process.env.WHATSAPP_API_KEY || 'askdj2934u9jd923dj3jdoi23nuiurio32od23oed2omi3290rmmoiejrw';
 
     if (gatewayBaseUrl && gatewayApiKey) {
+      let sessionName = 'default';
+      if (userId) {
+        const cleanUid = userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+        sessionName = `user_${cleanUid}`;
+      }
+
       const chatId = `${cleanTo}@c.us`;
       const gatewayEndpoint = file ? `${gatewayBaseUrl}/api/sendFile` : `${gatewayBaseUrl}/api/sendText`;
+      
+      let filePayload: any = undefined;
+      if (file) {
+        if (typeof file === 'string') {
+          filePayload = {
+            url: file,
+            data: file,
+            filename: 'Kwitansi_Pembayaran.pdf',
+            mimetype: 'application/pdf'
+          };
+        } else {
+          filePayload = {
+            ...file,
+            url: file.url || file.data,
+            data: file.data || file.url,
+            filename: file.filename || 'Kwitansi_Pembayaran.pdf',
+            mimetype: file.mimetype || 'application/pdf'
+          };
+        }
+      }
+
       const gatewayBody = file
-        ? { session: 'default', chatId, file: typeof file === 'string' ? { url: file } : file, caption: message }
-        : { session: 'default', chatId, text: message };
+        ? { session: sessionName, chatId, file: filePayload, filename: filePayload?.filename, caption: message }
+        : { session: sessionName, chatId, text: message };
 
       const directRes = await fetch(gatewayEndpoint, {
         method: 'POST',
