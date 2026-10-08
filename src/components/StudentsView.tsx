@@ -1159,7 +1159,113 @@ export default function StudentsView() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Header with Select All (sm:hidden) */}
+        <div className="sm:hidden px-4 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+            <input 
+              type="checkbox" 
+              checked={baseFilteredStudents.length > 0 && selectedIds.length > 0 && baseFilteredStudents.every(s => selectedIds.includes(s.id))}
+              onChange={handleSelectAll}
+              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            />
+            <span>Pilih Semua Siswa</span>
+          </label>
+          <span className="text-xs text-slate-500 font-medium">{baseFilteredStudents.length} siswa</span>
+        </div>
+
+        {/* Mobile Card List (sm:hidden) */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="p-6 text-center text-sm text-slate-500">Memuat data...</div>
+          ) : baseFilteredStudents.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-500">Tidak ada data siswa pada tab ini.</div>
+          ) : (
+            paginatedStudents.map((s: any) => (
+              <div key={s.id} className={`p-4 transition-colors ${selectedIds.includes(s.id) ? 'bg-indigo-50/40' : 'bg-white'}`}>
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.includes(s.id)}
+                      onChange={() => handleSelect(s.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer mt-0.5"
+                    />
+                    <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+                      {s.nama_lengkap.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">{s.nama_lengkap}</h4>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">{s.kelompok || 'Tanpa Kelompok'}</span>
+                        {s.status_aktif !== false ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-wider">Aktif</span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1">
+                            <GraduationCap className="w-3 h-3 text-amber-600" />
+                            Lulus
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-3 p-2.5 bg-slate-50 rounded-xl text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">SPP Bulanan</span>
+                    <span className="font-bold text-slate-800 font-mono">
+                      {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(s.nominal_spp || 0)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">WhatsApp</span>
+                    <a 
+                      href={`https://wa.me/${s.nomor_whatsapp}`} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="font-mono text-indigo-600 hover:underline flex items-center gap-1"
+                    >
+                      <MessageCircle className="w-3 h-3" />
+                      {s.nomor_whatsapp || '-'}
+                    </a>
+                  </div>
+                </div>
+
+                {/* Mobile Touch Action Buttons */}
+                <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-slate-100">
+                  <button 
+                    onClick={() => handleToggleStatus(s.id, s.status_aktif, s.nama_lengkap)} 
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                      s.status_aktif !== false 
+                        ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' 
+                        : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                    }`} 
+                  >
+                    {s.status_aktif !== false ? <GraduationCap className="w-3.5 h-3.5 text-amber-600" /> : <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />}
+                    <span>{s.status_aktif !== false ? 'Luluskan' : 'Aktifkan'}</span>
+                  </button>
+                  <button 
+                    onClick={() => openEditModal(s)} 
+                    className="px-3 py-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(s.id, s.nama_lengkap)} 
+                    className="px-3 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus</span>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View (hidden sm:block) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50/50 border-b border-slate-100">
               <tr>
@@ -1252,6 +1358,7 @@ export default function StudentsView() {
               )}
             </tbody>
           </table>
+        </div>
           
             <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
               <div className="flex items-center gap-3">
@@ -1288,7 +1395,6 @@ export default function StudentsView() {
             </div>
           </div>
         </div>
-      </div>
     )}
 
       {/* Modal Tambah Siswa */}

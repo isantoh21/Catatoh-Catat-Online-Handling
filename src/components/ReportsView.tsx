@@ -509,7 +509,7 @@ export default function ReportsView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 font-sans">
-      <div className="p-6 md:px-10 md:py-8 border-b border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="p-4 sm:p-6 md:px-10 md:py-8 border-b border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Laporan Keuangan & Laba Rugi</h2>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-1">Pantau Arus Kas Sekolah</p>
@@ -517,30 +517,30 @@ export default function ReportsView() {
         
       </div>
 
-      <div className="flex-1 overflow-auto p-6 md:p-10">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 md:p-10">
+        <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
             
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 
-                <button onClick={handleCheckDuplicates} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-colors">
-                  <AlertTriangle className="w-4 h-4" /> Cek Data Dobel
+                <button onClick={handleCheckDuplicates} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Cek Data Dobel
                 </button>
-                <button onClick={handleExportPDF} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-colors">
-                  <FileDown className="w-4 h-4" /> Export PDF
+                <button onClick={handleExportPDF} className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                  <FileDown className="w-3.5 h-3.5" /> Export PDF
                 </button>
-                <button onClick={handleExportDOCX} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-colors">
-                  <FileText className="w-4 h-4" /> Export DOCX
+                <button onClick={handleExportDOCX} className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                  <FileText className="w-3.5 h-3.5" /> Export DOCX
                 </button>
-                <button onClick={handleExportCSV} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-colors">
-                  <TableIcon className="w-4 h-4" /> Export Excel (CSV)
+                <button onClick={handleExportCSV} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                  <TableIcon className="w-3.5 h-3.5" /> Export Excel
                 </button>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-3">
+              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                 <button
                   onClick={fetchData}
                   disabled={loading}
-                  className="px-3 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
                   title="Sinkronkan Data Laporan"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
@@ -549,7 +549,7 @@ export default function ReportsView() {
                 <select 
                   value={selectedBulan}
                   onChange={e => setSelectedBulan(e.target.value)}
-                  className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
+                  className="flex-1 sm:flex-none pl-3 pr-8 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
                 >
                   <option value="Semua Bulan">Semua Bulan</option>
                   {BULAN_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
@@ -557,7 +557,7 @@ export default function ReportsView() {
                 <select 
                   value={selectedTahun}
                   onChange={e => setSelectedTahun(e.target.value)}
-                  className="pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
+                  className="pl-3 pr-8 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 bg-white shadow-sm cursor-pointer"
                 >
                   {YEAR_OPTIONS.map(y => (
                     <option key={y} value={y.toString()}>{y}</option>
@@ -567,8 +567,8 @@ export default function ReportsView() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Pemasukan</p>
                   <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
@@ -604,7 +604,7 @@ export default function ReportsView() {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Pengeluaran</p>
                   <div className="p-2 bg-rose-100 text-rose-600 rounded-lg">
@@ -617,7 +617,7 @@ export default function ReportsView() {
                 </div>
               </div>
 
-              <div className={`p-6 rounded-2xl border shadow-sm ${labaRugi >= 0 ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-rose-600 border-rose-700 text-white'}`}>
+              <div className={`p-4 sm:p-6 rounded-2xl border shadow-sm ${labaRugi >= 0 ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-rose-600 border-rose-700 text-white'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-xs font-bold uppercase tracking-wider opacity-80">Laba / Rugi Bersih</p>
                   <div className="p-2 bg-white/20 rounded-lg">
@@ -632,12 +632,12 @@ export default function ReportsView() {
             </div>
 
             {/* Chart Section */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
               <h3 className="text-sm font-bold text-slate-700 mb-6 flex items-center gap-2">
                 <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
                 Grafik Keuangan Tahun {selectedTahun}
               </h3>
-              <div className="h-80 w-full">
+              <div className="h-64 sm:h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chartData}
@@ -953,8 +953,8 @@ export default function ReportsView() {
                   </p>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-                  <table className="w-full text-left text-xs">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+                  <table className="w-full text-left text-xs min-w-[500px]">
                     <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
                       <tr>
                         <th className="px-4 py-3 text-center w-12">No</th>

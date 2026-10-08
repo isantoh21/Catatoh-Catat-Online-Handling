@@ -1047,32 +1047,32 @@ export default function DashboardView() {
   };
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6 font-sans">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-3 sm:p-6 md:p-8 max-w-6xl mx-auto space-y-4 sm:space-y-6 font-sans">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Pembayaran SPP</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800">Pembayaran SPP</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             {currentSchoolName ? `Monitor dan kelola pembayaran siswa • ${currentSchoolName}` : 'Monitor dan catat pembayaran bulanan siswa'}
           </p>
         </div>
-      </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
           <button 
             onClick={handleOpenModerasiModal}
             id="btnModerasiBuktiWa"
-            className="h-10 w-10 relative rounded-xl flex items-center justify-center transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer"
+            className="h-10 px-3 relative rounded-xl flex items-center gap-2 transition-all shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-800 text-white hover:from-indigo-950 hover:to-indigo-900 border border-indigo-700 cursor-pointer text-xs font-bold"
             title={!isPremium ? "Fitur Khusus Akun Premium ⭐ (Moderasi Bukti Transfer WA)" : "Moderasi Bukti Transfer WA (Chat)"}
             aria-label="Moderasi Bukti Transfer WA"
           >
-            <MessageSquare className="w-5 h-5 text-amber-300 shrink-0" />
+            <MessageSquare className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>Moderasi</span>
             {!isPremium ? (
-              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs ring-1 ring-white">
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-black shadow-xs ring-1 ring-white">
                 ★
               </span>
             ) : pendingVerificationsCount > 0 ? (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold bg-amber-400 text-indigo-950 flex items-center justify-center shadow border-2 border-white animate-pulse">
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold bg-amber-400 text-indigo-950 flex items-center justify-center shadow animate-pulse">
                 {pendingVerificationsCount}
               </span>
             ) : null}
@@ -1081,18 +1081,20 @@ export default function DashboardView() {
           <button 
             onClick={() => handleOpenReminderModal()}
             id="btnKirimReminderWa"
-            className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer relative"
+            className="h-10 px-3 rounded-xl flex items-center gap-2 transition-colors shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-600 cursor-pointer text-xs font-bold"
             title="Kirim Reminder SPP via WhatsApp"
             aria-label="Kirim Reminder SPP via WhatsApp"
           >
-            <MessageCircle className="w-5 h-5 shrink-0" />
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span>Reminder</span>
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4">
-        <div className="flex-1 flex flex-col sm:flex-row gap-4">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        {/* Top: Search & Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
           <div className="flex-1 relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
@@ -1100,41 +1102,15 @@ export default function DashboardView() {
               placeholder="Cari nama siswa..." 
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50/50" 
             />
           </div>
-          <div className="w-full sm:w-40 relative">
-            <select
-              value={filterKelompok}
-              onChange={e => { setFilterKelompok(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
-            >
-              <option value="Semua Kelompok">Semua Kelompok</option>
-              {uniqueKelompokList.map(k => (
-                <option key={k as string} value={k as string}>{k as string}</option>
-              ))}
-            </select>
-          </div>
-          <div className="w-full sm:w-48 relative">
-            <select
-              value={filterPaymentStatus}
-              onChange={e => { setFilterPaymentStatus(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
-            >
-              <option value="Semua Status">Semua Status</option>
-              <option value="Lunas">Sudah Lunas</option>
-              <option value="Menunggu Verifikasi">Menunggu Verifikasi (Resi Masuk)</option>
-              <option value="Belum Lunas">Belum Bayar</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex flex-wrap sm:flex-nowrap gap-4 lg:justify-end">
-          <div className="flex gap-2 items-center">
+          <div className="flex items-center gap-2 justify-end shrink-0">
             {selectedIds.length > 0 && (
               <button 
                 onClick={handleBulkLunas}
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm disabled:opacity-50"
+                className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
               >
                 <CheckSquare className="w-4 h-4" /> Tandai Lunas ({selectedIds.length})
               </button>
@@ -1142,16 +1118,47 @@ export default function DashboardView() {
             <button 
               onClick={fetchData}
               disabled={loading}
-              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-bold items-center justify-center gap-2 transition-colors shadow-sm hidden sm:flex disabled:opacity-50"
+              className="px-3.5 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Sync
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Sync</span>
             </button>
           </div>
-          <div className="relative w-48 sm:w-60">
+        </div>
+
+        {/* Dropdowns Row: 2-columns on mobile, flex on desktop */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 pt-1">
+          <div className="relative col-span-1 sm:w-44">
+            <select
+              value={filterKelompok}
+              onChange={e => { setFilterKelompok(e.target.value); setCurrentPage(1); }}
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
+            >
+              <option value="Semua Kelompok">Semua Kelompok</option>
+              {uniqueKelompokList.map(k => (
+                <option key={k as string} value={k as string}>{k as string}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative col-span-1 sm:w-52">
+            <select
+              value={filterPaymentStatus}
+              onChange={e => { setFilterPaymentStatus(e.target.value); setCurrentPage(1); }}
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
+            >
+              <option value="Semua Status">Semua Status</option>
+              <option value="Lunas">Sudah Lunas</option>
+              <option value="Menunggu Verifikasi">Menunggu Verifikasi</option>
+              <option value="Belum Lunas">Belum Bayar</option>
+            </select>
+          </div>
+
+          <div className="relative col-span-1 sm:w-56">
             <select 
               value={selectedBulan}
               onChange={e => setSelectedBulan(e.target.value)}
-              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50 truncate"
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50 truncate"
             >
               <option value="Semua Bulan">Semua Bulan</option>
               <optgroup label="Bulan Reguler SPP">
@@ -1168,11 +1175,12 @@ export default function DashboardView() {
               )}
             </select>
           </div>
-          <div className="relative w-32">
+
+          <div className="relative col-span-1 sm:w-28">
             <select 
               value={selectedTahun}
               onChange={e => setSelectedTahun(e.target.value)}
-              className="w-full pl-4 pr-8 py-2.5 text-sm border border-slate-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 bg-slate-50"
             >
               {YEAR_OPTIONS.map(y => (
                 <option key={y} value={y.toString()}>{y}</option>
@@ -1246,7 +1254,11 @@ export default function DashboardView() {
       {/* Matrix / Regular Table Switch */}
       {selectedBulan === 'Semua Bulan' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden relative">
-          <div className="overflow-x-auto">
+          <div className="sm:hidden px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2 text-[11px] text-slate-600 font-medium">
+            <span>↔️</span>
+            <span>Geser tabel ke samping untuk melihat seluruh bulan</span>
+          </div>
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left min-w-[800px]">
               <thead className="bg-slate-50">
                 <tr>
@@ -1360,8 +1372,192 @@ export default function DashboardView() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          {/* Mobile Select-All Bar */}
+          <div className="sm:hidden px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={paginatedStudents.length > 0 && selectedIds.length === paginatedStudents.length}
+                onChange={handleSelectAll}
+                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Pilih Semua ({selectedIds.length > 0 ? `${selectedIds.length} dipilih` : '0'})</span>
+            </label>
+            <span className="text-[11px] text-slate-500">{paginatedStudents.length} siswa</span>
+          </div>
+
+          {/* Mobile Card List for Smartphones (< sm) */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {loading ? (
+              <div className="p-8 text-center text-sm text-slate-500">Memuat data siswa...</div>
+            ) : paginatedStudents.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">Tidak ada data siswa aktif.</div>
+            ) : (
+              paginatedStudents.map(student => {
+                const payment = payments.find(p => p.student_id === student.id && p.bulan === selectedBulan);
+                const isLunas = !!payment;
+                const pendingVerif = !isLunas ? getPendingVerificationForStudent(student.id, selectedBulan, selectedTahun) : null;
+
+                return (
+                  <div key={`m-${student.id}`} className={`p-4 transition-colors space-y-3 ${selectedIds.includes(student.id) ? 'bg-indigo-50/40' : 'bg-white'}`}>
+                    {/* Top row: Checkbox, Avatar, Name & Kelompok, Status Badge */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIds.includes(student.id)}
+                          onChange={() => handleSelect(student.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                        />
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                          {student.nama_lengkap.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-slate-900 truncate leading-tight">{student.nama_lengkap}</h4>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {student.kelompok || '-'}
+                            </span>
+                            {student.nomor_whatsapp && (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {student.nomor_whatsapp}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {isLunas ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-black uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Lunas
+                          </span>
+                        ) : pendingVerif ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-md text-[10px] font-black uppercase tracking-wider animate-pulse">
+                            <Clock className="w-3 h-3 text-amber-600" /> Verifikasi
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-700 rounded-md text-[10px] font-black uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span> Belum Bayar
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Resi Info Alert */}
+                    {pendingVerif && (
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between text-xs text-amber-950">
+                        <span className="text-[11px] font-medium flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          Bukti Transfer Masuk:
+                        </span>
+                        <span className="font-bold font-mono">
+                          {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(pendingVerif.nominal || 0)}
+                        </span>
+                      </div>
+                    )}
+
+                    {isLunas && payment?.tanggal_bayar && (
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-50">
+                        <span>Tanggal bayar:</span>
+                        <span className="font-semibold text-slate-700">
+                          {new Date(payment.tanggal_bayar).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {payment.waktu_bayar && ` • ${payment.waktu_bayar.slice(0,5)}`}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Syarat Khusus Kelulusan */}
+                    {activeProgram?.type === 'lulus' && (
+                      <div className="pt-1 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500">Syarat Kelulusan:</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const currentStatus = activeProgram.student_requirements_status?.[student.id] || false;
+                            const newStatus = !currentStatus;
+                            try {
+                              const updated = await updateStudentRequirementStatus(activeProgram.id, student.id, newStatus, currentUserId);
+                              if (updated) {
+                                setReRegistrationPrograms(prev => prev.map(p => p.id === updated.id ? updated : p));
+                              }
+                            } catch (_) {}
+                          }}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                            activeProgram.student_requirements_status?.[student.id]
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-300'
+                          }`}
+                        >
+                          {activeProgram.student_requirements_status?.[student.id] ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Terpenuhi
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3 h-3 text-amber-600" /> Belum
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Actions Bar */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                      {isLunas ? (
+                        <>
+                          <div className="mr-auto text-xs font-bold text-emerald-700 font-mono">
+                            {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(payment.nominal_dibayar)}
+                          </div>
+                          <button
+                            onClick={() => handleCetakKwitansi(student, payment, selectedBulan)}
+                            className="flex-1 sm:flex-none px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-colors border border-blue-200 flex items-center justify-center gap-1.5 cursor-pointer min-h-[40px]"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Cetak
+                          </button>
+                          <button
+                            onClick={() => handleBatalkanLunas(student.id)}
+                            disabled={isSubmitting}
+                            className="px-3 py-2 bg-white hover:bg-rose-50 text-rose-600 rounded-xl text-xs font-bold transition-colors border border-rose-200 min-h-[40px]"
+                          >
+                            Batal
+                          </button>
+                        </>
+                      ) : pendingVerif ? (
+                        <>
+                          <button 
+                            onClick={handleOpenModerasiModal}
+                            className="flex-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer min-h-[42px]"
+                          >
+                            <ShieldCheck className="w-4 h-4" /> Verifikasi Resi
+                          </button>
+                          <button 
+                            onClick={() => handleOpenModal(student)}
+                            disabled={isSubmitting}
+                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[42px]"
+                          >
+                            Manual
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          onClick={() => handleOpenModal(student)}
+                          disabled={isSubmitting}
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1.5 min-h-[42px]"
+                        >
+                          Tandai Lunas
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Table View (>= sm) */}
+          <div className="hidden sm:block overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 w-12 text-center">

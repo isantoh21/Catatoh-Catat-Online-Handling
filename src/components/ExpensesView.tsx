@@ -271,7 +271,42 @@ export default function ExpensesView() {
           </div>
         </div>
         
-        <div className="overflow-x-auto">
+        {/* Mobile List (sm:hidden) */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="p-6 text-center text-sm text-slate-500">Memuat data...</div>
+          ) : paginatedExpenses.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-500">Tidak ada riwayat pengeluaran.</div>
+          ) : (
+            paginatedExpenses.map(expense => (
+              <div key={expense.id} className="p-4 flex items-center justify-between gap-3 bg-white hover:bg-slate-50/50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-800 truncate">{expense.nama_pengeluaran}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                      {new Date(expense.tanggal).toLocaleDateString('id-ID', {
+                        day: 'numeric', month: 'short', year: 'numeric'
+                      })}
+                    </span>
+                    <span className="text-xs font-bold text-rose-600 font-mono">
+                      {formatRupiah(expense.nominal)}
+                    </span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleDeleteExpense(expense.id, expense.nama_pengeluaran)}
+                  className="p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors shrink-0 cursor-pointer"
+                  title="Hapus"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table (hidden sm:block) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-white border-b border-slate-100">
               <tr>

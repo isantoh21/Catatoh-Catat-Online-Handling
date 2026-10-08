@@ -735,8 +735,8 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Top Navigation Bar */}
-        <div className="bg-white/85 backdrop-blur-md border-b border-blue-100/90 px-4 py-3 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-xs">
-          <div className="flex items-center gap-3">
+        <div className="bg-white/85 backdrop-blur-md border-b border-blue-100/90 px-3 py-2.5 sm:px-6 sm:py-3 flex items-center justify-between shrink-0 z-30 shadow-xs">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Desktop Menu Toggle */}
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -749,14 +749,15 @@ export default function App() {
             {/* Mobile Menu Toggle */}
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors border border-slate-200"
+              className="md:hidden p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors border border-slate-200 shrink-0"
               title="Menu Admin"
+              aria-label="Menu Admin"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <div>
-              <h2 className="font-bold text-slate-800 text-lg hidden sm:block">
+            <div className="min-w-0">
+              <h2 className="font-bold text-slate-800 text-base sm:text-lg truncate">
                 {location.pathname === '/' ? 'Pembayaran SPP' :
                  location.pathname.startsWith('/siswa') ? 'Data Siswa' :
                  location.pathname.startsWith('/kelompok') ? 'Kelompok Siswa' :
@@ -769,7 +770,7 @@ export default function App() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Indicator Status Paket & Masa Aktif User */}
             <button
               onClick={() => navigate('/pengaturan')}
@@ -782,7 +783,7 @@ export default function App() {
                       : `Paket Premium ${premiumDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'} Aktif. Klik untuk kelola.`
                   : 'Paket Standar / Free (Maksimal 100 Siswa). Klik untuk upgrade ke Premium.'
               }
-              className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer border ${
                 isPremium
                   ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/20 to-amber-500/30 border-amber-500/40 text-amber-900 hover:border-amber-500/70 shadow-xs'
                   : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
@@ -791,24 +792,24 @@ export default function App() {
               <Crown className={`w-3.5 h-3.5 ${isPremium ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
               {isPremium ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-amber-950">
+                  <span className="font-extrabold text-amber-950 text-[11px] sm:text-xs">
                     {DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim())
-                      ? 'VIP LIFETIME 👑'
-                      : `PREMIUM ⭐ (${premiumDetails?.plan === 'yearly' ? 'Tahunan' : 'Bulanan'})`}
+                      ? 'VIP'
+                      : 'PRO'}
                   </span>
-                  <span className="hidden sm:inline text-[11px] font-semibold text-amber-800 font-mono">
+                  <span className="hidden md:inline text-[11px] font-semibold text-amber-800 font-mono">
                     {DEFAULT_PREMIUM_EMAILS.includes((userEmail || '').toLowerCase().trim()) ? (
                       '(Permanen)'
                     ) : premiumDetails?.expiresAt ? (
-                      `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} (${premiumDetails.daysRemaining}h)`
+                      `s/d ${new Date(premiumDetails.expiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`
                     ) : (
-                      `(${premiumDetails?.plan === 'yearly' ? '1 Tahun' : '1 Bulan'})`
+                      `(${premiumDetails?.plan === 'yearly' ? '1 Thn' : '1 Bln'})`
                     )}
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-700">Standar (Free)</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-slate-700 text-[11px] sm:text-xs">Free</span>
                   <span className="hidden sm:inline text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 rounded-full font-bold">
                     Upgrade
                   </span>
@@ -822,19 +823,16 @@ export default function App() {
               onOpenSettings={() => navigate('/pengaturan')} 
             />
 
-            <div className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : dbStatus === 'checking' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
-              {dbStatus === 'connected' ? <Wifi className="w-3.5 h-3.5" /> : dbStatus === 'checking' ? <Database className="w-3.5 h-3.5 animate-pulse" /> : <WifiOff className="w-3.5 h-3.5" />}
+            <div className={`px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : dbStatus === 'checking' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
+              {dbStatus === 'connected' ? <Wifi className="w-3.5 h-3.5 shrink-0" /> : dbStatus === 'checking' ? <Database className="w-3.5 h-3.5 animate-pulse shrink-0" /> : <WifiOff className="w-3.5 h-3.5 shrink-0" />}
               <span className="hidden sm:inline">
-                {dbStatus === 'connected' ? 'Database Terhubung' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline (Cek Koneksi)'}
-              </span>
-              <span className="sm:hidden">
-                {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Wait...' : 'Offline'}
+                {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline'}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
           <Routes>
             <Route path="/" element={<DashboardView />} />
             <Route path="/siswa" element={<StudentsView />} />
@@ -852,7 +850,7 @@ export default function App() {
                   setSchoolName={setSchoolName} 
                   schoolLogo={schoolLogo} 
                   setSchoolLogo={setSchoolLogo}
-                                  />
+                />
               } 
             />
             <Route path="/guru" element={<TeachersView />} />
@@ -861,6 +859,68 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
+
+        {/* Mobile Bottom Navigation Bar (Dock) */}
+        <nav 
+          aria-label="Mobile Navigation"
+          className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-2 py-1 pb-safe flex items-center justify-around"
+        >
+          <button
+            onClick={() => navigate('/')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer min-w-[56px] min-h-[48px] ${
+              location.pathname === '/'
+                ? 'text-indigo-600 font-bold bg-indigo-50/80'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <LayoutDashboard className={`w-5 h-5 ${location.pathname === '/' ? 'stroke-[2.5]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">SPP</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/siswa')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer min-w-[56px] min-h-[48px] ${
+              location.pathname.startsWith('/siswa')
+                ? 'text-indigo-600 font-bold bg-indigo-50/80'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <Users className={`w-5 h-5 ${location.pathname.startsWith('/siswa') ? 'stroke-[2.5]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">Siswa</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/pengeluaran')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer min-w-[56px] min-h-[48px] ${
+              location.pathname.startsWith('/pengeluaran') || location.pathname.startsWith('/pemasukan-lain')
+                ? 'text-indigo-600 font-bold bg-indigo-50/80'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <Receipt className={`w-5 h-5 ${location.pathname.startsWith('/pengeluaran') || location.pathname.startsWith('/pemasukan-lain') ? 'stroke-[2.5]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">Kas</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/laporan')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer min-w-[56px] min-h-[48px] ${
+              location.pathname.startsWith('/laporan')
+                ? 'text-indigo-600 font-bold bg-indigo-50/80'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <FileText className={`w-5 h-5 ${location.pathname.startsWith('/laporan') ? 'stroke-[2.5]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">Laporan</span>
+          </button>
+
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 hover:text-slate-800 font-medium transition-all cursor-pointer min-w-[56px] min-h-[48px]"
+          >
+            <Menu className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">Menu</span>
+          </button>
+        </nav>
       </main>
     </div>
   );

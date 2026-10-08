@@ -1302,41 +1302,41 @@ export default function PaymentModerationModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[90vh] max-h-[850px] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-50 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[95vh] sm:h-[90vh] max-h-[850px] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
-        <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-indigo-900 to-indigo-800 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-300">
+        <div className="p-3.5 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-indigo-900 to-indigo-800 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-300 shrink-0">
               <MessageSquare className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold">Moderasi Bukti Bayar WhatsApp</h2>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-lg font-bold truncate">Moderasi Bukti Bayar</h2>
                 {pendingCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-400 text-indigo-950">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-extrabold bg-amber-400 text-indigo-950">
                     {pendingCount} Menunggu
                   </span>
                 )}
               </div>
-              <p className="text-xs text-indigo-200">
-                Verifikasi foto struk transfer yang dikirim orang tua melalui WhatsApp Inbound Webhook
+              <p className="text-[11px] text-indigo-200 truncate hidden sm:block">
+                Verifikasi struk transfer yang dikirim orang tua melalui WhatsApp Inbound Webhook
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {verifications.length > 0 && (
               <button
                 type="button"
                 onClick={handleClearAll}
                 disabled={isProcessingAction}
-                className="px-2.5 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                title="Kosongkan semua antrean bukti transfer (Hapus database & cache)"
+                className="p-2 sm:px-2.5 sm:py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                title="Kosongkan antrean bukti transfer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Kosongkan Antrean</span>
+                <span className="hidden md:inline">Kosongkan</span>
               </button>
             )}
             <button
@@ -1345,19 +1345,19 @@ export default function PaymentModerationModal({
                 setTemplateModalInitialTab('receiptApproved');
                 setIsTemplateModalOpen(true);
               }}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer border border-white/20"
-              title="Edit susunan template pesan WA resi masuk, disetujui, dan ditolak"
+              className="p-2 sm:px-3 sm:py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer border border-white/20"
+              title="Edit susunan template pesan WA"
             >
               <Settings className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden md:inline">Template Pesan Resi</span>
+              <span className="hidden md:inline">Template WA</span>
             </button>
             <button
               onClick={() => setIsSimulateModalOpen(true)}
-              className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Coba simulasi bukti masuk tanpa menunggu orang tua kirim WA"
+              className="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Coba simulasi bukti masuk"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Simulasi Bukti Masuk</span>
+              <span className="hidden sm:inline">Simulasi</span>
             </button>
             <button
               onClick={onClose}
