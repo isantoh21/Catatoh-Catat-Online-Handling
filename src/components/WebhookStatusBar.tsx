@@ -39,17 +39,25 @@ export default function WebhookStatusBar({
     return `${origin}/api/webhook/whatsapp`;
   };
 
-  const checkWebhookHealth = async () => {
+  const checkWebhookHealth = async (overrideUid?: string, retryCount = 1) => {
     setIsPinging(true);
     const start = performance.now();
     try {
       // 1. Cek status WhatsApp gateway via Supabase Edge Function Proxy dengan isolasi user
       let currentWaStatus = 'UNKNOWN';
       try {
-        let activeUid = currentUserId;
+        let activeUid = overrideUid || currentUserId;
         if (!activeUid) {
           const { data: { session } } = await supabase.auth.getSession();
           activeUid = session?.user?.id || '';
+        }
+
+        // Jika user ID belum siap saat pertama kali komponen mount, beri jeda dan coba lagi
+        if (!activeUid && retryCount > 0) {
+          setTimeout(() => {
+            checkWebhookHealth(overrideUid, retryCount - 1);
+          }, 1500);
+          return;
         }
 
         const urlWithUser = activeUid 
@@ -66,6 +74,16 @@ export default function WebhookStatusBar({
           if (waData.name === 'default') {
             setWaStatus('STOPPED');
             setWaAccount(null);
+          } else if (waData.name === 'unassigned') {
+            // Jika unassigned padahal auth mungkin baru tersinkronisasi
+            if (retryCount > 0) {
+              setTimeout(() => {
+                checkWebhookHealth(overrideUid, retryCount - 1);
+              }, 1500);
+              return;
+            }
+            setWaStatus('STOPPED');
+            setWaAccount(null);
           } else {
             currentWaStatus = waData.status || 'UNKNOWN';
             setWaStatus(currentWaStatus);
@@ -76,18 +94,30 @@ export default function WebhookStatusBar({
             }
           }
         } else {
+          if (retryCount > 0) {
+            setTimeout(() => {
+              checkWebhookHealth(overrideUid, retryCount - 1);
+            }, 2000);
+            return;
+          }
           setWaStatus('FAILED');
           setWaAccount(null);
         }
       } catch (waErr) {
         console.warn('Gagal cek status WhatsApp:', waErr);
+        if (retryCount > 0) {
+          setTimeout(() => {
+            checkWebhookHealth(overrideUid, retryCount - 1);
+          }, 2000);
+          return;
+        }
         setWaStatus('FAILED');
         setWaAccount(null);
       }
 
       // 2. Fetch actual received verifications count from Supabase (hemat egress dengan HEAD count)
       try {
-        const pendingCount = await getPendingVerificationsCount(currentUserId);
+        const pendingCount = await getPendingVerificationsCount(overrideUid || currentUserId);
         setVerificationsCount(pendingCount);
       } catch (_) {
         setVerificationsCount(0);
@@ -130,10 +160,32 @@ export default function WebhookStatusBar({
 
   useEffect(() => {
     checkWebhookHealth();
+
+    const handleOnline = () => {
+      setTimeout(() => {
+        checkWebhookHealth();
+      }, 1200);
+    };
+
+    window.addEventListener('online', handleOnline);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id) {
+        checkWebhookHealth(session.user.id);
+      }
+    });
+
     const timer = setInterval(() => {
-      checkWebhookHealth();
+      if (navigator.onLine) {
+        checkWebhookHealth();
+      }
     }, 60000); // refresh tiap 60 detik (hemat egress)
-    return () => clearInterval(timer);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      subscription.unsubscribe();
+      clearInterval(timer);
+    };
   }, [currentUserId]);
 
   const handleCopyUniversal = async () => {
@@ -176,7 +228,13 @@ export default function WebhookStatusBar({
       <div className="relative">
         <button
           type="button"
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          onClick={() => {
+            const nextOpen = !isDropdownOpen;
+            setIsDropdownOpen(nextOpen);
+            if (nextOpen || connectionStatus !== 'connected') {
+              checkWebhookHealth(currentUserId, 1);
+            }
+          }}
           className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-2 rounded-full border transition-all cursor-pointer ${
             connectionStatus === 'connected'
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70'

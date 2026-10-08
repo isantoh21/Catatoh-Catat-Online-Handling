@@ -1,5 +1,5 @@
 import SuperAdminView from './components/superadmin/SuperAdminView';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
 import SetupGuide from './components/SetupGuide';
@@ -112,6 +112,37 @@ export default function App() {
     }
   };
 
+  const checkDb = useCallback(async (retries = 2) => {
+    if (!navigator.onLine) {
+      setDbStatus('error');
+      return;
+    }
+    
+    const url = 'https://lzvrhtaewonmpsaiezai.supabase.co';
+    if (!url || url.includes('placeholder')) {
+      setDbStatus('error');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('students').select('id', { count: 'exact', head: true });
+      if (error && error.message && error.message.includes('Failed to fetch')) {
+        if (retries > 0) {
+          setTimeout(() => checkDb(retries - 1), 1500);
+          return;
+        }
+        setDbStatus('error');
+      } else {
+        setDbStatus('connected');
+      }
+    } catch (err) {
+      if (retries > 0) {
+        setTimeout(() => checkDb(retries - 1), 1500);
+        return;
+      }
+      setDbStatus('error');
+    }
+  }, []);
+
   useEffect(() => {
     // Detect URL hash for password recovery or email verification
     const hash = window.location.hash;
@@ -167,39 +198,14 @@ export default function App() {
       }
     });
     
-    // Initial session is handled by the first getSession block
-
-
-    // Removed global local storage
-
-    const checkDb = async () => {
-      if (!navigator.onLine) {
-        setDbStatus('error');
-        return;
-      }
-      
-      const url = 'https://lzvrhtaewonmpsaiezai.supabase.co';
-      if (!url || url.includes('placeholder')) {
-        setDbStatus('error');
-        return;
-      }
-      try {
-        const { error } = await supabase.from('students').select('id', { count: 'exact', head: true });
-        if (error && error.message && error.message.includes('Failed to fetch')) {
-          setDbStatus('error');
-        } else {
-          setDbStatus('connected');
-        }
-      } catch (err) {
-        setDbStatus('error');
-      }
-    };
-    
+    // Initial DB check with retry
     checkDb();
     
     const handleOnline = () => {
       setDbStatus('checking');
-      checkDb();
+      setTimeout(() => {
+        checkDb();
+      }, 1000);
     };
     
     const handleOffline = () => {
@@ -222,7 +228,7 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
       clearInterval(intervalId);
     };
-  }, []);
+  }, [checkDb]);
 
   const handleMandatoryProfileSuccess = async (updated: { adminName: string; schoolName: string; city: string }) => {
     setSchoolName(updated.schoolName);
@@ -823,12 +829,38 @@ export default function App() {
               onOpenSettings={() => navigate('/pengaturan')} 
             />
 
-            <div className={`px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : dbStatus === 'checking' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
-              {dbStatus === 'connected' ? <Wifi className="w-3.5 h-3.5 shrink-0" /> : dbStatus === 'checking' ? <Database className="w-3.5 h-3.5 animate-pulse shrink-0" /> : <WifiOff className="w-3.5 h-3.5 shrink-0" />}
+            <button
+              type="button"
+              onClick={() => {
+                setDbStatus('checking');
+                checkDb(1);
+              }}
+              title={
+                dbStatus === 'connected' 
+                  ? 'Database Terhubung (Online)' 
+                  : dbStatus === 'checking' 
+                  ? 'Sedang memeriksa koneksi...' 
+                  : 'Koneksi terputus. Klik untuk coba hubungkan kembali.'
+              }
+              className={`px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 rounded-full transition-all cursor-pointer ${
+                dbStatus === 'connected' 
+                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200/70' 
+                  : dbStatus === 'checking' 
+                  ? 'bg-slate-100 text-slate-600' 
+                  : 'bg-rose-100 text-rose-700 hover:bg-rose-200/70'
+              }`}
+            >
+              {dbStatus === 'connected' ? (
+                <Wifi className="w-3.5 h-3.5 shrink-0" />
+              ) : dbStatus === 'checking' ? (
+                <Database className="w-3.5 h-3.5 animate-pulse shrink-0" />
+              ) : (
+                <WifiOff className="w-3.5 h-3.5 shrink-0" />
+              )}
               <span className="hidden sm:inline">
-                {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline'}
+                {dbStatus === 'connected' ? 'Online' : dbStatus === 'checking' ? 'Mengecek...' : 'Offline (Coba Lagi)'}
               </span>
-            </div>
+            </button>
           </div>
         </div>
 
