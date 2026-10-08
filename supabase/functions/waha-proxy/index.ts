@@ -182,7 +182,7 @@ Deno.serve(async (req: Request) => {
               config: {
                 webhooks: [
                   {
-                    url: `https://catatoh.vercel.app/api/webhook/whatsapp?userId=${requestedUserId || ''}`,
+                    url: `https://catatoh.my.id/api/webhook/whatsapp?userId=${requestedUserId || ''}`,
                     events: ['message'],
                   },
                 ],

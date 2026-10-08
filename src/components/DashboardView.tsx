@@ -106,10 +106,11 @@ export default function DashboardView() {
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
 
   const getSchoolParentUrl = () => {
+    const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'catatoh.my.id';
     if (currentUserId) {
-      return `catatoh.vercel.app/kartu-spp-ortu/${currentUserId}`;
+      return `${host}/kartu-spp-ortu/${currentUserId}`;
     }
-    return 'catatoh.vercel.app/kartu-spp-ortu';
+    return `${host}/kartu-spp-ortu`;
   };
 
   const handleCopyParentLink = async () => {

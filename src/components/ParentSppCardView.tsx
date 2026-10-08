@@ -627,7 +627,7 @@ export default function ParentSppCardView() {
             <div className="mb-4 px-3.5 py-2.5 bg-amber-50/80 border border-amber-200/70 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <p className="leading-relaxed">
-                Anda sedang membuka portal SPP umum. Gunakan tautan unik dari sekolah ananda (contoh: <code>catatoh.vercel.app/kartu-spp-ortu/[id-sekolah]</code>) agar data langsung terarah.
+                Anda sedang membuka portal SPP umum. Gunakan tautan unik dari sekolah ananda (contoh: <code>catatoh.my.id/kartu-spp-ortu/[id-sekolah]</code>) agar data langsung terarah.
               </p>
             </div>
           ) : null}
