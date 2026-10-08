@@ -10,6 +10,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { exportSppReceiptPDF } from '../lib/receiptExporter';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal, { getMatchedStudentsForItem } from './PaymentModerationModal';
 import { getPaymentVerifications, getPendingVerificationsCount, sendWhatsAppMessage, validateWhatsAppNumber } from '../lib/whatsappGateway';
@@ -309,99 +310,28 @@ export default function DashboardView() {
       const currentUser = sessionData.data.session?.user;
       
       const rawEmail = currentUser?.email || '';
-      const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || rawEmail.split('@')[0] || 'Admin';
+      const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.admin_name || currentUser?.user_metadata?.name || rawEmail.split('@')[0] || 'Admin';
       const formattedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
       
       let schoolName = currentUser ? localStorage.getItem('schoolName_' + currentUser.id) : null;
       if (!schoolName || schoolName.trim() === '') {
-        schoolName = formattedUserName;
+        schoolName = currentUser?.user_metadata?.school_name || formattedUserName;
       }
 
-      const schoolLogo = currentUser ? localStorage.getItem('schoolLogo_' + currentUser.id) : null;
+      const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
+      const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
+      const principalName = currentUser?.user_metadata?.principal_name || (currentUser ? localStorage.getItem('principalName_' + currentUser.id) : null) || '';
 
-      const doc = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a5'
+      exportSppReceiptPDF({
+        schoolName: schoolName || 'Lembaga Pendidikan',
+        schoolLogo,
+        city,
+        principalName,
+        treasurerName: formattedUserName,
+        student,
+        payment,
+        bulan
       });
-      
-      if (schoolLogo) {
-        try {
-          let logoW = 20;
-          let logoH = 20;
-          let logoX = 20;
-          let logoY = 10;
-
-          try {
-            const imgProps = (doc as any).getImageProperties(schoolLogo);
-            if (imgProps && imgProps.width && imgProps.height) {
-              const aspect = imgProps.width / imgProps.height;
-              const maxW = 35; // Lebar maksimal di kwitansi (mm)
-              const maxH = 22; // Tinggi maksimal di kwitansi (mm)
-              
-              if (aspect > maxW / maxH) {
-                // Gambar horizontal / landscape
-                logoW = maxW;
-                logoH = maxW / aspect;
-              } else {
-                // Gambar persegi / portrait
-                logoH = maxH;
-                logoW = maxH * aspect;
-              }
-              // Posisikan tepat di tengah area header (tinggi 22mm)
-              logoY = 10 + (maxH - logoH) / 2;
-            }
-          } catch (propErr) {
-            console.warn("Could not read image properties, using default dimensions", propErr);
-          }
-
-          doc.addImage(schoolLogo, logoX, logoY, logoW, logoH);
-        } catch (e) {
-          console.error("Gagal memuat logo sekolah di kwitansi", e);
-        }
-      }
-      
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BUKTI PEMBAYARAN SPP', 105, 20, { align: 'center' });
-      
-      doc.setFontSize(12);
-      doc.text(schoolName, 105, 28, { align: 'center' });
-      
-      doc.setLineWidth(0.5);
-      doc.line(20, 35, 190, 35);
-      
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      
-      doc.text(`No. Referensi : INV-${payment.id.split('-')[0].toUpperCase()}`, 20, 45);
-      doc.text(`Tanggal Bayar : ${new Date(payment.tanggal_bayar).toLocaleDateString('id-ID')}`, 20, 52);
-      
-      doc.text('Telah terima dari', 20, 65);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`: ${student.nama_lengkap}`, 60, 65);
-      doc.setFont('helvetica', 'normal');
-      
-      doc.text('Uang sejumlah', 20, 75);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`: Rp ${payment.nominal_dibayar.toLocaleString('id-ID')}`, 60, 75);
-      doc.setFont('helvetica', 'normal');
-      
-      doc.text('Untuk pembayaran', 20, 85);
-      doc.text(`: SPP Bulan ${bulan} ${payment.tahun}`, 60, 85);
-      
-      if (student.kelompok) {
-         doc.text('Kelompok/Kelas', 20, 95);
-         doc.text(`: ${student.kelompok}`, 60, 95);
-      }
-      
-      doc.setLineWidth(0.5);
-      doc.line(20, 105, 190, 105);
-      
-      doc.text('Penerima,', 150, 115);
-      doc.text(`( ${formattedUserName} )`, 140, 135);
-      
-      doc.save(`Kwitansi_SPP_${student.nama_lengkap}_${bulan}_${payment.tahun}.pdf`);
     } catch (err) {
       console.error('Error generating PDF', err);
       alert('Terjadi kesalahan saat membuat kwitansi.');
