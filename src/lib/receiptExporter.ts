@@ -269,15 +269,30 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
   doc.setFontSize(7.5);
   doc.setTextColor(30, 41, 59);
   doc.text(':  Kasir Sekolah / Transfer Bank', col2ValX, infoBoxY + 11);
+  doc.text(':', col2ValX, infoBoxY + 16.5);
 
   // Status Badge LUNAS
+  const badgeW = 27;
+  const badgeH = 5;
+  const badgeX = col2ValX + 3.5;
+  const badgeY = infoBoxY + 13.2;
+
   doc.setFillColor(236, 253, 245); // Emerald-50
-  doc.setDrawColor(52, 211, 153); // Emerald-400
-  doc.roundedRect(col2ValX + 1.5, infoBoxY + 13, 26, 4.5, 1, 1, 'FD');
+  doc.setDrawColor(16, 185, 129); // Emerald-500
+  doc.setLineWidth(0.25);
+  doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.2, 1.2, 'FD');
+
+  // Vector Checkmark (Bebas dari masalah font encoding)
+  doc.setDrawColor(5, 150, 105); // Emerald-600
+  doc.setLineWidth(0.4);
+  doc.line(badgeX + 3.5, badgeY + 2.7, badgeX + 4.8, badgeY + 3.9);
+  doc.line(badgeX + 4.8, badgeY + 3.9, badgeX + 7.2, badgeY + 1.4);
+
+  // Teks Status
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.8);
+  doc.setFontSize(7.2);
   doc.setTextColor(5, 150, 105); // Emerald-600
-  doc.text('✓ LUNAS / SAH', col2ValX + 14.5, infoBoxY + 16.2, { align: 'center' });
+  doc.text('LUNAS / SAH', badgeX + 8.5, badgeY + 3.6);
 
   // ==========================================
   // 4. TABEL RINCIAN PEMBAYARAN
@@ -394,7 +409,7 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
   doc.text('PEMBAYARAN SPP', stampCenterX, stampCenterY - 4.5, { align: 'center' });
   
   doc.setFontSize(7.5);
-  doc.text('★ LUNAS ★', stampCenterX, stampCenterY, { align: 'center' });
+  doc.text('LUNAS', stampCenterX, stampCenterY, { align: 'center' });
   
   doc.setFontSize(4.8);
   doc.text('TERVERIFIKASI SISTEM', stampCenterX, stampCenterY + 4, { align: 'center' });
@@ -684,7 +699,7 @@ export const exportOtherIncomeReceiptPDF = (data: OtherIncomeReceiptData) => {
   doc.setTextColor(6, 95, 70);
   doc.text('KAS MASUK', stampCenterX, stampCenterY - 4.5, { align: 'center' });
   doc.setFontSize(7.5);
-  doc.text('★ DITERIMA ★', stampCenterX, stampCenterY, { align: 'center' });
+  doc.text('DITERIMA', stampCenterX, stampCenterY, { align: 'center' });
   doc.setFontSize(4.8);
   doc.text('TERVERIFIKASI', stampCenterX, stampCenterY + 4, { align: 'center' });
 
