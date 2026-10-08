@@ -37,7 +37,7 @@ export default function ExportReportModal({
   // Local state for customized header & signatures
   const [schoolName, setSchoolName] = useState(reportData.schoolName || 'Lembaga Pendidikan / Sekolah');
   const [city, setCity] = useState(reportData.city || 'Indonesia');
-  const [principalName, setPrincipalName] = useState(reportData.principalName || 'Drs. H. Ahmad Subarjo, M.Pd');
+  const [principalName, setPrincipalName] = useState(reportData.principalName || 'Kepala Sekolah / Pimpinan');
   const [treasurerName, setTreasurerName] = useState(reportData.treasurerName || 'Bendahara Sekolah');
 
   // Checkbox options

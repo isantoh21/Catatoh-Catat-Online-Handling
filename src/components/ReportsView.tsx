@@ -163,7 +163,7 @@ export default function ReportsView() {
         schoolName: sName,
         schoolLogo: sLogo,
         city: sCity,
-        principalName: uMeta.principal_name || 'Kepala Sekolah / Pimpinan',
+        principalName: uMeta.principal_name || localStorage.getItem('principalName_' + currentUser.id) || 'Kepala Sekolah / Pimpinan',
         treasurerName: adminName
       });
     } catch (sErr) {

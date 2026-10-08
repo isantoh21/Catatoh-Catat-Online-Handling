@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, Sparkles, Crop, Crown } from 'lucide-react';
+import { Camera, Save, Building2, UploadCloud, CheckCircle2, Lock, KeyRound, MapPin, AlertCircle, UserCircle, UserCheck, Sparkles, Crop, Crown } from 'lucide-react';
 import { INDONESIAN_CITIES } from '../data/cities';
 import WhatsAppConnect from './WhatsAppConnect';
 import ImageCropModal from './ImageCropModal';
@@ -27,6 +27,7 @@ export default function SettingsView({
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [adminName, setAdminName] = useState('');
+  const [principalName, setPrincipalName] = useState('');
   const [city, setCity] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [cityChangeCount, setCityChangeCount] = useState(0);
@@ -55,7 +56,12 @@ export default function SettingsView({
         setCurrentUserId(session.user.id);
         setCity(session.user.user_metadata?.city || '');
         setCityChangeCount(session.user.user_metadata?.city_change_count || 0);
-        setAdminName(session.user.user_metadata?.full_name || '');
+        setAdminName(session.user.user_metadata?.full_name || session.user.user_metadata?.admin_name || '');
+        setPrincipalName(
+          session.user.user_metadata?.principal_name ||
+          localStorage.getItem('principalName_' + session.user.id) ||
+          ''
+        );
       }
     });
   }, []);
@@ -183,6 +189,7 @@ export default function SettingsView({
     if (session?.user) {
       localStorage.setItem('schoolName_' + session.user.id, localName);
       localStorage.setItem('schoolLogo_' + session.user.id, localLogo);
+      localStorage.setItem('principalName_' + session.user.id, principalName);
       
       try {
         const { error } = await supabase.from('user_settings').upsert({
@@ -195,7 +202,8 @@ export default function SettingsView({
           data: { 
             full_name: adminName,
             admin_name: adminName,
-            school_name: localName
+            school_name: localName,
+            principal_name: principalName
           }
         });
 
@@ -493,6 +501,26 @@ CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USI
                     placeholder="Contoh: TK Harapan Bangsa, SD Maju Jaya" 
                     className="w-full px-4 py-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm font-medium text-slate-800"
                   />
+                </div>
+              </div>
+
+              <hr className="border-slate-100" />
+
+              {/* Nama Kepala Sekolah / Pimpinan Section */}
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-indigo-500" /> Nama Kepala Sekolah / Pimpinan Lembaga
+                </h3>
+                
+                <div className="max-w-md">
+                  <input 
+                    type="text" 
+                    value={principalName}
+                    onChange={e => setPrincipalName(e.target.value)}
+                    placeholder="Contoh: Drs. H. Ahmad Subarjo, M.Pd" 
+                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm font-medium text-slate-800 mb-2"
+                  />
+                  <p className="text-xs text-slate-500">Nama ini akan otomatis terisi pada lembar tanda tangan pengesahan saat mengekspor laporan resmi (PDF, Word, dan Excel).</p>
                 </div>
               </div>
 
