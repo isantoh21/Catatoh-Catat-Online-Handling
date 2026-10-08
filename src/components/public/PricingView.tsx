@@ -61,16 +61,25 @@ export default function PricingView({ schoolName = 'CATATOH', schoolLogo = '' }:
   ];
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white">
+    <div 
+      className="min-h-screen text-slate-900 font-sans selection:bg-blue-600 selection:text-white relative"
+      style={{
+        backgroundColor: '#edf4fe',
+        backgroundImage: `
+          linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          radial-gradient(circle at 82% 16%, rgba(253, 230, 138, 0.6) 0%, rgba(253, 230, 138, 0) 55%),
+          radial-gradient(circle at 18% 45%, rgba(191, 219, 254, 0.5) 0%, rgba(191, 219, 254, 0) 50%)
+        `,
+        backgroundSize: '28px 28px, 28px 28px, auto, auto'
+      }}
+    >
       
       {/* Floating Island Navbar */}
       <PublicNavbar schoolName={schoolName} schoolLogo={schoolLogo} />
 
-      {/* HEADER SECTION WITH SOFT COLOR WASH */}
-      <section className="relative pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center overflow-hidden">
-        
-        {/* Soft Background Gradient */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-80 bg-gradient-to-b from-blue-100/60 via-indigo-50/30 to-transparent -z-10 blur-2xl pointer-events-none" />
+      {/* HEADER SECTION */}
+      <section className="relative pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center">
 
         <div className="space-y-4 max-w-2xl mx-auto">
           

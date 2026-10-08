@@ -9,7 +9,7 @@ export default function PublicFooter({ schoolName = 'CATATOH' }: { schoolName?: 
   const navigate = useNavigate();
 
   return (
-    <footer className="bg-slate-50 text-slate-600 border-t border-slate-200">
+    <footer className="bg-white/90 backdrop-blur-md text-slate-600 border-t border-blue-200/80">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-10 border-b border-slate-200">
           

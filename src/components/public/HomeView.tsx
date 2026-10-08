@@ -34,16 +34,25 @@ export default function HomeView({ schoolName = 'CATATOH', schoolLogo = '' }: Ho
   const [activeWorkflow, setActiveWorkflow] = useState<'spp' | 'presensi' | 'wa' | 'ocr' | 'portal'>('spp');
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white">
+    <div 
+      className="min-h-screen text-slate-900 font-sans selection:bg-blue-600 selection:text-white relative"
+      style={{
+        backgroundColor: '#edf4fe',
+        backgroundImage: `
+          linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+          radial-gradient(circle at 82% 16%, rgba(253, 230, 138, 0.6) 0%, rgba(253, 230, 138, 0) 55%),
+          radial-gradient(circle at 18% 45%, rgba(191, 219, 254, 0.5) 0%, rgba(191, 219, 254, 0) 50%)
+        `,
+        backgroundSize: '28px 28px, 28px 28px, auto, auto'
+      }}
+    >
       
       {/* Floating Island Navbar */}
       <PublicNavbar schoolName={schoolName} schoolLogo={schoolLogo} />
 
-      {/* HERO SECTION WITH WARM ATMOSPHERIC WASH */}
-      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto overflow-hidden">
-        
-        {/* Soft Ambient Wash in Background */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-96 bg-gradient-to-b from-blue-100/60 via-indigo-50/40 to-transparent -z-10 blur-2xl pointer-events-none" />
+      {/* HERO SECTION */}
+      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
 
         <div className="max-w-3xl mx-auto text-center space-y-6">
           
