@@ -97,9 +97,9 @@ export default function StudentsView({ currentUser: propUser }: StudentsViewProp
       }
       setCurrentUserId(activeUser.id);
 
-      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> =>
         Promise.race([
-          promise,
+          Promise.resolve(promise),
           new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
         ]);
 

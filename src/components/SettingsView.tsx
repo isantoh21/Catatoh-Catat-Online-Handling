@@ -77,9 +77,19 @@ export default function SettingsView({
           localStorage.getItem('schoolStamp_' + session.user.id) ||
           ''
         );
+        supabase.from('user_settings').select('admin_signature, school_stamp').eq('user_id', session.user.id).maybeSingle().then(({ data }: any) => {
+          if (data?.admin_signature) setAdminSignature(data.admin_signature);
+          if (data?.school_stamp) setSchoolStamp(data.school_stamp);
+        }, () => {});
       }
     });
   }, []);
+
+  const saveImageSetting = async (userId: string, column: 'admin_signature' | 'school_stamp', value: string | null) => {
+    try {
+      await supabase.from('user_settings').update({ [column]: value } as any).eq('user_id', userId);
+    } catch (_) {}
+  };
 
   // Helper untuk optimasi gambar PNG (mempertahankan latar transparan & kualitas HD tanpa terpotong)
   const optimizePngImage = (dataUrl: string, maxDim = 1200): Promise<string> => {
@@ -132,9 +142,7 @@ export default function SettingsView({
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             localStorage.setItem('adminSignature_' + session.user.id, optimized);
-            await supabase.auth.updateUser({
-              data: { admin_signature: optimized }
-            });
+            await saveImageSetting(session.user.id, 'admin_signature', optimized);
           }
           setSigMessage({ type: 'success', text: 'Tanda tangan berhasil diunggah & tersimpan!' });
           setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
@@ -164,9 +172,7 @@ export default function SettingsView({
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             localStorage.setItem('schoolStamp_' + session.user.id, optimized);
-            await supabase.auth.updateUser({
-              data: { school_stamp: optimized }
-            });
+            await saveImageSetting(session.user.id, 'school_stamp', optimized);
           }
           setSigMessage({ type: 'success', text: 'Stempel sekolah berhasil diunggah & tersimpan!' });
           setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
@@ -185,9 +191,7 @@ export default function SettingsView({
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         localStorage.removeItem('adminSignature_' + session.user.id);
-        await supabase.auth.updateUser({
-          data: { admin_signature: null }
-        });
+        await saveImageSetting(session.user.id, 'admin_signature', null);
       }
       setSigMessage({ type: 'success', text: 'Tanda tangan berhasil dihapus!' });
       setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
@@ -202,9 +206,7 @@ export default function SettingsView({
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         localStorage.removeItem('schoolStamp_' + session.user.id);
-        await supabase.auth.updateUser({
-          data: { school_stamp: null }
-        });
+        await saveImageSetting(session.user.id, 'school_stamp', null);
       }
       setSigMessage({ type: 'success', text: 'Stempel sekolah berhasil dihapus!' });
       setTimeout(() => setSigMessage({ type: '', text: '' }), 3000);
@@ -453,11 +455,11 @@ export default function SettingsView({
             full_name: adminName,
             admin_name: adminName,
             school_name: localName,
-            principal_name: principalName,
-            admin_signature: adminSignature,
-            school_stamp: schoolStamp
+            principal_name: principalName
           }
         });
+        await saveImageSetting(session.user.id, 'admin_signature', adminSignature || null);
+        await saveImageSetting(session.user.id, 'school_stamp', schoolStamp || null);
 
         if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
           setShowSetup(true);

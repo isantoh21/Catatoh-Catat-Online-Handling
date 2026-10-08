@@ -272,9 +272,9 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
 
       setCurrentUserId(activeUser.id);
 
-      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> =>
         Promise.race([
-          promise,
+          Promise.resolve(promise),
           new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
         ]);
 
@@ -326,7 +326,7 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       if (paymentsRes?.data) {
         setPayments(paymentsRes.data);
         if (paymentsRes.data.length > 0) {
-          const yearsWithPayments = [...new Set(paymentsRes.data.map((p: any) => p.tahun).filter(Boolean))];
+          const yearsWithPayments = [...new Set(paymentsRes.data.map((p: any) => Number(p.tahun)).filter(Boolean))] as number[];
           if (yearsWithPayments.length > 0 && !yearsWithPayments.includes(parseInt(selectedTahun))) {
             const bestYear = Math.max(...yearsWithPayments);
             setSelectedTahun(bestYear.toString());

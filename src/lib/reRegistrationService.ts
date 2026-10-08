@@ -150,13 +150,6 @@ export async function saveReRegistrationPrograms(
       .eq('user_id', activeUserId);
   } catch (_) {}
 
-  // 4. Simpan ke auth user_metadata
-  try {
-    await supabase.auth.updateUser({
-      data: { re_registration_programs: programs }
-    });
-  } catch (_) {}
-
   return { success: true };
 }
 
