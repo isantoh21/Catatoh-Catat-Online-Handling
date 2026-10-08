@@ -1015,6 +1015,7 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
       const nominalTeks = verificationRecord.nominal > 0 ? ` sebesar ${nominalVal}` : "";
 
       const customTemplate = activeUserGatewayConfig?.templates?.receiptReceived;
+      const parentLink = targetUserId ? `https://catatoh.my.id/kartu-spp-ortu/${targetUserId}` : `https://catatoh.my.id/kartu-spp-ortu`;
       let replyMsg: string;
 
       if (customTemplate) {
@@ -1025,13 +1026,14 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
           .replace(/\[NOMINAL\]/g, nominalVal)
           .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
           .replace(/\[TANGGAL\]/g, detectedDate)
-          .replace(/\[BANK\]/g, verificationRecord.bank_pengirim || "Bank / E-Wallet");
+          .replace(/\[BANK\]/g, verificationRecord.bank_pengirim || "Bank / E-Wallet")
+          .replace(/\[LINK_SPP\]/g, parentLink);
       } else {
         const nominalStr = verificationRecord.nominal > 0 ? ` sebesar Rp ${verificationRecord.nominal.toLocaleString("id-ID")}` : "";
         const programLabel = matchedProgramObj
           ? `biaya ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'} *${matchedProgramObj.name}*`
           : `pembayaran SPP bulan *${waBulanLabel}*`;
-        replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+        replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr}${bankInfoStr} pada tanggal ${detectedDate} telah kami terima dan masuk antrean verifikasi bendahara sekolah.\n\nCek kartu SPP ananda di link resmi:\n${parentLink}\n\nTerima kasih! 🙏`;
       }
 
       try {

@@ -118,6 +118,7 @@ export default function WhatsAppTemplateModal({
           { tag: '[NOMINAL_TEKS]', desc: 'Frasa pelengkap ("sebesar *Rp 150.000*")' },
           { tag: '[TANGGAL]', desc: 'Tanggal transaksi dari struk' },
           { tag: '[BANK]', desc: 'Bank/E-Wallet pengirim' },
+          { tag: '[LINK_SPP]', desc: 'Link portal kartu SPP online siswa' },
         ];
       case 'receiptApproved':
         return [
@@ -127,6 +128,7 @@ export default function WhatsAppTemplateModal({
           { tag: '[NOMINAL]', desc: 'Nominal yang diverifikasi (format Rp)' },
           { tag: '[TANGGAL]', desc: 'Tanggal transfer di struk' },
           { tag: '[BANK]', desc: 'Bank pengirim' },
+          { tag: '[LINK_SPP]', desc: 'Link portal kartu SPP online siswa' },
         ];
       case 'receiptRejected':
         return [
@@ -135,6 +137,7 @@ export default function WhatsAppTemplateModal({
           { tag: '[BULAN]', desc: 'Bulan yang bersangkutan' },
           { tag: '[TAHUN]', desc: 'Tahun yang bersangkutan' },
           { tag: '[NOMINAL]', desc: 'Nominal pada struk' },
+          { tag: '[LINK_SPP]', desc: 'Link portal kartu SPP online siswa' },
         ];
     }
   };
@@ -149,7 +152,7 @@ export default function WhatsAppTemplateModal({
           .replace(/\[BULAN\]/g, 'Maret')
           .replace(/\[TAHUN\]/g, '2026')
           .replace(/\[NOMINAL\]/g, 'Rp 150.000')
-          .replace(/\[LINK_SPP\]/g, 'https://catatoh.com/spp/s_12345');
+          .replace(/\[LINK_SPP\]/g, 'https://catatoh.my.id/kartu-spp-ortu/demo');
       case 'receiptReceived':
         return formatReceiptReceivedMessage(raw, {
           studentName: 'Ahmad Fauzi',
@@ -157,7 +160,8 @@ export default function WhatsAppTemplateModal({
           tahun: 2026,
           nominal: 150000,
           tanggal: '2026-03-25',
-          bank: 'BCA'
+          bank: 'BCA',
+          linkSpp: 'https://catatoh.my.id/kartu-spp-ortu/demo'
         });
       case 'receiptApproved':
         return formatReceiptApprovedMessage(raw, {
@@ -166,7 +170,8 @@ export default function WhatsAppTemplateModal({
           tahun: 2026,
           nominal: 150000,
           tanggal: '2026-03-25',
-          bank: 'BCA'
+          bank: 'BCA',
+          linkSpp: 'https://catatoh.my.id/kartu-spp-ortu/demo'
         });
       case 'receiptRejected':
         return formatReceiptRejectedMessage(raw, {
@@ -174,7 +179,8 @@ export default function WhatsAppTemplateModal({
           reason: 'Nominal transfer tidak sesuai dengan tagihan SPP',
           bulan: 'Maret',
           tahun: 2026,
-          nominal: 100000
+          nominal: 100000,
+          linkSpp: 'https://catatoh.my.id/kartu-spp-ortu/demo'
         });
     }
   };

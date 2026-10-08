@@ -19,12 +19,20 @@ Cek kartu progres SPP ananda di link resmi:
 Terima kasih.`,
 
   receiptReceived: 
-`Halo Ayah/Bunda, bukti pembayaran SPP [NAMA_SISWA] untuk bulan *[BULAN]*[NOMINAL_TEKS] pada tanggal *[TANGGAL]* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`,
+`Halo Ayah/Bunda, bukti pembayaran SPP [NAMA_SISWA] untuk bulan *[BULAN]*[NOMINAL_TEKS] pada tanggal *[TANGGAL]* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya.
+
+Cek kartu SPP ananda di link resmi:
+[LINK_SPP]
+
+Terima kasih! 🙏`,
 
   receiptApproved: 
 `*BUKTI PEMBAYARAN SPP DIVERIFIKASI* ✅
 
 Alhamdulillah, pembayaran SPP ananda *[NAMA_SISWA]* untuk bulan *[BULAN] [TAHUN]* sebesar *[NOMINAL]* telah diverifikasi dan dicatat *LUNAS*.
+
+Cek status kartu SPP & riwayat pembayaran di link resmi:
+[LINK_SPP]
 
 Terima kasih atas kerja samanya. Semoga ananda senantiasa berprestasi. 🙏`,
 
@@ -35,7 +43,10 @@ Halo Ayah/Bunda, mohon maaf bukti pembayaran SPP ananda *[NAMA_SISWA]* belum dap
 
 👉 *[ALASAN_PENOLAKAN]*
 
-Mohon mengirimkan ulang foto struk transfer yang jelas atau konfirmasi kembali ke pihak tata usaha. Terima kasih.`
+Mohon mengirimkan ulang foto struk transfer yang jelas atau cek rincian tagihan di link kartu SPP berikut:
+[LINK_SPP]
+
+Terima kasih.`
 };
 
 export async function getWhatsAppTemplates(userId?: string): Promise<WhatsAppTemplates> {
@@ -167,6 +178,7 @@ export function formatReceiptReceivedMessage(
     nominal?: number;
     tanggal: string;
     bank?: string;
+    linkSpp?: string;
   }
 ): string {
   const activeTemplate = template || DEFAULT_TEMPLATES.receiptReceived;
@@ -181,7 +193,8 @@ export function formatReceiptReceivedMessage(
     .replace(/\[NOMINAL\]/g, nominalVal)
     .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
     .replace(/\[TANGGAL\]/g, data.tanggal || new Date().toISOString().split('T')[0])
-    .replace(/\[BANK\]/g, data.bank || 'Bank / E-Wallet');
+    .replace(/\[BANK\]/g, data.bank || 'Bank / E-Wallet')
+    .replace(/\[LINK_SPP\]/g, data.linkSpp || '');
 }
 
 // FORMATTER: Resi Divalidasi / Approved
@@ -194,6 +207,7 @@ export function formatReceiptApprovedMessage(
     nominal: number;
     tanggal?: string;
     bank?: string;
+    linkSpp?: string;
   }
 ): string {
   const activeTemplate = template || DEFAULT_TEMPLATES.receiptApproved;
@@ -205,7 +219,8 @@ export function formatReceiptApprovedMessage(
     .replace(/\[TAHUN\]/g, String(data.tahun))
     .replace(/\[NOMINAL\]/g, nominalVal)
     .replace(/\[TANGGAL\]/g, data.tanggal || '')
-    .replace(/\[BANK\]/g, data.bank || '');
+    .replace(/\[BANK\]/g, data.bank || '')
+    .replace(/\[LINK_SPP\]/g, data.linkSpp || '');
 }
 
 // FORMATTER: Resi Ditolak / Rejected
@@ -217,6 +232,7 @@ export function formatReceiptRejectedMessage(
     bulan?: string;
     tahun?: number | string;
     nominal?: number;
+    linkSpp?: string;
   }
 ): string {
   const activeTemplate = template || DEFAULT_TEMPLATES.receiptRejected;
@@ -227,5 +243,6 @@ export function formatReceiptRejectedMessage(
     .replace(/\[ALASAN_PENOLAKAN\]/g, data.reason)
     .replace(/\[BULAN\]/g, data.bulan || '')
     .replace(/\[TAHUN\]/g, String(data.tahun || ''))
-    .replace(/\[NOMINAL\]/g, nominalVal);
+    .replace(/\[NOMINAL\]/g, nominalVal)
+    .replace(/\[LINK_SPP\]/g, data.linkSpp || '');
 }

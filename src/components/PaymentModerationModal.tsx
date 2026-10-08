@@ -26,10 +26,36 @@ import {
   formatReceiptApprovedMessage, 
   formatReceiptRejectedMessage 
 } from '../lib/whatsappTemplates';
+import { generateSppReceiptPdfBase64 } from '../lib/receiptExporter';
 import { 
   ReRegistrationProgram, 
   getReRegistrationPrograms 
 } from '../lib/reRegistrationService';
+
+const getSchoolReceiptMetadata = (currentUser: any) => {
+  const rawEmail = currentUser?.email || '';
+  const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.admin_name || currentUser?.user_metadata?.name || rawEmail.split('@')[0] || 'Admin';
+  const formattedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  let schoolName = currentUser ? localStorage.getItem('schoolName_' + currentUser.id) : null;
+  if (!schoolName || schoolName.trim() === '') {
+    schoolName = currentUser?.user_metadata?.school_name || formattedUserName;
+  }
+  const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
+  const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
+  const principalName = currentUser?.user_metadata?.principal_name || (currentUser ? localStorage.getItem('principalName_' + currentUser.id) : null) || '';
+  const adminSignature = currentUser?.user_metadata?.admin_signature || (currentUser ? localStorage.getItem('adminSignature_' + currentUser.id) : null) || null;
+  const schoolStamp = currentUser?.user_metadata?.school_stamp || (currentUser ? localStorage.getItem('schoolStamp_' + currentUser.id) : null) || null;
+
+  return {
+    schoolName: schoolName || 'Lembaga Pendidikan',
+    schoolLogo,
+    city,
+    principalName,
+    treasurerName: formattedUserName,
+    adminSignature,
+    schoolStamp
+  };
+};
 
 const BULAN_OPTIONS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -624,13 +650,17 @@ export default function PaymentModerationModal({
           }
         }
 
+        const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'catatoh.my.id';
+        const parentSppLink = uid ? `https://${host}/kartu-spp-ortu/${uid}` : `https://${host}/kartu-spp-ortu`;
+
         let approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
           studentName: studentNames,
           bulan: waBulanLabel,
           tahun: approvedTahunText,
           nominal: totalNominal,
           tanggal: tanggalBayar,
-          bank: item.bank_pengirim
+          bank: item.bank_pengirim,
+          linkSpp: parentSppLink
         });
 
         // Pengingat khusus syarat kelulusan jika syarat belum divalidasi
@@ -641,16 +671,69 @@ export default function PaymentModerationModal({
           }
         }
 
+        // Generate Kwitansi Resmi PDF dalam format Data URI / Base64 untuk dikirim langsung via WhatsApp
+        let receiptFilePayload: { url: string; filename: string; mimetype: string } | undefined;
+        try {
+          const studentObj = targetStudents[0] || {
+            id: item.student_id || 'siswa',
+            nama_lengkap: studentNames,
+            kelompok: 'Reguler',
+            nomor_whatsapp: targetPhone
+          };
+          const receiptMetadata = getSchoolReceiptMetadata(session?.user);
+          const pdfRes = generateSppReceiptPdfBase64({
+            ...receiptMetadata,
+            student: {
+              id: studentObj.id,
+              nama_lengkap: studentObj.nama_lengkap || studentNames,
+              kelompok: studentObj.kelompok || 'Reguler',
+              nomor_whatsapp: targetPhone
+            },
+            payment: {
+              id: item.id || String(Date.now()),
+              nominal_dibayar: totalNominal,
+              tanggal_bayar: tanggalBayar,
+              waktu_bayar: waktuBayar,
+              tahun: Number(approvedTahunText) || new Date().getFullYear(),
+              bulan: approvedBulanText,
+            },
+            bulan: approvedBulanText,
+          });
+
+          receiptFilePayload = {
+            url: pdfRes.dataUri,
+            filename: pdfRes.filename,
+            mimetype: 'application/pdf'
+          };
+        } catch (pdfErr) {
+          console.warn('Gagal men-generate file PDF kwitansi:', pdfErr);
+        }
+
         try {
           const config = await getWhatsAppGatewayConfig(uid);
-          const sendRes = await sendWhatsAppMessage({
+          let sendRes = await sendWhatsAppMessage({
             apiUrl: config?.apiUrl,
             appkey: config?.appkey,
             authkey: config?.authkey,
             to: targetPhone,
             message: approvalMsg,
+            file: receiptFilePayload,
             userId: uid,
           });
+
+          // Fallback: Jika gateway gagal saat mengirim lampiran PDF, kirim pesan teks
+          if (!sendRes.success && receiptFilePayload) {
+            console.warn('Pengiriman kwitansi PDF via WA gagal, fallback ke pesan teks:', sendRes.error);
+            sendRes = await sendWhatsAppMessage({
+              apiUrl: config?.apiUrl,
+              appkey: config?.appkey,
+              authkey: config?.authkey,
+              to: targetPhone,
+              message: approvalMsg,
+              userId: uid,
+            });
+          }
+
           waSuccess = sendRes.success;
           if (!sendRes.success) waMsg = sendRes.error || '';
         } catch (waErr: any) {
@@ -736,24 +819,78 @@ export default function PaymentModerationModal({
         return;
       }
 
+      const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'catatoh.my.id';
+      const parentSppLink = uid ? `https://${host}/kartu-spp-ortu/${uid}` : `https://${host}/kartu-spp-ortu`;
+
       const approvalMsg = formatReceiptApprovedMessage(templates.receiptApproved, {
         studentName,
         bulan: item.bulan,
         tahun: item.tahun,
         nominal: item.nominal,
         tanggal: item.tanggal_transfer,
-        bank: item.bank_pengirim
+        bank: item.bank_pengirim,
+        linkSpp: parentSppLink
       });
 
+      // Generate Kwitansi Resmi PDF dalam format Data URI / Base64 untuk dikirim langsung via WhatsApp
+      let receiptFilePayload: { url: string; filename: string; mimetype: string } | undefined;
+      try {
+        const studentObj = targetStudents[0] || {
+          id: item.student_id || 'siswa',
+          nama_lengkap: studentName,
+          kelompok: 'Reguler',
+          nomor_whatsapp: targetPhone
+        };
+        const receiptMetadata = getSchoolReceiptMetadata(session?.user);
+        const pdfRes = generateSppReceiptPdfBase64({
+          ...receiptMetadata,
+          student: {
+            id: studentObj.id,
+            nama_lengkap: studentObj.nama_lengkap || studentName,
+            kelompok: studentObj.kelompok || 'Reguler',
+            nomor_whatsapp: targetPhone
+          },
+          payment: {
+            id: item.id || String(Date.now()),
+            nominal_dibayar: item.nominal,
+            tanggal_bayar: item.tanggal_transfer || new Date().toISOString().split('T')[0],
+            waktu_bayar: item.waktu_transfer || new Date().toTimeString().slice(0, 5),
+            tahun: Number(item.tahun) || new Date().getFullYear(),
+            bulan: item.bulan,
+          },
+          bulan: item.bulan,
+        });
+
+        receiptFilePayload = {
+          url: pdfRes.dataUri,
+          filename: pdfRes.filename,
+          mimetype: 'application/pdf'
+        };
+      } catch (pdfErr) {
+        console.warn('Gagal men-generate file PDF kwitansi:', pdfErr);
+      }
+
       const config = await getWhatsAppGatewayConfig(uid);
-      const sendRes = await sendWhatsAppMessage({
+      let sendRes = await sendWhatsAppMessage({
         apiUrl: config?.apiUrl,
         appkey: config?.appkey,
         authkey: config?.authkey,
         to: targetPhone,
         message: approvalMsg,
+        file: receiptFilePayload,
         userId: uid,
       });
+
+      if (!sendRes.success && receiptFilePayload) {
+        sendRes = await sendWhatsAppMessage({
+          apiUrl: config?.apiUrl,
+          appkey: config?.appkey,
+          authkey: config?.authkey,
+          to: targetPhone,
+          message: approvalMsg,
+          userId: uid,
+        });
+      }
 
       if (sendRes.success) {
         alert(`✅ Pesan konfirmasi pelunasan berhasil dikirim ulang ke nomor ${targetPhone}.`);
@@ -814,12 +951,16 @@ export default function PaymentModerationModal({
         : (rejectingItem.student_name || 'Siswa');
 
       if (targetPhone) {
+        const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'catatoh.my.id';
+        const parentSppLink = uid ? `https://${host}/kartu-spp-ortu/${uid}` : `https://${host}/kartu-spp-ortu`;
+
         const rejectMsg = formatReceiptRejectedMessage(templates.receiptRejected, {
           studentName: rejectStudentName,
           reason: finalReason,
           bulan: rejectingItem.bulan,
           tahun: rejectingItem.tahun,
-          nominal: rejectingItem.nominal
+          nominal: rejectingItem.nominal,
+          linkSpp: parentSppLink
         });
 
         try {

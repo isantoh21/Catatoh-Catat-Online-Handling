@@ -1199,6 +1199,7 @@ export default async function handler(req: any, res: any) {
         const nominalTeks = finalNominal > 0 ? ` sebesar *${nominalVal}*` : "";
 
         const customTemplate = activeUserGatewayConfig?.templates?.receiptReceived;
+        const parentLink = targetUserId ? `https://catatoh.my.id/kartu-spp-ortu/${targetUserId}` : `https://catatoh.my.id/kartu-spp-ortu`;
         let replyMsg: string;
 
         if (customTemplate) {
@@ -1209,13 +1210,14 @@ export default async function handler(req: any, res: any) {
             .replace(/\[NOMINAL\]/g, nominalVal)
             .replace(/\[NOMINAL_TEKS\]/g, nominalTeks)
             .replace(/\[TANGGAL\]/g, detectedDate)
-            .replace(/\[BANK\]/g, verificationPayload.bank_pengirim || "Bank / E-Wallet");
+            .replace(/\[BANK\]/g, verificationPayload.bank_pengirim || "Bank / E-Wallet")
+            .replace(/\[LINK_SPP\]/g, parentLink);
         } else {
           const nominalStr = finalNominal > 0 ? ` sebesar *Rp ${finalNominal.toLocaleString("id-ID")}*` : "";
           const programLabel = matchedProgramObj
             ? `biaya ${matchedProgramObj.type === 'graduation' ? 'Kelulusan' : 'Daftar Ulang'} *${matchedProgramObj.name}*`
             : `pembayaran SPP bulan *${waBulanLabel}*`;
-          replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah. Kami akan segera mengonfirmasi status pembayarannya. Terima kasih! 🙏`;
+          replyMsg = `Halo Ayah/Bunda, bukti pembayaran ${programLabel} ${studentNameStr}${nominalStr} pada tanggal *${detectedDate}* telah kami terima dan masuk antrean moderasi bendahara sekolah.\n\nCek kartu SPP ananda di link resmi:\n${parentLink}\n\nTerima kasih! 🙏`;
         }
 
         // Kirim auto-reply langsung via Gateway VPS menggunakan sesi yang sesuai

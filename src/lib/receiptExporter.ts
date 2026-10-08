@@ -92,9 +92,9 @@ const formatDateIndo = (dateStr: string): string => {
 };
 
 /**
- * 1. EKSPOR KWITANSI RESMI PEMBAYARAN SPP SISWA (A5 LANDSCAPE)
+ * 1. GENERATE KWITANSI RESMI PEMBAYARAN SPP SISWA (A5 LANDSCAPE)
  */
-export const exportSppReceiptPDF = (data: SppReceiptData) => {
+export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -498,7 +498,27 @@ export const exportSppReceiptPDF = (data: SppReceiptData) => {
     { align: 'right' }
   );
 
-  // Simpan / Unduh Dokumen
+  return doc;
+};
+
+/**
+ * Helper untuk men-generate Kwitansi SPP sebagai base64 / dataUri (misal untuk dikirim via WhatsApp)
+ */
+export const generateSppReceiptPdfBase64 = (data: SppReceiptData): { base64: string; dataUri: string; filename: string } => {
+  const doc = generateSppReceiptPdfDoc(data);
+  const safeStudentName = (data.student.nama_lengkap || 'Siswa').replace(/[^a-zA-Z0-9]/g, '_');
+  const filename = `Kwitansi_SPP_${safeStudentName}_${data.bulan}_${data.payment.tahun}.pdf`;
+  const rawDataUri = doc.output('datauristring');
+  const base64 = rawDataUri.includes(';base64,') ? rawDataUri.split(';base64,')[1] : (rawDataUri.split(',')[1] || '');
+  const dataUri = `data:application/pdf;base64,${base64}`;
+  return { base64, dataUri, filename };
+};
+
+/**
+ * Unduh berkas Kwitansi SPP secara langsung di browser pengguna
+ */
+export const exportSppReceiptPDF = (data: SppReceiptData) => {
+  const doc = generateSppReceiptPdfDoc(data);
   const safeStudentName = (data.student.nama_lengkap || 'Siswa').replace(/[^a-zA-Z0-9]/g, '_');
   const filename = `Kwitansi_SPP_${safeStudentName}_${data.bulan}_${data.payment.tahun}.pdf`;
   doc.save(filename);
