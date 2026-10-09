@@ -1,6 +1,15 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+export interface ReceiptItem {
+  no?: number;
+  deskripsi: string;
+  periode: string;
+  nominal: number;
+  studentName?: string;
+  kelompok?: string;
+}
+
 export interface SppReceiptData {
   schoolName: string;
   schoolLogo?: string | null;
@@ -25,6 +34,14 @@ export interface SppReceiptData {
     bulan: string;
   };
   bulan: string;
+
+  // Penyesuaian Otomatis Multi-Bulan & Kakak-Adik
+  isMultiMonth?: boolean;
+  isSiblingPayment?: boolean;
+  paymentTypeTitle?: string;
+  items?: ReceiptItem[];
+  allStudents?: Array<{ id?: string; nama_lengkap: string; kelompok?: string; nomor_whatsapp?: string }>;
+  noteText?: string;
 }
 
 export interface OtherIncomeReceiptData {
@@ -186,8 +203,124 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
     25.5
   );
 
+  // ==========================================
+  // PARSING & PENYESUAIAN OTOMATIS: MULTI-BULAN & KAKAK-ADIK
+  // ==========================================
+  let effectiveItems: ReceiptItem[] = [];
+
+  if (data.items && data.items.length > 0) {
+    effectiveItems = data.items.map((it, idx) => ({
+      no: it.no || idx + 1,
+      deskripsi: it.deskripsi,
+      periode: it.periode,
+      nominal: Number(it.nominal) || 0,
+      studentName: it.studentName,
+      kelompok: it.kelompok
+    }));
+  } else {
+    // Otomatis pecah jika bulan mengandung pemisah (&, koma, 'dan')
+    const rawBulan = (data.bulan || data.payment.bulan || '').trim();
+    const splitMonths = rawBulan
+      .split(/&|,|\bdan\b/i)
+      .map(b => b.trim())
+      .filter(b => b.length > 0);
+
+    const rawNames = (data.student.nama_lengkap || '').trim();
+    const splitNames = (data.allStudents && data.allStudents.length > 1)
+      ? data.allStudents.map(s => s.nama_lengkap)
+      : rawNames.split(/&|\bdan\b/i).map(n => n.trim()).filter(n => n.length > 0);
+
+    if (splitNames.length > 1 && splitMonths.length <= 1) {
+      // Kasus Kakak-Adik (1 bulan, beberapa anak)
+      const perStudent = Math.floor(data.payment.nominal_dibayar / splitNames.length);
+      const rem = data.payment.nominal_dibayar % splitNames.length;
+      effectiveItems = splitNames.map((sName, idx) => {
+        const studentMeta = data.allStudents?.find(s => s.nama_lengkap === sName);
+        const kel = studentMeta?.kelompok || '';
+        return {
+          no: idx + 1,
+          deskripsi: `SPP Siswa a.n. ${sName}${kel ? ` (${kel})` : ''}`,
+          periode: `${rawBulan || 'SPP'} ${data.payment.tahun}`,
+          nominal: perStudent + (idx === 0 ? rem : 0),
+          studentName: sName,
+          kelompok: kel
+        };
+      });
+    } else if (splitMonths.length > 1 && splitNames.length <= 1) {
+      // Kasus Multi-Bulan (beberapa bulan, 1 anak)
+      const perMonth = Math.floor(data.payment.nominal_dibayar / splitMonths.length);
+      const rem = data.payment.nominal_dibayar % splitMonths.length;
+      effectiveItems = splitMonths.map((mName, idx) => ({
+        no: idx + 1,
+        deskripsi: `Iuran Pembayaran SPP a.n. ${data.student.nama_lengkap}`,
+        periode: `${mName} ${data.payment.tahun}`,
+        nominal: perMonth + (idx === 0 ? rem : 0),
+        studentName: data.student.nama_lengkap,
+        kelompok: data.student.kelompok
+      }));
+    } else if (splitNames.length > 1 && splitMonths.length > 1) {
+      // Kasus Kakak-Adik Sekaligus Multi-Bulan
+      const totalUnits = splitNames.length * splitMonths.length;
+      const perUnit = Math.floor(data.payment.nominal_dibayar / totalUnits);
+      const rem = data.payment.nominal_dibayar % totalUnits;
+      let counter = 0;
+      effectiveItems = [];
+      for (const sName of splitNames) {
+        const studentMeta = data.allStudents?.find(s => s.nama_lengkap === sName);
+        const kel = studentMeta?.kelompok || '';
+        for (const mName of splitMonths) {
+          counter++;
+          effectiveItems.push({
+            no: counter,
+            deskripsi: `SPP Siswa a.n. ${sName}${kel ? ` (${kel})` : ''}`,
+            periode: `${mName} ${data.payment.tahun}`,
+            nominal: perUnit + (counter === 1 ? rem : 0),
+            studentName: sName,
+            kelompok: kel
+          });
+        }
+      }
+    } else {
+      // Kasus Normal 1 Item
+      effectiveItems = [
+        {
+          no: 1,
+          deskripsi: `Iuran Pembayaran SPP Siswa a.n. ${data.student.nama_lengkap}`,
+          periode: `${rawBulan || 'SPP'} ${data.payment.tahun}`,
+          nominal: data.payment.nominal_dibayar,
+          studentName: data.student.nama_lengkap,
+          kelompok: data.student.kelompok
+        }
+      ];
+    }
+  }
+
+  const isSibling = Boolean(
+    data.isSiblingPayment ||
+    (data.allStudents && data.allStudents.length > 1) ||
+    (effectiveItems.length > 1 && new Set(effectiveItems.map(i => i.studentName).filter(Boolean)).size > 1)
+  );
+
+  const isMulti = Boolean(
+    data.isMultiMonth ||
+    effectiveItems.length > 1
+  );
+
+  const totalPaymentNominal = effectiveItems.reduce((acc, it) => acc + (Number(it.nominal) || 0), 0) || data.payment.nominal_dibayar;
+
   // Bagian Kanan Header: Label Box & No. Kwitansi
-  const rightBadgeW = 58;
+  let rightBadgeTitle = 'KWITANSI PEMBAYARAN SPP';
+  if (data.paymentTypeTitle) {
+    rightBadgeTitle = data.paymentTypeTitle;
+  } else if (isSibling && isMulti) {
+    rightBadgeTitle = 'KWITANSI SPP KELUARGA';
+  } else if (isSibling) {
+    rightBadgeTitle = 'KWITANSI SPP (KAKAK-ADIK)';
+  } else if (isMulti) {
+    rightBadgeTitle = `KWITANSI SPP (${effectiveItems.length} BULAN)`;
+  }
+
+  const rightBadgeW = Math.max(58, rightBadgeTitle.length * 2.5 + 8);
   const rightBadgeX = pageWidth - marginX - rightBadgeW;
   
   // Banner Judul Kwitansi
@@ -195,9 +328,9 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.roundedRect(rightBadgeX, 11, rightBadgeW, 7.5, 1.5, 1.5, 'F');
   
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(isSibling || isMulti ? 7.8 : 8.5);
   doc.setTextColor(255, 255, 255);
-  doc.text('KWITANSI PEMBAYARAN SPP', rightBadgeX + (rightBadgeW / 2), 16, { align: 'center' });
+  doc.text(rightBadgeTitle, rightBadgeX + (rightBadgeW / 2), 16, { align: 'center' });
 
   // Nomor Referensi & Tanggal
   const receiptNo = `KW-SPP/${data.payment.tahun}/${(data.payment.id || '0000').slice(0, 8).toUpperCase()}`;
@@ -243,15 +376,27 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.text('Kelas / Kelompok', col1X, infoBoxY + 11);
   doc.text('No. WhatsApp Ortu', col1X, infoBoxY + 16.5);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42); // Slate-900
-  doc.text(`:  ${data.student.nama_lengkap || '-'}`, col1ValX, infoBoxY + 5.5);
+  // Format Nama Siswa
+  let studentDisplayName = data.student.nama_lengkap || '-';
+  if (isSibling && !studentDisplayName.toLowerCase().includes('kakak')) {
+    studentDisplayName += ' (Kakak-Adik)';
+  }
 
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(studentDisplayName.length > 32 ? 7.5 : 8.5);
+  doc.setTextColor(15, 23, 42); // Slate-900
+  doc.text(`:  ${studentDisplayName}`, col1ValX, infoBoxY + 5.5);
+
+  // Format Kelompok
+  let kelompokText = data.student.kelompok || 'Reguler / Umum';
+  if (data.allStudents && data.allStudents.length > 1) {
+    const kels = data.allStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i);
+    kelompokText = kels.join(' & ');
+  }
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(30, 41, 59);
-  doc.text(`:  ${data.student.kelompok || 'Reguler / Umum'}`, col1ValX, infoBoxY + 11);
+  doc.text(`:  ${kelompokText}`, col1ValX, infoBoxY + 11);
   doc.text(`:  ${data.student.nomor_whatsapp || '-'}`, col1ValX, infoBoxY + 16.5);
 
   // Kolom Kanan Info
@@ -265,10 +410,22 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.text('Metode Transaksi', col2X, infoBoxY + 11);
   doc.text('Status Pelunasan', col2X, infoBoxY + 16.5);
 
+  // Format Keterangan Pembayaran
+  let paymentForText = `SPP Bulan ${data.bulan} ${data.payment.tahun}`;
+  if (isSibling && isMulti) {
+    paymentForText = `SPP Kakak-Adik (${effectiveItems.length} Tagihan)`;
+  } else if (isSibling) {
+    const sCount = data.allStudents?.length || new Set(effectiveItems.map(i => i.studentName).filter(Boolean)).size || 2;
+    paymentForText = `SPP ${sCount} Siswa (${data.bulan} ${data.payment.tahun})`;
+  } else if (isMulti) {
+    const monthNames = effectiveItems.map(i => i.periode.split(' ')[0]).join(', ');
+    paymentForText = `SPP ${effectiveItems.length} Bulan (${monthNames})`;
+  }
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(paymentForText.length > 30 ? 7.2 : 8);
   doc.setTextColor(49, 46, 129); // Indigo-900
-  doc.text(`:  SPP Bulan ${data.bulan} ${data.payment.tahun}`, col2ValX, infoBoxY + 5.5);
+  doc.text(`:  ${paymentForText}`, col2ValX, infoBoxY + 5.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
@@ -287,7 +444,7 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.setLineWidth(0.25);
   doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.2, 1.2, 'FD');
 
-  // Vector Checkmark (Bebas dari masalah font encoding)
+  // Vector Checkmark
   doc.setDrawColor(5, 150, 105); // Emerald-600
   doc.setLineWidth(0.4);
   doc.line(badgeX + 3.5, badgeY + 2.7, badgeX + 4.8, badgeY + 3.9);
@@ -300,9 +457,11 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.text('LUNAS / SAH', badgeX + 8.5, badgeY + 3.6);
 
   // ==========================================
-  // 4. TABEL RINCIAN PEMBAYARAN
+  // 4. TABEL RINCIAN PEMBAYARAN (ADAPTIF MULTI-BARIS)
   // ==========================================
   const tableStartY = infoBoxY + infoBoxH + 3.5;
+  const tableFontSize = effectiveItems.length > 4 ? 6.5 : (effectiveItems.length > 2 ? 7 : 7.5);
+  const tablePadding = effectiveItems.length > 4 ? 1.2 : (effectiveItems.length > 2 ? 1.6 : 2);
 
   autoTable(doc, {
     startY: tableStartY,
@@ -312,14 +471,14 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
       fillColor: [49, 46, 129], // Indigo-900
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 7.5,
+      fontSize: tableFontSize,
       halign: 'center',
       valign: 'middle',
-      cellPadding: 2
+      cellPadding: tablePadding
     },
     styles: {
-      fontSize: 7.5,
-      cellPadding: 2,
+      fontSize: tableFontSize,
+      cellPadding: tablePadding,
       textColor: [30, 41, 59],
       lineColor: [226, 232, 240],
       lineWidth: 0.15
@@ -327,24 +486,22 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
     head: [
       ['No', 'Uraian / Deskripsi Pembayaran', 'Periode', 'Nominal Pembayaran (Rp)']
     ],
-    body: [
-      [
-        '1',
-        `Iuran Pembayaran SPP Siswa a.n. ${data.student.nama_lengkap}`,
-        `${data.bulan} ${data.payment.tahun}`,
-        formatRupiah(data.payment.nominal_dibayar)
-      ]
-    ],
+    body: effectiveItems.map((item, idx) => [
+      String(item.no || idx + 1),
+      item.deskripsi,
+      item.periode,
+      formatRupiah(item.nominal)
+    ]),
     foot: [
       [
         { content: 'TOTAL PEMBAYARAN DITERIMA', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold', fillColor: [238, 242, 255], textColor: [49, 46, 129] } },
-        { content: formatRupiah(data.payment.nominal_dibayar), styles: { halign: 'right', fontStyle: 'bold', fillColor: [238, 242, 255], textColor: [49, 46, 129] } }
+        { content: formatRupiah(totalPaymentNominal), styles: { halign: 'right', fontStyle: 'bold', fillColor: [238, 242, 255], textColor: [49, 46, 129] } }
       ]
     ],
     columnStyles: {
       0: { halign: 'center', cellWidth: 10 },
       1: { cellWidth: 'auto', fontStyle: 'bold' },
-      2: { halign: 'center', cellWidth: 35 },
+      2: { halign: 'center', cellWidth: 40 },
       3: { halign: 'right', cellWidth: 45 }
     },
     didParseCell: (hookData) => {
@@ -356,7 +513,7 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
     margin: { left: marginX, right: marginX }
   });
 
-  const afterTableY = (doc as any).lastAutoTable.finalY + 3;
+  const afterTableY = (doc as any).lastAutoTable.finalY + 2.5;
 
   // ==========================================
   // 5. BANNER TERBILANG (NOMINAL DALAM KATA)
@@ -364,23 +521,23 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.setFillColor(241, 245, 249); // Slate-100
   doc.setDrawColor(203, 213, 225); // Slate-300
   doc.setLineWidth(0.2);
-  doc.roundedRect(marginX, afterTableY, contentWidth, 7, 1.2, 1.2, 'FD');
+  doc.roundedRect(marginX, afterTableY, contentWidth, 6.5, 1.2, 1.2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(30, 27, 75);
-  doc.text('Terbilang :', marginX + 3, afterTableY + 4.6);
+  doc.text('Terbilang :', marginX + 3, afterTableY + 4.3);
 
   doc.setFont('helvetica', 'bolditalic');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(67, 56, 202); // Indigo-700
-  const terbilangText = `# ${terbilangRupiah(data.payment.nominal_dibayar)} #`;
-  doc.text(terbilangText, marginX + 20, afterTableY + 4.6);
+  const terbilangText = `# ${terbilangRupiah(totalPaymentNominal)} #`;
+  doc.text(terbilangText, marginX + 18, afterTableY + 4.3);
 
   // ==========================================
   // 6. TANDA TANGAN & STEMPEL KEABSAHAN RESMI
   // ==========================================
-  const sigY = afterTableY + 10;
+  const sigY = afterTableY + 8;
 
   // Sisi Kiri: Catatan & Stempel Keabsahan Digital
   const leftX = marginX + 2;
@@ -389,10 +546,20 @@ export const generateSppReceiptPdfDoc = (data: SppReceiptData): jsPDF => {
   doc.setTextColor(71, 85, 105);
   doc.text('Catatan & Keabsahan Dokumen:', leftX, sigY);
 
+  const dynamicNote1 = data.noteText
+    ? data.noteText
+    : (isSibling && isMulti)
+      ? `1. Kwitansi ini mencakup lunas untuk ${effectiveItems.length} rincian SPP keluarga (kakak-beradik).`
+      : isSibling
+        ? `1. Kwitansi ini mencakup lunas gabungan SPP siswa kakak-beradik.`
+        : isMulti
+          ? `1. Kwitansi ini mencakup lunas sekaligus untuk ${effectiveItems.length} bulan iuran SPP.`
+          : '1. Kwitansi ini merupakan bukti pembayaran SPP digital yang sah & mengikat.';
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.2);
   doc.setTextColor(100, 116, 139);
-  doc.text('1. Kwitansi ini merupakan bukti pembayaran SPP digital yang sah & mengikat.', leftX, sigY + 4);
+  doc.text(dynamicNote1, leftX, sigY + 4);
   doc.text('2. Harap disimpan dengan baik sebagai arsip bukti pembayaran yang sah.', leftX, sigY + 7.5);
   doc.text('3. Diterbitkan secara resmi melalui Sistem Informasi Keuangan Catatoh.', leftX, sigY + 11);
 

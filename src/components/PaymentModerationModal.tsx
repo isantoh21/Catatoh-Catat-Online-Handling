@@ -26,7 +26,7 @@ import {
   formatReceiptApprovedMessage, 
   formatReceiptRejectedMessage 
 } from '../lib/whatsappTemplates';
-import { generateSppReceiptPdfBase64 } from '../lib/receiptExporter';
+import { generateSppReceiptPdfBase64, ReceiptItem } from '../lib/receiptExporter';
 import { 
   ReRegistrationProgram, 
   getReRegistrationPrograms 
@@ -663,12 +663,58 @@ export default function PaymentModerationModal({
             nomor_whatsapp: targetPhone
           };
           const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
+
+          // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
+          let receiptItems: ReceiptItem[] = [];
+          const isSiblingPayment = targetStudents.length > 1;
+          const isMultiMonth = Boolean(singleStudentAllocation && singleStudentAllocation.allocatedMonths.length > 1);
+
+          if (isSiblingPayment) {
+            const count = targetStudents.length;
+            const perStudentNominal = Math.floor(totalNominal / count);
+            const remainder = totalNominal % count;
+            receiptItems = targetStudents.map((st, idx) => ({
+              no: idx + 1,
+              deskripsi: `SPP Siswa a.n. ${st.nama_lengkap}${st.kelompok ? ` (${st.kelompok})` : ''}`,
+              periode: `${item.bulan} ${approvedTahunText}`,
+              nominal: perStudentNominal + (idx === 0 ? remainder : 0),
+              studentName: st.nama_lengkap,
+              kelompok: st.kelompok
+            }));
+          } else if (isMultiMonth && singleStudentAllocation) {
+            receiptItems = singleStudentAllocation.allocatedMonths.map((alloc, idx) => ({
+              no: idx + 1,
+              deskripsi: `Iuran Pembayaran SPP a.n. ${studentObj.nama_lengkap || studentNames}`,
+              periode: `${alloc.bulan} ${alloc.tahun}`,
+              nominal: alloc.nominal,
+              studentName: studentObj.nama_lengkap || studentNames,
+              kelompok: studentObj.kelompok
+            }));
+          } else if (matchedProg) {
+            receiptItems = [{
+              no: 1,
+              deskripsi: `Biaya ${matchedProg.name} a.n. ${studentObj.nama_lengkap || studentNames}`,
+              periode: `TA ${approvedTahunText}`,
+              nominal: totalNominal,
+              studentName: studentObj.nama_lengkap || studentNames,
+              kelompok: studentObj.kelompok
+            }];
+          }
+
+          const combinedStudentNames = isSiblingPayment
+            ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+            : (studentObj.nama_lengkap || studentNames);
+
+          const combinedKelompok = isSiblingPayment
+            ? targetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
+            : (studentObj.kelompok || 'Reguler');
+
           const pdfRes = generateSppReceiptPdfBase64({
             ...receiptMetadata,
             student: {
               id: studentObj.id,
-              nama_lengkap: studentObj.nama_lengkap || studentNames,
-              kelompok: studentObj.kelompok || 'Reguler',
+              nama_lengkap: combinedStudentNames,
+              kelompok: combinedKelompok,
               nomor_whatsapp: targetPhone
             },
             payment: {
@@ -680,6 +726,25 @@ export default function PaymentModerationModal({
               bulan: approvedBulanText,
             },
             bulan: approvedBulanText,
+            items: receiptItems.length > 0 ? receiptItems : undefined,
+            isSiblingPayment,
+            isMultiMonth,
+            allStudents: isSiblingPayment ? targetStudents.map(s => ({
+              id: s.id,
+              nama_lengkap: s.nama_lengkap,
+              kelompok: s.kelompok,
+              nomor_whatsapp: s.nomor_whatsapp
+            })) : undefined,
+            paymentTypeTitle: isSiblingPayment
+              ? `KWITANSI PEMBAYARAN SPP (${targetStudents.length} SISWA)`
+              : isMultiMonth
+                ? `KWITANSI PEMBAYARAN SPP (${singleStudentAllocation?.allocatedMonths.length} BULAN)`
+                : undefined,
+            noteText: isSiblingPayment
+              ? `Kwitansi gabungan resmi untuk ${targetStudents.length} siswa bersaudara.`
+              : isMultiMonth
+                ? `Pembayaran lunas untuk ${singleStudentAllocation?.allocatedMonths.length} bulan sekaligus.`
+                : undefined
           });
 
           receiptFilePayload = {
@@ -824,12 +889,55 @@ export default function PaymentModerationModal({
           nomor_whatsapp: targetPhone
         };
         const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
+
+        // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
+        let receiptItems: ReceiptItem[] = [];
+        const isSiblingPayment = targetStudents.length > 1;
+        const splitMonths = (item.bulan || '')
+          .split(/&|,|\bdan\b/i)
+          .map(b => b.trim())
+          .filter(b => b.length > 0);
+        const isMultiMonth = splitMonths.length > 1;
+
+        if (isSiblingPayment) {
+          const count = targetStudents.length;
+          const perStudentNominal = Math.floor(item.nominal / count);
+          const remainder = item.nominal % count;
+          receiptItems = targetStudents.map((st, idx) => ({
+            no: idx + 1,
+            deskripsi: `SPP Siswa a.n. ${st.nama_lengkap}${st.kelompok ? ` (${st.kelompok})` : ''}`,
+            periode: `${item.bulan} ${item.tahun}`,
+            nominal: perStudentNominal + (idx === 0 ? remainder : 0),
+            studentName: st.nama_lengkap,
+            kelompok: st.kelompok
+          }));
+        } else if (isMultiMonth) {
+          const perMonth = Math.floor(item.nominal / splitMonths.length);
+          const remainder = item.nominal % splitMonths.length;
+          receiptItems = splitMonths.map((mName, idx) => ({
+            no: idx + 1,
+            deskripsi: `Iuran Pembayaran SPP a.n. ${studentObj.nama_lengkap || studentName}`,
+            periode: `${mName} ${item.tahun}`,
+            nominal: perMonth + (idx === 0 ? remainder : 0),
+            studentName: studentObj.nama_lengkap || studentName,
+            kelompok: studentObj.kelompok
+          }));
+        }
+
+        const combinedStudentNames = isSiblingPayment
+          ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+          : (studentObj.nama_lengkap || studentName);
+
+        const combinedKelompok = isSiblingPayment
+          ? targetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
+          : (studentObj.kelompok || 'Reguler');
+
         const pdfRes = generateSppReceiptPdfBase64({
           ...receiptMetadata,
           student: {
             id: studentObj.id,
-            nama_lengkap: studentObj.nama_lengkap || studentName,
-            kelompok: studentObj.kelompok || 'Reguler',
+            nama_lengkap: combinedStudentNames,
+            kelompok: combinedKelompok,
             nomor_whatsapp: targetPhone
           },
           payment: {
@@ -841,6 +949,25 @@ export default function PaymentModerationModal({
             bulan: item.bulan,
           },
           bulan: item.bulan,
+          items: receiptItems.length > 0 ? receiptItems : undefined,
+          isSiblingPayment,
+          isMultiMonth,
+          allStudents: isSiblingPayment ? targetStudents.map(s => ({
+            id: s.id,
+            nama_lengkap: s.nama_lengkap,
+            kelompok: s.kelompok,
+            nomor_whatsapp: s.nomor_whatsapp
+          })) : undefined,
+          paymentTypeTitle: isSiblingPayment
+            ? `KWITANSI PEMBAYARAN SPP (${targetStudents.length} SISWA)`
+            : isMultiMonth
+              ? `KWITANSI PEMBAYARAN SPP (${splitMonths.length} BULAN)`
+              : undefined,
+          noteText: isSiblingPayment
+            ? `Kwitansi gabungan resmi untuk ${targetStudents.length} siswa bersaudara.`
+            : isMultiMonth
+              ? `Pembayaran lunas untuk ${splitMonths.length} bulan sekaligus.`
+              : undefined
         });
 
         receiptFilePayload = {

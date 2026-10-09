@@ -10,7 +10,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { exportSppReceiptPDF } from '../lib/receiptExporter';
+import { exportSppReceiptPDF, ReceiptItem } from '../lib/receiptExporter';
 import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 import ConfirmModal from './ConfirmModal';
 import PaymentModerationModal, { getMatchedStudentsForItem } from './PaymentModerationModal';
@@ -362,6 +362,124 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       
       const profile = await fetchSchoolProfileOnline(currentUser?.id, currentUser);
 
+      // 1. Deteksi Saudara Kandung (Kakak-Adik) berdasarkan kesamaan nomor WhatsApp orang tua
+      const cleanDigits = (p?: string) => (p || '').replace(/\D/g, '');
+      const phoneSuffix = (p?: string) => {
+        const d = cleanDigits(p);
+        return d.length >= 8 ? d.slice(-8) : d;
+      };
+      const studentPhoneSuffix = phoneSuffix(student?.nomor_whatsapp);
+      const siblingStudents = (studentPhoneSuffix && studentPhoneSuffix.length >= 6)
+        ? students.filter(s => phoneSuffix(s.nomor_whatsapp) === studentPhoneSuffix)
+        : [student];
+
+      // 2. Cari pembayaran yang dilakukan dalam transaksi yang sama
+      const payTanggal = payment?.tanggal_bayar;
+      const payWaktu = payment?.waktu_bayar;
+
+      // Pembayaran siswa ini yang tercatat pada waktu yang sama (kasus bayar multi-bulan)
+      const sameStudentRelatedPayments = payments.filter(p => 
+        p.student_id === student.id &&
+        (!payTanggal || p.tanggal_bayar === payTanggal) &&
+        (!payWaktu || !p.waktu_bayar || p.waktu_bayar === payWaktu)
+      );
+
+      // Pembayaran saudara kandung pada waktu yang sama (kasus bayar kakak-adik bersama)
+      const siblingRelatedPayments = siblingStudents.length > 1
+        ? payments.filter(p =>
+            p.student_id !== student.id &&
+            siblingStudents.some(s => s.id === p.student_id) &&
+            (!payTanggal || p.tanggal_bayar === payTanggal) &&
+            (!payWaktu || !p.waktu_bayar || p.waktu_bayar === payWaktu)
+          )
+        : [];
+
+      const hasSiblingsInTransaction = siblingRelatedPayments.length > 0;
+      const isMultiMonthTransaction = sameStudentRelatedPayments.length > 1;
+
+      let receiptItems: ReceiptItem[] | undefined = undefined;
+      let isSiblingPayment = false;
+      let isMultiMonth = false;
+      let customPaymentTitle: string | undefined = undefined;
+      let customNoteText: string | undefined = undefined;
+      let studentDisplayObj = student;
+      let allStudentsList: any[] | undefined = undefined;
+      let effectivePayment = payment;
+
+      if (hasSiblingsInTransaction) {
+        // Gabungkan seluruh transaksi kakak-beradik yang dibayar bersama
+        isSiblingPayment = true;
+        const allRelatedPayments = [...sameStudentRelatedPayments, ...siblingRelatedPayments];
+        const activeStudentsInTx = siblingStudents.filter(s => 
+          allRelatedPayments.some(p => p.student_id === s.id)
+        );
+        allStudentsList = activeStudentsInTx.map(s => ({
+          id: s.id,
+          nama_lengkap: s.nama_lengkap,
+          kelompok: s.kelompok,
+          nomor_whatsapp: s.nomor_whatsapp
+        }));
+
+        const totalNominalTx = allRelatedPayments.reduce((acc, p) => acc + (Number(p.nominal_dibayar) || 0), 0);
+        effectivePayment = {
+          ...payment,
+          nominal_dibayar: totalNominalTx
+        };
+
+        receiptItems = allRelatedPayments.map((p, idx) => {
+          const st = siblingStudents.find(s => s.id === p.student_id) || student;
+          return {
+            no: idx + 1,
+            deskripsi: `SPP Siswa a.n. ${st.nama_lengkap}${st.kelompok ? ` (${st.kelompok})` : ''}`,
+            periode: `${p.bulan} ${p.tahun}`,
+            nominal: Number(p.nominal_dibayar) || 0,
+            studentName: st.nama_lengkap,
+            kelompok: st.kelompok
+          };
+        });
+
+        studentDisplayObj = {
+          ...student,
+          nama_lengkap: activeStudentsInTx.map(s => s.nama_lengkap).join(' & '),
+          kelompok: activeStudentsInTx.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
+        };
+
+        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${activeStudentsInTx.length} SISWA)`;
+        customNoteText = `Kwitansi gabungan resmi untuk ${activeStudentsInTx.length} siswa bersaudara.`;
+      } else if (isMultiMonthTransaction) {
+        // Pembayaran multi-bulan untuk 1 siswa
+        isMultiMonth = true;
+        const totalNominalTx = sameStudentRelatedPayments.reduce((acc, p) => acc + (Number(p.nominal_dibayar) || 0), 0);
+        effectivePayment = {
+          ...payment,
+          nominal_dibayar: totalNominalTx
+        };
+
+        receiptItems = sameStudentRelatedPayments.map((p, idx) => ({
+          no: idx + 1,
+          deskripsi: `Iuran Pembayaran SPP a.n. ${student.nama_lengkap}`,
+          periode: `${p.bulan} ${p.tahun}`,
+          nominal: Number(p.nominal_dibayar) || 0,
+          studentName: student.nama_lengkap,
+          kelompok: student.kelompok
+        }));
+
+        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${sameStudentRelatedPayments.length} BULAN)`;
+        customNoteText = `Pembayaran lunas untuk ${sameStudentRelatedPayments.length} bulan sekaligus.`;
+      } else {
+        // Cek jika nominal_dibayar adalah kelipatan SPP (misal dibayar langsung 2x atau 3x dalam 1 baris)
+        const sppPerBulan = Number(student?.nominal_spp) || 100000;
+        const paidNominal = Number(payment?.nominal_dibayar) || sppPerBulan;
+        if (paidNominal >= sppPerBulan * 1.8 && sppPerBulan > 0) {
+          const estimatedMonths = Math.round(paidNominal / sppPerBulan);
+          if (estimatedMonths > 1) {
+            isMultiMonth = true;
+            customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${estimatedMonths} BULAN)`;
+            customNoteText = `Pembayaran lunas untuk ${estimatedMonths} bulan SPP sekaligus.`;
+          }
+        }
+      }
+
       exportSppReceiptPDF({
         schoolName: profile.schoolName || 'Lembaga Pendidikan',
         schoolLogo: profile.schoolLogo,
@@ -370,9 +488,17 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
         treasurerName: profile.treasurerName,
         adminSignature: profile.adminSignature,
         schoolStamp: profile.schoolStamp,
-        student,
-        payment,
-        bulan
+        student: studentDisplayObj,
+        payment: effectivePayment,
+        bulan: isMultiMonthTransaction 
+          ? sameStudentRelatedPayments.map(p => p.bulan).join(' & ') 
+          : bulan,
+        items: receiptItems,
+        isSiblingPayment,
+        isMultiMonth,
+        allStudents: allStudentsList,
+        paymentTypeTitle: customPaymentTitle,
+        noteText: customNoteText
       });
     } catch (err) {
       console.error('Error generating PDF', err);
