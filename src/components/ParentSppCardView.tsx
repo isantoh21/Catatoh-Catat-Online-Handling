@@ -637,10 +637,18 @@ export default function ParentSppCardView() {
 
       if (hasSiblingsInTx) {
         isSiblingPayment = true;
-        const allFamilyItems: { student: StudentData; payment: PaymentRecord }[] = [
+        const rawFamilyItems: { student: StudentData; payment: PaymentRecord }[] = [
           ...sameStudentRelatedPays.map(p => ({ student: activeStudent, payment: p })),
           ...siblingRelatedPays
         ];
+
+        // Deduplikasi agar per anak per bulan hanya dihitung 1 baris
+        const dedupeFamilyMap = new Map<string, { student: StudentData; payment: PaymentRecord }>();
+        for (const item of rawFamilyItems) {
+          const k = `${item.student.id}_${(item.payment.bulan || '').toLowerCase()}_${item.payment.tahun}`;
+          if (!dedupeFamilyMap.has(k)) dedupeFamilyMap.set(k, item);
+        }
+        const allFamilyItems = Array.from(dedupeFamilyMap.values());
 
         totalEffectiveNominal = allFamilyItems.reduce((acc, item) => 
           acc + (Number(item.payment.nominal_dibayar) || Number(item.student.nominal_spp) || 100000), 0
@@ -673,15 +681,23 @@ export default function ParentSppCardView() {
           nomor_whatsapp: s.nomor_whatsapp
         }));
 
-        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${activeFamilyStudents.length} SISWA)`;
+        customPaymentTitle = 'KWITANSI (KAKAK-ADIK)';
         customNoteText = `Kwitansi gabungan resmi untuk ${activeFamilyStudents.length} siswa bersaudara.`;
       } else if (isMultiMonthInTx) {
         isMultiMonth = true;
-        totalEffectiveNominal = sameStudentRelatedPays.reduce((acc, p) => 
+        // Deduplikasi per bulan
+        const dedupeMultiMap = new Map<string, PaymentRecord>();
+        for (const p of sameStudentRelatedPays) {
+          const k = `${(p.bulan || '').toLowerCase()}_${p.tahun}`;
+          if (!dedupeMultiMap.has(k)) dedupeMultiMap.set(k, p);
+        }
+        const uniquePays = Array.from(dedupeMultiMap.values());
+
+        totalEffectiveNominal = uniquePays.reduce((acc, p) => 
           acc + (Number(p.nominal_dibayar) || Number(activeStudent.nominal_spp) || 100000), 0
         );
 
-        receiptItems = sameStudentRelatedPays.map((p, idx) => ({
+        receiptItems = uniquePays.map((p, idx) => ({
           no: idx + 1,
           deskripsi: `Iuran Pembayaran SPP a.n. ${activeStudent.nama_lengkap}`,
           periode: `${p.bulan} ${p.tahun}`,
@@ -690,8 +706,8 @@ export default function ParentSppCardView() {
           kelompok: activeStudent.kelompok
         }));
 
-        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${sameStudentRelatedPays.length} BULAN)`;
-        customNoteText = `Pembayaran lunas untuk ${sameStudentRelatedPays.length} bulan sekaligus.`;
+        customPaymentTitle = `KWITANSI (${uniquePays.length} BULAN)`;
+        customNoteText = `Pembayaran lunas untuk ${uniquePays.length} bulan sekaligus.`;
       } else {
         const sppPerBulan = Number(activeStudent.nominal_spp) || 100000;
         if (baseNominal >= sppPerBulan * 1.8 && sppPerBulan > 0) {

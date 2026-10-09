@@ -407,9 +407,18 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       let effectivePayment = payment;
 
       if (hasSiblingsInTransaction) {
-        // Gabungkan seluruh transaksi kakak-beradik yang dibayar bersama
+        // Gabungkan seluruh transaksi kakak-beradik yang dibayar bersama & DEDUPLIKASI per anak per bulan
         isSiblingPayment = true;
-        const allRelatedPayments = [...sameStudentRelatedPayments, ...siblingRelatedPayments];
+        const rawPayments = [...sameStudentRelatedPayments, ...siblingRelatedPayments];
+        const payMap = new Map<string, any>();
+        for (const p of rawPayments) {
+          const k = `${p.student_id}_${(p.bulan || '').toLowerCase()}_${p.tahun}`;
+          if (!payMap.has(k)) {
+            payMap.set(k, p);
+          }
+        }
+        const allRelatedPayments = Array.from(payMap.values());
+
         const activeStudentsInTx = siblingStudents.filter(s => 
           allRelatedPayments.some(p => p.student_id === s.id)
         );
@@ -444,18 +453,26 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
           kelompok: activeStudentsInTx.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
         };
 
-        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${activeStudentsInTx.length} SISWA)`;
+        customPaymentTitle = 'KWITANSI (KAKAK-ADIK)';
         customNoteText = `Kwitansi gabungan resmi untuk ${activeStudentsInTx.length} siswa bersaudara.`;
       } else if (isMultiMonthTransaction) {
         // Pembayaran multi-bulan untuk 1 siswa
         isMultiMonth = true;
-        const totalNominalTx = sameStudentRelatedPayments.reduce((acc, p) => acc + (Number(p.nominal_dibayar) || 0), 0);
+        // Deduplikasi per bulan
+        const payMap = new Map<string, any>();
+        for (const p of sameStudentRelatedPayments) {
+          const k = `${(p.bulan || '').toLowerCase()}_${p.tahun}`;
+          if (!payMap.has(k)) payMap.set(k, p);
+        }
+        const uniqueMultiPayments = Array.from(payMap.values());
+
+        const totalNominalTx = uniqueMultiPayments.reduce((acc, p) => acc + (Number(p.nominal_dibayar) || 0), 0);
         effectivePayment = {
           ...payment,
           nominal_dibayar: totalNominalTx
         };
 
-        receiptItems = sameStudentRelatedPayments.map((p, idx) => ({
+        receiptItems = uniqueMultiPayments.map((p, idx) => ({
           no: idx + 1,
           deskripsi: `Iuran Pembayaran SPP a.n. ${student.nama_lengkap}`,
           periode: `${p.bulan} ${p.tahun}`,
@@ -464,8 +481,8 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
           kelompok: student.kelompok
         }));
 
-        customPaymentTitle = `KWITANSI PEMBAYARAN SPP (${sameStudentRelatedPayments.length} BULAN)`;
-        customNoteText = `Pembayaran lunas untuk ${sameStudentRelatedPayments.length} bulan sekaligus.`;
+        customPaymentTitle = `KWITANSI (${uniqueMultiPayments.length} BULAN)`;
+        customNoteText = `Pembayaran lunas untuk ${uniqueMultiPayments.length} bulan sekaligus.`;
       } else {
         // Cek jika nominal_dibayar adalah kelipatan SPP (misal dibayar langsung 2x atau 3x dalam 1 baris)
         const sppPerBulan = Number(student?.nominal_spp) || 100000;

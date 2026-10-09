@@ -666,14 +666,17 @@ export default function PaymentModerationModal({
 
           // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
           let receiptItems: ReceiptItem[] = [];
-          const isSiblingPayment = targetStudents.length > 1;
+          const uniqueTargetStudents = Array.from(
+            new Map(targetStudents.map(s => [s.id || s.nama_lengkap.trim().toLowerCase(), s])).values()
+          );
+          const isSiblingPayment = uniqueTargetStudents.length > 1;
           const isMultiMonth = Boolean(singleStudentAllocation && singleStudentAllocation.allocatedMonths.length > 1);
 
           if (isSiblingPayment) {
-            const count = targetStudents.length;
+            const count = uniqueTargetStudents.length;
             const perStudentNominal = Math.floor(totalNominal / count);
             const remainder = totalNominal % count;
-            receiptItems = targetStudents.map((st, idx) => ({
+            receiptItems = uniqueTargetStudents.map((st, idx) => ({
               no: idx + 1,
               deskripsi: `SPP Siswa a.n. ${st.nama_lengkap}${st.kelompok ? ` (${st.kelompok})` : ''}`,
               periode: `${item.bulan} ${approvedTahunText}`,
@@ -702,11 +705,11 @@ export default function PaymentModerationModal({
           }
 
           const combinedStudentNames = isSiblingPayment
-            ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+            ? uniqueTargetStudents.map(s => s.nama_lengkap).join(' & ')
             : (studentObj.nama_lengkap || studentNames);
 
           const combinedKelompok = isSiblingPayment
-            ? targetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
+            ? uniqueTargetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
             : (studentObj.kelompok || 'Reguler');
 
           const pdfRes = generateSppReceiptPdfBase64({
@@ -729,19 +732,19 @@ export default function PaymentModerationModal({
             items: receiptItems.length > 0 ? receiptItems : undefined,
             isSiblingPayment,
             isMultiMonth,
-            allStudents: isSiblingPayment ? targetStudents.map(s => ({
+            allStudents: isSiblingPayment ? uniqueTargetStudents.map(s => ({
               id: s.id,
               nama_lengkap: s.nama_lengkap,
               kelompok: s.kelompok,
               nomor_whatsapp: s.nomor_whatsapp
             })) : undefined,
             paymentTypeTitle: isSiblingPayment
-              ? `KWITANSI PEMBAYARAN SPP (${targetStudents.length} SISWA)`
+              ? 'KWITANSI (KAKAK-ADIK)'
               : isMultiMonth
-                ? `KWITANSI PEMBAYARAN SPP (${singleStudentAllocation?.allocatedMonths.length} BULAN)`
+                ? `KWITANSI (${singleStudentAllocation?.allocatedMonths.length} BULAN)`
                 : undefined,
             noteText: isSiblingPayment
-              ? `Kwitansi gabungan resmi untuk ${targetStudents.length} siswa bersaudara.`
+              ? `Kwitansi gabungan resmi untuk ${uniqueTargetStudents.length} siswa bersaudara.`
               : isMultiMonth
                 ? `Pembayaran lunas untuk ${singleStudentAllocation?.allocatedMonths.length} bulan sekaligus.`
                 : undefined
@@ -892,7 +895,10 @@ export default function PaymentModerationModal({
 
         // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
         let receiptItems: ReceiptItem[] = [];
-        const isSiblingPayment = targetStudents.length > 1;
+        const uniqueTargetStudents = Array.from(
+          new Map(targetStudents.map(s => [s.id || s.nama_lengkap.trim().toLowerCase(), s])).values()
+        );
+        const isSiblingPayment = uniqueTargetStudents.length > 1;
         const splitMonths = (item.bulan || '')
           .split(/&|,|\bdan\b/i)
           .map(b => b.trim())
@@ -900,10 +906,10 @@ export default function PaymentModerationModal({
         const isMultiMonth = splitMonths.length > 1;
 
         if (isSiblingPayment) {
-          const count = targetStudents.length;
+          const count = uniqueTargetStudents.length;
           const perStudentNominal = Math.floor(item.nominal / count);
           const remainder = item.nominal % count;
-          receiptItems = targetStudents.map((st, idx) => ({
+          receiptItems = uniqueTargetStudents.map((st, idx) => ({
             no: idx + 1,
             deskripsi: `SPP Siswa a.n. ${st.nama_lengkap}${st.kelompok ? ` (${st.kelompok})` : ''}`,
             periode: `${item.bulan} ${item.tahun}`,
@@ -925,11 +931,11 @@ export default function PaymentModerationModal({
         }
 
         const combinedStudentNames = isSiblingPayment
-          ? targetStudents.map(s => s.nama_lengkap).join(' & ')
+          ? uniqueTargetStudents.map(s => s.nama_lengkap).join(' & ')
           : (studentObj.nama_lengkap || studentName);
 
         const combinedKelompok = isSiblingPayment
-          ? targetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
+          ? uniqueTargetStudents.map(s => s.kelompok || 'Reguler').filter((v, i, a) => a.indexOf(v) === i).join(' & ')
           : (studentObj.kelompok || 'Reguler');
 
         const pdfRes = generateSppReceiptPdfBase64({
@@ -952,19 +958,19 @@ export default function PaymentModerationModal({
           items: receiptItems.length > 0 ? receiptItems : undefined,
           isSiblingPayment,
           isMultiMonth,
-          allStudents: isSiblingPayment ? targetStudents.map(s => ({
+          allStudents: isSiblingPayment ? uniqueTargetStudents.map(s => ({
             id: s.id,
             nama_lengkap: s.nama_lengkap,
             kelompok: s.kelompok,
             nomor_whatsapp: s.nomor_whatsapp
           })) : undefined,
           paymentTypeTitle: isSiblingPayment
-            ? `KWITANSI PEMBAYARAN SPP (${targetStudents.length} SISWA)`
+            ? 'KWITANSI (KAKAK-ADIK)'
             : isMultiMonth
-              ? `KWITANSI PEMBAYARAN SPP (${splitMonths.length} BULAN)`
+              ? `KWITANSI (${splitMonths.length} BULAN)`
               : undefined,
           noteText: isSiblingPayment
-            ? `Kwitansi gabungan resmi untuk ${targetStudents.length} siswa bersaudara.`
+            ? `Kwitansi gabungan resmi untuk ${uniqueTargetStudents.length} siswa bersaudara.`
             : isMultiMonth
               ? `Pembayaran lunas untuk ${splitMonths.length} bulan sekaligus.`
               : undefined
