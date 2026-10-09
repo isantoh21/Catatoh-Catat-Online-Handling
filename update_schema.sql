@@ -266,4 +266,7 @@ TO anon
 USING (true);
 
 ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS re_registration_programs JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS admin_signature TEXT;
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS school_stamp TEXT;
+ALTER TABLE IF EXISTS public.user_settings ADD COLUMN IF NOT EXISTS principal_name TEXT;
 

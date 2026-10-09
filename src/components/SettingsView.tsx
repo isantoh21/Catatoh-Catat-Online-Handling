@@ -78,8 +78,14 @@ export default function SettingsView({
           ''
         );
         supabase.from('user_settings').select('admin_signature, school_stamp').eq('user_id', session.user.id).maybeSingle().then(({ data }: any) => {
-          if (data?.admin_signature) setAdminSignature(data.admin_signature);
-          if (data?.school_stamp) setSchoolStamp(data.school_stamp);
+          if (data?.admin_signature) {
+            setAdminSignature(data.admin_signature);
+            localStorage.setItem('adminSignature_' + session.user.id, data.admin_signature);
+          }
+          if (data?.school_stamp) {
+            setSchoolStamp(data.school_stamp);
+            localStorage.setItem('schoolStamp_' + session.user.id, data.school_stamp);
+          }
         }, () => {});
       }
     });
@@ -87,8 +93,16 @@ export default function SettingsView({
 
   const saveImageSetting = async (userId: string, column: 'admin_signature' | 'school_stamp', value: string | null) => {
     try {
-      await supabase.from('user_settings').update({ [column]: value } as any).eq('user_id', userId);
-    } catch (_) {}
+      const { error } = await supabase.from('user_settings').upsert({
+        user_id: userId,
+        [column]: value
+      } as any, { onConflict: 'user_id' });
+      if (error) {
+        console.warn(`Gagal menyimpan ${column} ke user_settings:`, error);
+      }
+    } catch (err) {
+      console.warn(`Error menyimpan ${column}:`, err);
+    }
   };
 
   // Helper untuk optimasi gambar PNG (mempertahankan latar transparan & kualitas HD tanpa terpotong)
@@ -447,7 +461,11 @@ export default function SettingsView({
         const { error } = await supabase.from('user_settings').upsert({
           user_id: session.user.id,
           school_name: localName,
-          school_logo: localLogo
+          school_logo: localLogo,
+          admin_name: adminName,
+          city_name: city,
+          admin_signature: adminSignature || null,
+          school_stamp: schoolStamp || null
         }, { onConflict: 'user_id' });
         
         await supabase.auth.updateUser({

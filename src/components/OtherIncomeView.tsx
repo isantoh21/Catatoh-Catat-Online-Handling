@@ -4,6 +4,7 @@ import { Plus, Trash2, Calendar, DollarSign, Search, Tag, X, Database, Printer }
 import ConfirmModal from './ConfirmModal';
 import { jsPDF } from 'jspdf';
 import { exportOtherIncomeReceiptPDF } from '../lib/receiptExporter';
+import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 import { logActivity } from '../lib/activityLogger';
 
 const BULAN_OPTIONS = [
@@ -132,28 +133,15 @@ export default function OtherIncomeView({ currentUser: propUser }: OtherIncomeVi
     try {
       const sessionData = await supabase.auth.getSession();
       const currentUser = sessionData.data.session?.user;
-      
-      const rawEmail = currentUser?.email || '';
-      const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.admin_name || currentUser?.user_metadata?.name || rawEmail.split('@')[0] || 'Admin';
-      const formattedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
-      
-      let schoolName = currentUser ? localStorage.getItem('schoolName_' + currentUser.id) : null;
-      if (!schoolName || schoolName.trim() === '') {
-        schoolName = currentUser?.user_metadata?.school_name || formattedUserName;
-      }
-
-      const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
-      const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
-      const adminSignature = currentUser?.user_metadata?.admin_signature || (currentUser ? localStorage.getItem('adminSignature_' + currentUser.id) : null) || null;
-      const schoolStamp = currentUser?.user_metadata?.school_stamp || (currentUser ? localStorage.getItem('schoolStamp_' + currentUser.id) : null) || null;
+      const profile = await fetchSchoolProfileOnline(currentUser?.id, currentUser);
 
       exportOtherIncomeReceiptPDF({
-        schoolName: schoolName || 'Lembaga Pendidikan',
-        schoolLogo,
-        city,
-        treasurerName: formattedUserName,
-        adminSignature,
-        schoolStamp,
+        schoolName: profile.schoolName || 'Lembaga Pendidikan',
+        schoolLogo: profile.schoolLogo,
+        city: profile.city,
+        treasurerName: profile.treasurerName,
+        adminSignature: profile.adminSignature,
+        schoolStamp: profile.schoolStamp,
         otherIncome
       });
     } catch (err) {

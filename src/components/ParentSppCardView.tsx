@@ -500,8 +500,8 @@ export default function ParentSppCardView() {
         setReRegistrationPrograms(progs || []);
       } catch (_) {}
 
-      // Ambil branding sekolah dari admin user_id jika belum dimuat
-      if (!schoolInfo && formattedList[0]?.user_id) {
+      // Ambil branding sekolah dari admin user_id untuk memastikan logo, stempel, dan TTD selalu termuat
+      if (formattedList[0]?.user_id) {
         fetchSchoolInfo(formattedList[0].user_id);
       }
 
@@ -521,7 +521,7 @@ export default function ParentSppCardView() {
     }
   };
 
-  const fetchSchoolInfo = async (userId: string) => {
+  const fetchSchoolInfo = async (userId: string): Promise<SchoolInfoData | null> => {
     try {
       const cachedSchool = localStorage.getItem('schoolName_' + userId);
       const cachedLogo = localStorage.getItem('schoolLogo_' + userId);
@@ -530,7 +530,7 @@ export default function ParentSppCardView() {
       const cachedSignature = localStorage.getItem('adminSignature_' + userId);
       const cachedStamp = localStorage.getItem('schoolStamp_' + userId);
 
-      setSchoolInfo({
+      const initialInfo: SchoolInfoData = {
         name: cachedSchool || 'SISTEM KARTU SPP DIGITAL',
         logo: cachedLogo || undefined,
         city: cachedCity || 'Indonesia',
@@ -538,7 +538,9 @@ export default function ParentSppCardView() {
         treasurerName: 'Bendahara Sekolah',
         adminSignature: cachedSignature || null,
         schoolStamp: cachedStamp || null,
-      });
+      };
+
+      setSchoolInfo(initialInfo);
 
       const { data } = await supabase
         .from('user_settings')
@@ -547,42 +549,57 @@ export default function ParentSppCardView() {
         .maybeSingle();
 
       if (data) {
-        setSchoolInfo(prev => ({
-          name: data.school_name || cachedSchool || prev?.name || 'SISTEM KARTU SPP DIGITAL',
-          logo: data.school_logo || cachedLogo || prev?.logo || undefined,
-          city: (data as any).city || cachedCity || prev?.city || 'Indonesia',
-          principalName: (data as any).principal_name || cachedPrincipal || prev?.principalName || '',
-          treasurerName: (data as any).admin_name || (data as any).treasurer_name || prev?.treasurerName || 'Bendahara Sekolah',
-          adminSignature: (data as any).admin_signature || cachedSignature || prev?.adminSignature || null,
-          schoolStamp: (data as any).school_stamp || cachedStamp || prev?.schoolStamp || null,
-        }));
-        if (data.school_name) {
-          localStorage.setItem('schoolName_' + userId, data.school_name);
-        }
-        if (data.school_logo) {
-          localStorage.setItem('schoolLogo_' + userId, data.school_logo);
-        }
+        const fullInfo: SchoolInfoData = {
+          name: data.school_name || cachedSchool || initialInfo.name,
+          logo: data.school_logo || cachedLogo || initialInfo.logo,
+          city: (data as any).city || (data as any).city_name || cachedCity || initialInfo.city,
+          principalName: (data as any).principal_name || cachedPrincipal || initialInfo.principalName,
+          treasurerName: (data as any).admin_name || (data as any).treasurer_name || initialInfo.treasurerName,
+          adminSignature: (data as any).admin_signature || cachedSignature || initialInfo.adminSignature,
+          schoolStamp: (data as any).school_stamp || cachedStamp || initialInfo.schoolStamp,
+        };
+
+        setSchoolInfo(fullInfo);
+
+        if (fullInfo.name) localStorage.setItem('schoolName_' + userId, fullInfo.name);
+        if (fullInfo.logo) localStorage.setItem('schoolLogo_' + userId, fullInfo.logo);
+        if (fullInfo.adminSignature) localStorage.setItem('adminSignature_' + userId, fullInfo.adminSignature);
+        if (fullInfo.schoolStamp) localStorage.setItem('schoolStamp_' + userId, fullInfo.schoolStamp);
+        if (fullInfo.city) localStorage.setItem('schoolCity_' + userId, fullInfo.city);
+        if (fullInfo.principalName) localStorage.setItem('principalName_' + userId, fullInfo.principalName);
+        if (fullInfo.treasurerName) localStorage.setItem('adminName_' + userId, fullInfo.treasurerName);
+
+        return fullInfo;
       }
+      return initialInfo;
     } catch (e) {
       // Abaikan jika gagal
+      return null;
     }
   };
 
-  const handleDownloadReceipt = (monthInfo: AcademicMonthInfo, payment: PaymentRecord) => {
+  const handleDownloadReceipt = async (monthInfo: AcademicMonthInfo, payment: PaymentRecord) => {
     if (!activeStudent) return;
     try {
       setDownloadingMonthKey(monthInfo.key);
+      const targetUid = activeStudent.user_id || schoolId;
+      let effectiveInfo = schoolInfo;
+      if ((!effectiveInfo?.adminSignature || !effectiveInfo?.schoolStamp) && targetUid) {
+        const refreshed = await fetchSchoolInfo(targetUid);
+        if (refreshed) effectiveInfo = refreshed;
+      }
+
       const nominal = Number(payment.nominal_dibayar) || Number(activeStudent.nominal_spp) || 100000;
       const receiptNo = payment.id || `KW-${activeStudent.id.slice(0, 6).toUpperCase()}-${monthInfo.tahun}-${monthInfo.order}`;
       
       exportSppReceiptPDF({
-        schoolName: schoolInfo?.name || 'Lembaga Pendidikan',
-        schoolLogo: schoolInfo?.logo || null,
-        city: schoolInfo?.city || 'Indonesia',
-        principalName: schoolInfo?.principalName || '',
-        treasurerName: schoolInfo?.treasurerName || 'Bendahara Sekolah',
-        adminSignature: schoolInfo?.adminSignature || null,
-        schoolStamp: schoolInfo?.schoolStamp || null,
+        schoolName: effectiveInfo?.name || 'Lembaga Pendidikan',
+        schoolLogo: effectiveInfo?.logo || null,
+        city: effectiveInfo?.city || 'Indonesia',
+        principalName: effectiveInfo?.principalName || '',
+        treasurerName: effectiveInfo?.treasurerName || 'Bendahara Sekolah',
+        adminSignature: effectiveInfo?.adminSignature || null,
+        schoolStamp: effectiveInfo?.schoolStamp || null,
         student: {
           id: activeStudent.id,
           nama_lengkap: activeStudent.nama_lengkap,
@@ -607,19 +624,26 @@ export default function ParentSppCardView() {
     }
   };
 
-  const handleDownloadProgramReceipt = (prog: ReRegistrationProgram, paymentEntry?: PaymentRecord) => {
+  const handleDownloadProgramReceipt = async (prog: ReRegistrationProgram, paymentEntry?: PaymentRecord) => {
     if (!activeStudent) return;
     try {
+      const targetUid = activeStudent.user_id || schoolId;
+      let effectiveInfo = schoolInfo;
+      if ((!effectiveInfo?.adminSignature || !effectiveInfo?.schoolStamp) && targetUid) {
+        const refreshed = await fetchSchoolInfo(targetUid);
+        if (refreshed) effectiveInfo = refreshed;
+      }
+
       const nominal = Number(paymentEntry?.nominal_dibayar) || Number(prog.fee) || 0;
       const receiptNo = paymentEntry?.id || `KW-PROG-${activeStudent.id.slice(0, 6).toUpperCase()}`;
       exportSppReceiptPDF({
-        schoolName: schoolInfo?.name || 'Lembaga Pendidikan',
-        schoolLogo: schoolInfo?.logo || null,
-        city: schoolInfo?.city || 'Indonesia',
-        principalName: schoolInfo?.principalName || '',
-        treasurerName: schoolInfo?.treasurerName || 'Bendahara Sekolah',
-        adminSignature: schoolInfo?.adminSignature || null,
-        schoolStamp: schoolInfo?.schoolStamp || null,
+        schoolName: effectiveInfo?.name || 'Lembaga Pendidikan',
+        schoolLogo: effectiveInfo?.logo || null,
+        city: effectiveInfo?.city || 'Indonesia',
+        principalName: effectiveInfo?.principalName || '',
+        treasurerName: effectiveInfo?.treasurerName || 'Bendahara Sekolah',
+        adminSignature: effectiveInfo?.adminSignature || null,
+        schoolStamp: effectiveInfo?.schoolStamp || null,
         student: {
           id: activeStudent.id,
           nama_lengkap: activeStudent.nama_lengkap,

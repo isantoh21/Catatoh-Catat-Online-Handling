@@ -59,7 +59,12 @@ export default function App() {
 
   const fetchUserSettings = async (userId: string) => {
     try {
-      const { data, error } = await supabase.from('user_settings').select('school_name, school_logo, admin_name, city_name').eq('user_id', userId).maybeSingle();
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('school_name, school_logo, admin_name, city_name, admin_signature, school_stamp, principal_name')
+        .eq('user_id', userId)
+        .maybeSingle();
+
       if (!error && data) {
         if (data.school_name) {
           setSchoolName(data.school_name);
@@ -68,6 +73,21 @@ export default function App() {
         if (data.school_logo) {
           setSchoolLogo(data.school_logo);
           localStorage.setItem('schoolLogo_' + userId, data.school_logo);
+        }
+        if (data.admin_signature) {
+          localStorage.setItem('adminSignature_' + userId, data.admin_signature);
+        }
+        if (data.school_stamp) {
+          localStorage.setItem('schoolStamp_' + userId, data.school_stamp);
+        }
+        if (data.city_name) {
+          localStorage.setItem('schoolCity_' + userId, data.city_name);
+        }
+        if (data.admin_name) {
+          localStorage.setItem('adminName_' + userId, data.admin_name);
+        }
+        if ((data as any).principal_name) {
+          localStorage.setItem('principalName_' + userId, (data as any).principal_name);
         }
         return data;
       } else {

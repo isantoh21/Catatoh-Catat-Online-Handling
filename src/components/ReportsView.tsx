@@ -11,6 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import ConfirmModal from './ConfirmModal';
 import ExportReportModal from './ExportReportModal';
 import { ReportExportData } from '../lib/reportExporter';
+import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 
 const CALENDAR_MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -155,31 +156,17 @@ export default function ReportsView({ currentUser: propUser }: ReportsViewProps 
     const { data: otherData } = await supabase.from('other_incomes').select('*').eq('user_id', currentUser.id).eq('tahun', parseInt(selectedTahun)).order('tanggal', { ascending: false });
     if (otherData) setOtherIncomes(otherData);
 
-    // Fetch school settings and administrator metadata for branding
+    // Fetch school settings and administrator metadata for branding (online & global)
     try {
-      const { data: settingsData } = await supabase
-        .from('user_settings')
-        .select('school_name, school_logo')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
-
-      const uMeta = currentUser.user_metadata || {};
-      const sName = settingsData?.school_name || uMeta.school_name || localStorage.getItem('schoolName_' + currentUser.id) || 'Lembaga Pendidikan / Sekolah';
-      const sLogo = settingsData?.school_logo || localStorage.getItem('schoolLogo_' + currentUser.id) || '';
-      const adminName = uMeta.admin_name || uMeta.full_name || 'Bendahara / Pengelola Keuangan';
-      const sCity = uMeta.city || localStorage.getItem('schoolCity_' + currentUser.id) || 'Indonesia';
-
-      const adminSignature = uMeta.admin_signature || localStorage.getItem('adminSignature_' + currentUser.id) || null;
-      const schoolStamp = uMeta.school_stamp || localStorage.getItem('schoolStamp_' + currentUser.id) || null;
-
+      const profile = await fetchSchoolProfileOnline(currentUser.id, currentUser);
       setSchoolInfo({
-        schoolName: sName,
-        schoolLogo: sLogo,
-        city: sCity,
-        principalName: uMeta.principal_name || localStorage.getItem('principalName_' + currentUser.id) || 'Kepala Sekolah / Pimpinan',
-        treasurerName: adminName,
-        adminSignature,
-        schoolStamp
+        schoolName: profile.schoolName,
+        schoolLogo: profile.schoolLogo || '',
+        city: profile.city,
+        principalName: profile.principalName || 'Kepala Sekolah / Pimpinan',
+        treasurerName: profile.treasurerName,
+        adminSignature: profile.adminSignature,
+        schoolStamp: profile.schoolStamp
       });
     } catch (sErr) {
       console.warn('Note on loading school settings in reports:', sErr);

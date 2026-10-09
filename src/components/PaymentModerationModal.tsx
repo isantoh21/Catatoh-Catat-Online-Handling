@@ -31,30 +31,10 @@ import {
   ReRegistrationProgram, 
   getReRegistrationPrograms 
 } from '../lib/reRegistrationService';
+import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 
-const getSchoolReceiptMetadata = (currentUser: any) => {
-  const rawEmail = currentUser?.email || '';
-  const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.admin_name || currentUser?.user_metadata?.name || rawEmail.split('@')[0] || 'Admin';
-  const formattedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
-  let schoolName = currentUser ? localStorage.getItem('schoolName_' + currentUser.id) : null;
-  if (!schoolName || schoolName.trim() === '') {
-    schoolName = currentUser?.user_metadata?.school_name || formattedUserName;
-  }
-  const schoolLogo = currentUser ? (localStorage.getItem('schoolLogo_' + currentUser.id) || localStorage.getItem('cached_logo_' + currentUser.id)) : null;
-  const city = currentUser?.user_metadata?.city || (currentUser ? localStorage.getItem('schoolCity_' + currentUser.id) : null) || 'Indonesia';
-  const principalName = currentUser?.user_metadata?.principal_name || (currentUser ? localStorage.getItem('principalName_' + currentUser.id) : null) || '';
-  const adminSignature = currentUser?.user_metadata?.admin_signature || (currentUser ? localStorage.getItem('adminSignature_' + currentUser.id) : null) || null;
-  const schoolStamp = currentUser?.user_metadata?.school_stamp || (currentUser ? localStorage.getItem('schoolStamp_' + currentUser.id) : null) || null;
-
-  return {
-    schoolName: schoolName || 'Lembaga Pendidikan',
-    schoolLogo,
-    city,
-    principalName,
-    treasurerName: formattedUserName,
-    adminSignature,
-    schoolStamp
-  };
+const getSchoolReceiptMetadata = async (currentUser: any) => {
+  return await fetchSchoolProfileOnline(currentUser?.id, currentUser);
 };
 
 const BULAN_OPTIONS = [
@@ -682,7 +662,7 @@ export default function PaymentModerationModal({
             kelompok: 'Reguler',
             nomor_whatsapp: targetPhone
           };
-          const receiptMetadata = getSchoolReceiptMetadata(session?.user);
+          const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
           const pdfRes = generateSppReceiptPdfBase64({
             ...receiptMetadata,
             student: {
@@ -843,7 +823,7 @@ export default function PaymentModerationModal({
           kelompok: 'Reguler',
           nomor_whatsapp: targetPhone
         };
-        const receiptMetadata = getSchoolReceiptMetadata(session?.user);
+        const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
         const pdfRes = generateSppReceiptPdfBase64({
           ...receiptMetadata,
           student: {
