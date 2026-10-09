@@ -360,7 +360,8 @@ export default function DashboardView({ currentUser: propUser }: { currentUser?:
       const sessionData = await supabase.auth.getSession();
       const currentUser = sessionData.data.session?.user;
       
-      const profile = await fetchSchoolProfileOnline(currentUser?.id, currentUser);
+      const targetUid = currentUser?.id || student?.user_id || payment?.user_id;
+      const profile = await fetchSchoolProfileOnline(targetUid, currentUser);
 
       // 1. Deteksi Saudara Kandung (Kakak-Adik) berdasarkan kesamaan nomor WhatsApp orang tua
       const cleanDigits = (p?: string) => (p || '').replace(/\D/g, '');

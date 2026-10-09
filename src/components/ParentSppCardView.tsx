@@ -32,6 +32,7 @@ import {
   getReRegistrationPrograms, 
   getStudentPrograms 
 } from '../lib/reRegistrationService';
+import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 
 export const BULAN_LIST = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -523,57 +524,21 @@ export default function ParentSppCardView() {
 
   const fetchSchoolInfo = async (userId: string): Promise<SchoolInfoData | null> => {
     try {
-      const cachedSchool = localStorage.getItem('schoolName_' + userId);
-      const cachedLogo = localStorage.getItem('schoolLogo_' + userId);
-      const cachedCity = localStorage.getItem('schoolCity_' + userId);
-      const cachedPrincipal = localStorage.getItem('principalName_' + userId);
-      const cachedSignature = localStorage.getItem('adminSignature_' + userId);
-      const cachedStamp = localStorage.getItem('schoolStamp_' + userId);
-
-      const initialInfo: SchoolInfoData = {
-        name: cachedSchool || 'SISTEM KARTU SPP DIGITAL',
-        logo: cachedLogo || undefined,
-        city: cachedCity || 'Indonesia',
-        principalName: cachedPrincipal || '',
-        treasurerName: 'Bendahara Sekolah',
-        adminSignature: cachedSignature || null,
-        schoolStamp: cachedStamp || null,
+      const profile = await fetchSchoolProfileOnline(userId);
+      const fullInfo: SchoolInfoData = {
+        name: profile.schoolName || 'SISTEM KARTU SPP DIGITAL',
+        logo: profile.schoolLogo || undefined,
+        city: profile.city || 'Indonesia',
+        principalName: profile.principalName || '',
+        treasurerName: profile.treasurerName || 'Bendahara Sekolah',
+        adminSignature: profile.adminSignature || null,
+        schoolStamp: profile.schoolStamp || null,
       };
 
-      setSchoolInfo(initialInfo);
-
-      const { data } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (data) {
-        const fullInfo: SchoolInfoData = {
-          name: data.school_name || cachedSchool || initialInfo.name,
-          logo: data.school_logo || cachedLogo || initialInfo.logo,
-          city: (data as any).city || (data as any).city_name || cachedCity || initialInfo.city,
-          principalName: (data as any).principal_name || cachedPrincipal || initialInfo.principalName,
-          treasurerName: (data as any).admin_name || (data as any).treasurer_name || initialInfo.treasurerName,
-          adminSignature: (data as any).admin_signature || cachedSignature || initialInfo.adminSignature,
-          schoolStamp: (data as any).school_stamp || cachedStamp || initialInfo.schoolStamp,
-        };
-
-        setSchoolInfo(fullInfo);
-
-        if (fullInfo.name) localStorage.setItem('schoolName_' + userId, fullInfo.name);
-        if (fullInfo.logo) localStorage.setItem('schoolLogo_' + userId, fullInfo.logo);
-        if (fullInfo.adminSignature) localStorage.setItem('adminSignature_' + userId, fullInfo.adminSignature);
-        if (fullInfo.schoolStamp) localStorage.setItem('schoolStamp_' + userId, fullInfo.schoolStamp);
-        if (fullInfo.city) localStorage.setItem('schoolCity_' + userId, fullInfo.city);
-        if (fullInfo.principalName) localStorage.setItem('principalName_' + userId, fullInfo.principalName);
-        if (fullInfo.treasurerName) localStorage.setItem('adminName_' + userId, fullInfo.treasurerName);
-
-        return fullInfo;
-      }
-      return initialInfo;
+      setSchoolInfo(fullInfo);
+      return fullInfo;
     } catch (e) {
-      // Abaikan jika gagal
+      console.warn('Gagal mengambil profil sekolah online:', e);
       return null;
     }
   };
@@ -582,7 +547,13 @@ export default function ParentSppCardView() {
     if (!activeStudent) return;
     try {
       setDownloadingMonthKey(monthInfo.key);
-      const targetUid = activeStudent.user_id || schoolId;
+      let targetUid = activeStudent.user_id || schoolId || students[0]?.user_id;
+      if (!targetUid && activeStudent.id) {
+        try {
+          const { data: stRow } = await supabase.from('students').select('user_id').eq('id', activeStudent.id).maybeSingle();
+          if (stRow?.user_id) targetUid = stRow.user_id;
+        } catch (_) {}
+      }
       let effectiveInfo = schoolInfo;
       if ((!effectiveInfo?.adminSignature || !effectiveInfo?.schoolStamp) && targetUid) {
         const refreshed = await fetchSchoolInfo(targetUid);
@@ -762,7 +733,13 @@ export default function ParentSppCardView() {
   const handleDownloadProgramReceipt = async (prog: ReRegistrationProgram, paymentEntry?: PaymentRecord) => {
     if (!activeStudent) return;
     try {
-      const targetUid = activeStudent.user_id || schoolId;
+      let targetUid = activeStudent.user_id || schoolId || students[0]?.user_id;
+      if (!targetUid && activeStudent.id) {
+        try {
+          const { data: stRow } = await supabase.from('students').select('user_id').eq('id', activeStudent.id).maybeSingle();
+          if (stRow?.user_id) targetUid = stRow.user_id;
+        } catch (_) {}
+      }
       let effectiveInfo = schoolInfo;
       if ((!effectiveInfo?.adminSignature || !effectiveInfo?.schoolStamp) && targetUid) {
         const refreshed = await fetchSchoolInfo(targetUid);

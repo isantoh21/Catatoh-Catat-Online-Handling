@@ -61,7 +61,7 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('user_settings')
-        .select('school_name, school_logo, admin_name, city_name, admin_signature, school_stamp, principal_name')
+        .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 

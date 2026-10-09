@@ -57,7 +57,7 @@ export const fetchSchoolProfileOnline = async (userId?: string, currentUser?: an
   try {
     const { data, error } = await supabase
       .from('user_settings')
-      .select('school_name, school_logo, city_name, admin_name, admin_signature, school_stamp, principal_name')
+      .select('*')
       .eq('user_id', targetUid)
       .maybeSingle();
 

@@ -33,8 +33,9 @@ import {
 } from '../lib/reRegistrationService';
 import { fetchSchoolProfileOnline } from '../lib/schoolSettings';
 
-const getSchoolReceiptMetadata = async (currentUser: any) => {
-  return await fetchSchoolProfileOnline(currentUser?.id, currentUser);
+const getSchoolReceiptMetadata = async (currentUser: any, itemUserId?: string) => {
+  const targetUid = currentUser?.id || itemUserId;
+  return await fetchSchoolProfileOnline(targetUid, currentUser);
 };
 
 const BULAN_OPTIONS = [
@@ -662,7 +663,7 @@ export default function PaymentModerationModal({
             kelompok: 'Reguler',
             nomor_whatsapp: targetPhone
           };
-          const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
+          const receiptMetadata = await getSchoolReceiptMetadata(session?.user, item.user_id);
 
           // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
           let receiptItems: ReceiptItem[] = [];
@@ -891,7 +892,7 @@ export default function PaymentModerationModal({
           kelompok: 'Reguler',
           nomor_whatsapp: targetPhone
         };
-        const receiptMetadata = await getSchoolReceiptMetadata(session?.user);
+        const receiptMetadata = await getSchoolReceiptMetadata(session?.user, item.user_id);
 
         // Siapkan rincian kwitansi adaptif untuk Kakak-Adik atau Multi-Bulan
         let receiptItems: ReceiptItem[] = [];
